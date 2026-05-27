@@ -24,7 +24,11 @@
 - Prisma + SQLite (本番は PostgreSQL 等に切替可能)
 - Zod でリクエストバリデーション
 
-## セットアップ
+## iPhone・公開URLで確認したい場合
+
+[`DEPLOY.md`](./DEPLOY.md) に Railway / Vercel+Neon / Cloudflare Pages の3通りの手順をまとめています。最短は Railway (SQLite のままコード変更ゼロで5分)。
+
+## ローカル開発のセットアップ
 
 ```bash
 # 1. 依存をインストール

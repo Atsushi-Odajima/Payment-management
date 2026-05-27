@@ -1,0 +1,11 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+# Mount a Railway Volume at /data so the SQLite file survives redeploys.
+# Configure the volume in the Railway dashboard (Settings → Volumes → Mount Path: /data).

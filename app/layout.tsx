@@ -1,5 +1,5 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { NavLink } from "@/components/nav-link";
 
@@ -7,6 +7,21 @@ export const metadata: Metadata = {
   title: "Payments — 決済管理ダッシュボード",
   description:
     "小規模ECストア向けの決済プロバイダ統合ダッシュボード。PayPay・クレジット・コンビニ・銀行振込などを一括管理できます。",
+  appleWebApp: {
+    capable: true,
+    title: "Payments",
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: "#2667e6",
 };
 
 export default function RootLayout({
