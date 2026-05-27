@@ -1,0 +1,58 @@
+// Prisma schema for the payment management dashboard.
+// Uses SQLite by default for easy local demo; swap provider to "postgresql"
+// and update DATABASE_URL when moving to production.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model PaymentProvider {
+  id          String   @id @default(cuid())
+  category    String
+  providerKey String
+  displayName String
+  status      String   @default("active")
+  // JSON-encoded map of credential field key -> AES-encrypted ciphertext.
+  // Non-secret fields (mode, merchant labels, etc.) are stored alongside as plaintext JSON.
+  credentials String
+  settings    String   @default("{}")
+  testMode    Boolean  @default(true)
+  lastTestAt  DateTime?
+  lastTestOk  Boolean?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  payments    Payment[]
+
+  @@index([category])
+  @@index([providerKey])
+}
+
+model Payment {
+  id                String    @id @default(cuid())
+  providerId        String
+  provider          PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  externalId        String?
+  orderNumber       String
+  customerName      String?
+  customerEmail     String?
+  amount            Int
+  currency          String    @default("JPY")
+  status            String    @default("pending")
+  description       String?
+  metadata          String    @default("{}")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  capturedAt        DateTime?
+  cancelledAt       DateTime?
+  refundedAt        DateTime?
+
+  @@index([providerId])
+  @@index([status])
+  @@index([createdAt])
+}
