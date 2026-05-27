@@ -82,15 +82,15 @@ export function buildWirePayIconSvg({
     )
     .join("");
 
-  const topToLeft = `<path d="M ${num(topPt.x)} ${num(topPt.y)} A ${num(
-    orbitR,
-  )} ${num(orbitR)} 0 0 0 ${num(leftPt.x)} ${num(
-    leftPt.y,
-  )}" stroke-width="${num(thinStroke)}" opacity="0.85"/>`;
-
-  const leftToBot = `<path d="M ${num(leftPt.x)} ${num(leftPt.y)} A ${num(
-    orbitR,
-  )} ${num(orbitR)} 0 0 0 ${num(botPt.x)} ${num(
+  // Σ-shape on the left connecting top → left → bottom.
+  // 4 segments: top horizontal bar, upper diagonal, lower diagonal, bottom
+  // horizontal bar. The left node sits at the tip/apex of the Σ.
+  const sigmaCornerX = r - orbitR * 0.5;
+  const sigmaPath = `<path d="M ${num(topPt.x)} ${num(topPt.y)} L ${num(
+    sigmaCornerX,
+  )} ${num(topPt.y)} L ${num(leftPt.x)} ${num(leftPt.y)} L ${num(
+    sigmaCornerX,
+  )} ${num(botPt.y)} L ${num(botPt.x)} ${num(
     botPt.y,
   )}" stroke-width="${num(thinStroke)}" opacity="0.85"/>`;
 
@@ -113,8 +113,7 @@ export function buildWirePayIconSvg({
     bgRadius,
   )}" fill="#0a0a0a"/>
   <g stroke="white" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    ${topToLeft}
-    ${leftToBot}
+    ${sigmaPath}
     ${topToBotRight}
     ${wireLines}
     <circle cx="${num(r)}" cy="${num(r)}" r="${num(
