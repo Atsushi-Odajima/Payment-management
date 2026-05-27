@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { NavLink } from "@/components/nav-link";
+import { WirePayIcon } from "@/components/wire-pay-icon";
 
 export const metadata: Metadata = {
   title: "Wire Pay(黒) — 決済管理ダッシュボード",
@@ -36,11 +37,10 @@ export default function RootLayout({
           <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white md:flex md:flex-col">
             <div className="border-b border-slate-200 px-6 py-5">
               <Link href="/" className="flex items-center gap-2">
-                <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-white shadow">
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4">
-                    <path d="M3 8h18M3 12h18M7 16h4" strokeLinecap="round" />
-                  </svg>
-                </span>
+                <WirePayIcon
+                  className="h-8 w-8 shrink-0 rounded-lg shadow"
+                  title="Wire Pay(黒)"
+                />
                 <span className="text-sm font-semibold text-slate-900">Wire Pay(黒)</span>
               </Link>
               <p className="mt-1 text-xs text-slate-500">決済管理ダッシュボード</p>
@@ -70,11 +70,10 @@ export default function RootLayout({
           <main className="flex-1 min-w-0">
             <header className="flex items-center gap-2 border-b border-slate-200 bg-white/80 px-6 py-4 backdrop-blur md:hidden">
               <Link href="/" className="flex items-center gap-2">
-                <span className="grid h-7 w-7 place-items-center rounded-md bg-brand-600 text-white shadow-sm">
-                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4">
-                    <path d="M3 8h18M3 12h18M7 16h4" strokeLinecap="round" />
-                  </svg>
-                </span>
+                <WirePayIcon
+                  className="h-7 w-7 shrink-0 rounded-md shadow-sm"
+                  title="Wire Pay(黒)"
+                />
                 <span className="text-sm font-semibold text-slate-900">Wire Pay(黒)</span>
               </Link>
             </header>
