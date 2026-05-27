@@ -1,0 +1,67 @@
+import "./globals.css";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { NavLink } from "@/components/nav-link";
+
+export const metadata: Metadata = {
+  title: "Payments — 決済管理ダッシュボード",
+  description:
+    "小規模ECストア向けの決済プロバイダ統合ダッシュボード。PayPay・クレジット・コンビニ・銀行振込などを一括管理できます。",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="ja">
+      <body>
+        <div className="flex min-h-screen">
+          <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white md:flex md:flex-col">
+            <div className="border-b border-slate-200 px-6 py-5">
+              <Link href="/" className="flex items-center gap-2">
+                <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-white shadow">
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4">
+                    <path d="M3 8h18M3 12h18M7 16h4" strokeLinecap="round" />
+                  </svg>
+                </span>
+                <span className="text-sm font-semibold text-slate-900">Payments</span>
+              </Link>
+              <p className="mt-1 text-xs text-slate-500">決済管理ダッシュボード</p>
+            </div>
+            <nav className="flex-1 space-y-1 px-3 py-4 text-sm">
+              <NavLink href="/" exact>
+                <span>ダッシュボード</span>
+              </NavLink>
+              <NavLink href="/providers">
+                <span>決済プロバイダ</span>
+              </NavLink>
+              <NavLink href="/providers/new">
+                <span>＋ 新規接続</span>
+              </NavLink>
+              <NavLink href="/payments">
+                <span>売上 / 決済一覧</span>
+              </NavLink>
+              <NavLink href="/payments/new">
+                <span>＋ 決済を作成</span>
+              </NavLink>
+            </nav>
+            <div className="border-t border-slate-200 px-6 py-4 text-xs text-slate-500">
+              <p className="font-medium text-slate-700">デモモード</p>
+              <p className="mt-1">外部APIは呼び出さず、ダミーで決済を生成します。</p>
+            </div>
+          </aside>
+          <main className="flex-1 min-w-0">
+            <header className="border-b border-slate-200 bg-white/80 px-6 py-4 backdrop-blur md:hidden">
+              <Link href="/" className="text-sm font-semibold">
+                Payments
+              </Link>
+            </header>
+            <div className="mx-auto max-w-6xl px-4 py-8 md:px-8">{children}</div>
+          </main>
+        </div>
+      </body>
+    </html>
+  );
+}
