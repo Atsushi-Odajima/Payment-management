@@ -4,12 +4,12 @@ import Link from "next/link";
 import { NavLink } from "@/components/nav-link";
 
 export const metadata: Metadata = {
-  title: "WirePay — 決済管理ダッシュボード",
+  title: "Wire Pay(黒) — 決済管理ダッシュボード",
   description:
     "小規模ECストア向けの決済プロバイダ統合ダッシュボード。PayPay・クレジット・コンビニ・銀行振込などを一括管理できます。",
   appleWebApp: {
     capable: true,
-    title: "WirePay",
+    title: "Wire Pay(黒)",
     statusBarStyle: "default",
   },
   formatDetection: {
@@ -21,7 +21,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
-  themeColor: "#0f172a",
+  themeColor: "#2667e6",
 };
 
 export default function RootLayout({
@@ -36,12 +36,12 @@ export default function RootLayout({
           <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white md:flex md:flex-col">
             <div className="border-b border-slate-200 px-6 py-5">
               <Link href="/" className="flex items-center gap-2">
-                <span className="grid h-8 w-8 place-items-center rounded-lg bg-slate-900 text-white shadow">
+                <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-white shadow">
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4">
                     <path d="M3 8h18M3 12h18M7 16h4" strokeLinecap="round" />
                   </svg>
                 </span>
-                <span className="text-sm font-semibold text-slate-900">WirePay</span>
+                <span className="text-sm font-semibold text-slate-900">Wire Pay(黒)</span>
               </Link>
               <p className="mt-1 text-xs text-slate-500">決済管理ダッシュボード</p>
             </div>
@@ -70,12 +70,12 @@ export default function RootLayout({
           <main className="flex-1 min-w-0">
             <header className="flex items-center gap-2 border-b border-slate-200 bg-white/80 px-6 py-4 backdrop-blur md:hidden">
               <Link href="/" className="flex items-center gap-2">
-                <span className="grid h-7 w-7 place-items-center rounded-md bg-slate-900 text-white shadow-sm">
+                <span className="grid h-7 w-7 place-items-center rounded-md bg-brand-600 text-white shadow-sm">
                   <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4">
                     <path d="M3 8h18M3 12h18M7 16h4" strokeLinecap="round" />
                   </svg>
                 </span>
-                <span className="text-sm font-semibold text-slate-900">WirePay</span>
+                <span className="text-sm font-semibold text-slate-900">Wire Pay(黒)</span>
               </Link>
             </header>
             <div className="mx-auto max-w-6xl px-4 py-8 md:px-8">{children}</div>
