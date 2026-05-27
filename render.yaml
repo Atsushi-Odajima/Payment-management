@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: payment-management
+    runtime: docker
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: file:/data/prod.db
+    disk:
+      name: payments-data
+      mountPath: /data
+      sizeGB: 1
