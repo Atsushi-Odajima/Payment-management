@@ -1,14 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <rect x="0" y="0" width="256" height="256" rx="56.32" ry="56.32" fill="#0a0a0a"/>
   <g stroke="white" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M 128 20.48 L 74.24 20.48 L 20.48 128 L 74.24 235.52 L 128 235.52" stroke-width="3.072" opacity="0.85"/>
-    <path d="M 128 20.48 A 107.52 107.52 0 0 1 128 235.52" stroke-width="3.072" opacity="0.6" stroke-dasharray="10.24 5.12"/>
-    <line x1="128" y1="128" x2="128" y2="20.48" stroke-width="3.072" opacity="0.5"/><line x1="128" y1="128" x2="20.48" y2="128" stroke-width="3.072" opacity="0.5"/><line x1="128" y1="128" x2="128" y2="235.52" stroke-width="3.072" opacity="0.5"/>
+    <path d="M 181.76 34.885 A 107.52 107.52 0 0 1 181.76 221.115" stroke-width="3.072" opacity="0.55" stroke-dasharray="10.24 5.12"/>
     <circle cx="128" cy="128" r="71.68" stroke-width="4.608"/>
-    <line x1="68.135" y1="88.576" x2="187.865" y2="88.576" stroke-width="2.15" opacity="0.7"/><line x1="58.596" y1="110.08" x2="197.404" y2="110.08" stroke-width="2.15" opacity="0.7"/><line x1="58.596" y1="145.92" x2="197.404" y2="145.92" stroke-width="2.15" opacity="0.7"/><line x1="68.135" y1="167.424" x2="187.865" y2="167.424" stroke-width="2.15" opacity="0.7"/>
-    <line x1="56.32" y1="128" x2="199.68" y2="128" stroke-width="2.15" opacity="0.7"/>
-    <path d="M 128 56.32 Q 74.24 128 128 199.68" stroke-width="2.15" opacity="0.7"/><line x1="128" y1="56.32" x2="128" y2="199.68" stroke-width="2.15" opacity="0.7"/><path d="M 128 56.32 Q 181.76 128 128 199.68" stroke-width="2.15" opacity="0.7"/>
-    <circle cx="128" cy="20.48" r="9.728" stroke-width="4.608" fill="#0a0a0a"/><circle cx="20.48" cy="128" r="9.728" stroke-width="4.608" fill="#0a0a0a"/><circle cx="128" cy="235.52" r="9.728" stroke-width="4.608" fill="#0a0a0a"/>
+    <line x1="68.135" y1="88.576" x2="187.865" y2="88.576" stroke-width="2.15" opacity="0.6"/><line x1="58.596" y1="110.08" x2="197.404" y2="110.08" stroke-width="2.15" opacity="0.6"/><line x1="58.596" y1="145.92" x2="197.404" y2="145.92" stroke-width="2.15" opacity="0.6"/><line x1="68.135" y1="167.424" x2="187.865" y2="167.424" stroke-width="2.15" opacity="0.6"/>
+    <line x1="56.32" y1="128" x2="199.68" y2="128" stroke-width="2.15" opacity="0.6"/>
+    <path d="M 128 56.32 Q 74.24 128 128 199.68" stroke-width="2.15" opacity="0.6"/><line x1="128" y1="56.32" x2="128" y2="199.68" stroke-width="2.15" opacity="0.6"/><path d="M 128 56.32 Q 181.76 128 128 199.68" stroke-width="2.15" opacity="0.6"/>
+    <path d="M 181.76 34.885 L 20.48 34.885 L 128 128 L 20.48 221.115 L 181.76 221.115" stroke-width="3.072" opacity="0.95"/>
+    <circle cx="181.76" cy="34.885" r="9.728" stroke-width="4.608" fill="#0a0a0a"/><circle cx="181.76" cy="221.115" r="9.728" stroke-width="4.608" fill="#0a0a0a"/>
   </g>
   <text x="128" y="149.325" text-anchor="middle" fill="white" font-size="60.928" font-family="Georgia, 'Times New Roman', serif" font-weight="300" opacity="0.95">€</text>
 </svg>
