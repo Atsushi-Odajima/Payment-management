@@ -38,7 +38,7 @@ export function NewPaymentForm({ providers }: { providers: ProviderOption[] }) {
     const category = def ? getCategory(def.category) : undefined;
     const categoryLabel = category ? pickText(category.label, lang) : "";
     const mode = p.testMode ? t("common.test") : t("common.live");
-    return `${p.displayName} — ${name} (${categoryLabel}) ・${mode}`;
+    return `${p.displayName} — ${name} (${categoryLabel}) · ${mode}`;
   }
 
   async function onSubmit(e: React.FormEvent) {

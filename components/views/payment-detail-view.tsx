@@ -44,7 +44,7 @@ export function PaymentDetailView({ payment }: { payment: PaymentDetailData }) {
     <div>
       <PageHeader
         title={t("paymentDetail.title", { orderNumber: payment.orderNumber })}
-        description={`${providerName} ・ ${payment.provider.displayName}`}
+        description={`${providerName} · ${payment.provider.displayName}`}
         breadcrumbs={[
           { label: t("paymentDetail.breadcrumbPayments"), href: "/payments" },
           { label: payment.orderNumber },

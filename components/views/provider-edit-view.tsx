@@ -44,7 +44,7 @@ export function ProviderEditView({
     <div>
       <PageHeader
         title={record.displayName}
-        description={`${pickText(def.name, lang)} ・ ${
+        description={`${pickText(def.name, lang)} · ${
           category ? pickText(category.label, lang) : def.category
         }`}
         breadcrumbs={[
