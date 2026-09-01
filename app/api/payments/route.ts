@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getProviderDefinition } from "@/lib/providers/registry";
+import { langFromRequest, translate } from "@/lib/i18n";
 
 const CreateSchema = z.object({
   providerId: z.string().min(1),
@@ -15,11 +16,12 @@ const CreateSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  const lang = langFromRequest(req);
   const body = await req.json().catch(() => null);
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "入力内容に誤りがあります", details: parsed.error.flatten() },
+      { error: translate(lang, "errors.invalidInput"), details: parsed.error.flatten() },
       { status: 400 },
     );
   }
@@ -28,13 +30,13 @@ export async function POST(req: Request) {
   });
   if (!provider) {
     return NextResponse.json(
-      { error: "決済プロバイダが見つかりません" },
+      { error: translate(lang, "errors.providerNotFound") },
       { status: 404 },
     );
   }
   if (provider.status !== "active") {
     return NextResponse.json(
-      { error: "このプロバイダは無効化されています" },
+      { error: translate(lang, "errors.providerDisabled") },
       { status: 400 },
     );
   }

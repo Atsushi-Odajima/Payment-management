@@ -5,6 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Currency is always rendered as JPY (¥) regardless of UI language.
 export function formatYen(amount: number): string {
   return new Intl.NumberFormat("ja-JP", {
     style: "currency",
@@ -13,26 +14,7 @@ export function formatYen(amount: number): string {
   }).format(amount);
 }
 
-export function formatDateTime(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return new Intl.DateTimeFormat("ja-JP", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
-
-export const PAYMENT_STATUS_LABEL: Record<string, string> = {
-  pending: "未払い",
-  authorized: "オーソリ済",
-  captured: "売上確定",
-  cancelled: "取消",
-  refunded: "返金済",
-  failed: "失敗",
-};
-
+// Status labels live in the i18n catalogs (status.*); only the colors stay here.
 export const PAYMENT_STATUS_COLOR: Record<string, string> = {
   pending: "bg-amber-100 text-amber-800 ring-amber-200",
   authorized: "bg-blue-100 text-blue-800 ring-blue-200",
@@ -41,3 +23,19 @@ export const PAYMENT_STATUS_COLOR: Record<string, string> = {
   refunded: "bg-purple-100 text-purple-800 ring-purple-200",
   failed: "bg-rose-100 text-rose-800 ring-rose-200",
 };
+
+/** Translate a payment status via the status.* catalog keys, falling back to the raw value. */
+export const PAYMENT_STATUSES = [
+  "pending",
+  "authorized",
+  "captured",
+  "cancelled",
+  "refunded",
+  "failed",
+] as const;
+
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export function isPaymentStatus(value: string): value is PaymentStatus {
+  return (PAYMENT_STATUSES as readonly string[]).includes(value);
+}
