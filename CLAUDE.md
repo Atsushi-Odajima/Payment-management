@@ -48,7 +48,7 @@ UIは日本語/英語対応。ヘッダーの「EN / 日本語」トグルで切
 
 ### 翻訳漏れの検査
 
-作業後に以下で日本語文字の残存を検査する（許容箇所: `lib/i18n/messages/ja.ts`、`lib/providers/registry.ts` の ja 側、`prisma/seed.ts` のデモデータ、ブランド名 `Wire Pay(黒)`、`language-toggle.tsx` の「日本語」表記、`app/layout.tsx` / `app/manifest.ts` の静的メタデータ）:
+作業後に以下で日本語文字の残存を検査する（許容箇所: `lib/i18n/messages/ja.ts`、`lib/providers/registry.ts` の ja 側、`prisma/seed.ts` のデモデータ、`language-toggle.tsx` の「日本語」表記、`app/layout.tsx` / `app/manifest.ts` の静的メタデータ）:
 
 ```bash
 grep -rlP '[ぁ-ゖァ-ヺ一-鿿]' app components lib --include='*.ts*' \
