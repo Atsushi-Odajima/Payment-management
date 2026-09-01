@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { langFromRequest, translate } from "@/lib/i18n";
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } },
 ) {
+  const lang = langFromRequest(req);
   const payment = await prisma.payment.findUnique({ where: { id: params.id } });
   if (!payment) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ error: translate(lang, "errors.notFound") }, { status: 404 });
   }
   if (payment.status !== "pending" && payment.status !== "authorized") {
     return NextResponse.json(
-      { error: "この決済は取消できない状態です" },
+      { error: translate(lang, "errors.cannotCancel") },
       { status: 400 },
     );
   }

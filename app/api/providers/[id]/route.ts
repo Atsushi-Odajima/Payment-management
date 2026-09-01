@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 import { getProviderDefinition } from "@/lib/providers/registry";
+import { langFromRequest, translate } from "@/lib/i18n";
 
 const UpdateSchema = z.object({
   displayName: z.string().min(1).max(80).optional(),
@@ -15,20 +16,21 @@ export async function PATCH(
   req: Request,
   { params }: { params: { id: string } },
 ) {
+  const lang = langFromRequest(req);
   const body = await req.json().catch(() => null);
   const parsed = UpdateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "入力に誤りがあります" }, { status: 400 });
+    return NextResponse.json({ error: translate(lang, "errors.invalidInput") }, { status: 400 });
   }
   const existing = await prisma.paymentProvider.findUnique({
     where: { id: params.id },
   });
   if (!existing) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ error: translate(lang, "errors.notFound") }, { status: 404 });
   }
   const def = getProviderDefinition(existing.providerKey);
   if (!def) {
-    return NextResponse.json({ error: "未対応のプロバイダです" }, { status: 400 });
+    return NextResponse.json({ error: translate(lang, "errors.unsupportedProvider") }, { status: 400 });
   }
 
   // merge credentials: empty secret fields keep existing ciphertext.
@@ -61,13 +63,16 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } },
 ) {
   try {
     await prisma.paymentProvider.delete({ where: { id: params.id } });
   } catch {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: translate(langFromRequest(req), "errors.notFound") },
+      { status: 404 },
+    );
   }
   return NextResponse.json({ ok: true });
 }
