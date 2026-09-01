@@ -1,109 +1,142 @@
 import type { Category, ProviderDefinition } from "./types";
 
+// All human-readable copy is stored as {ja, en} pairs (LocalizedText).
+// The type makes both languages mandatory, so adding a provider without
+// its English copy is a compile error. Render with pickText(text, lang).
+
 export const CATEGORIES: Category[] = [
   {
     key: "credit",
-    label: "クレジットカード決済",
+    label: { ja: "クレジットカード決済", en: "Credit Card Payments" },
     icon: "credit",
-    description:
-      "Visa / Mastercard / JCB / AMEX / Diners などのカード決済を受け付けます。",
+    description: {
+      ja: "Visa / Mastercard / JCB / AMEX / Diners などのカード決済を受け付けます。",
+      en: "Accept Visa, Mastercard, JCB, AMEX, Diners and other card payments.",
+    },
   },
   {
     key: "qr",
-    label: "QRコード決済",
+    label: { ja: "QRコード決済", en: "QR Code Payments" },
     icon: "qr",
-    description:
-      "PayPay・au PAY・楽天ペイ・d払いなどスマホ完結のQR決済に対応します。",
+    description: {
+      ja: "PayPay・au PAY・楽天ペイ・d払いなどスマホ完結のQR決済に対応します。",
+      en: "Support mobile QR payments such as PayPay, au PAY, Rakuten Pay and d Payment.",
+    },
   },
   {
     key: "convenience",
-    label: "コンビニ決済",
+    label: { ja: "コンビニ決済", en: "Konbini Payments" },
     icon: "store",
-    description:
-      "ローソン・セブン・ファミマ等での店頭支払い、プリペイド系の決済に対応します。",
+    description: {
+      ja: "ローソン・セブン・ファミマ等での店頭支払い、プリペイド系の決済に対応します。",
+      en: "In-store payments at Lawson, 7-Eleven, FamilyMart and other konbini, plus prepaid services.",
+    },
   },
   {
     key: "bank",
-    label: "銀行振込決済",
+    label: { ja: "銀行振込決済", en: "Bank Transfer Payments" },
     icon: "bank",
-    description:
-      "ペイジー、バーチャル口座、ネットバンキング振込での自動消込に対応します。",
+    description: {
+      ja: "ペイジー、バーチャル口座、ネットバンキング振込での自動消込に対応します。",
+      en: "Pay-easy, virtual accounts and online banking transfers with automatic reconciliation.",
+    },
   },
   {
     key: "other",
-    label: "その他Webサービス決済",
+    label: { ja: "その他Webサービス決済", en: "Other Web Payment Services" },
     icon: "globe",
-    description:
-      "Atone・後払い.com 等の決済代行や、独自のWebhook連携を追加できます。",
+    description: {
+      ja: "Atone・後払い.com 等の決済代行や、独自のWebhook連携を追加できます。",
+      en: "Add deferred-payment PSPs such as Atone or Atobarai.com, or your own webhook integration.",
+    },
   },
 ];
 
 export const PROVIDERS: ProviderDefinition[] = [
-  // ─────────────────────────── クレジットカード ───────────────────────────
+  // ─────────────────────────── Credit cards ───────────────────────────
   {
     key: "stripe",
-    name: "Stripe",
+    name: { ja: "Stripe", en: "Stripe" },
     category: "credit",
     logoColor: "#635bff",
-    description:
-      "世界中で利用されるカード決済プラットフォーム。APIキー1組で導入できます。",
+    description: {
+      ja: "世界中で利用されるカード決済プラットフォーム。APIキー1組で導入できます。",
+      en: "The global card payment platform. Integrate with a single pair of API keys.",
+    },
     docsUrl: "https://stripe.com/docs/keys",
     supportsTestMode: true,
     fields: [
       {
         key: "publishable_key",
-        label: "Publishable key",
+        label: { ja: "Publishable key", en: "Publishable key" },
         type: "text",
         required: true,
         placeholder: "pk_live_xxxxxxxxxxxx",
-        helpText: "ダッシュボード > 開発者 > APIキー の「公開可能キー」を貼り付けます。",
+        helpText: {
+          ja: "ダッシュボード > 開発者 > APIキー の「公開可能キー」を貼り付けます。",
+          en: "Paste the publishable key from Dashboard > Developers > API keys.",
+        },
       },
       {
         key: "secret_key",
-        label: "Secret key",
+        label: { ja: "Secret key", en: "Secret key" },
         type: "password",
         required: true,
         secret: true,
         placeholder: "sk_live_xxxxxxxxxxxx",
-        helpText: "シークレットキー。サーバー側でのみ使用されます。",
+        helpText: {
+          ja: "シークレットキー。サーバー側でのみ使用されます。",
+          en: "Secret key, used on the server only.",
+        },
       },
       {
         key: "webhook_secret",
-        label: "Webhook signing secret",
+        label: { ja: "Webhook signing secret", en: "Webhook signing secret" },
         type: "password",
         secret: true,
         placeholder: "whsec_xxxxxxxxxxxx",
-        helpText: "Webhook受信時の署名検証に使用します。",
+        helpText: {
+          ja: "Webhook受信時の署名検証に使用します。",
+          en: "Used to verify signatures on incoming webhooks.",
+        },
       },
       {
         key: "statement_descriptor",
-        label: "明細表記 (statement descriptor)",
+        label: {
+          ja: "明細表記 (statement descriptor)",
+          en: "Statement descriptor",
+        },
         type: "text",
         placeholder: "MYSTORE",
-        helpText: "カード明細に表示されるストア名 (半角英数22文字以内)。",
+        helpText: {
+          ja: "カード明細に表示されるストア名 (半角英数22文字以内)。",
+          en: "Store name shown on card statements (max 22 alphanumeric characters).",
+        },
       },
     ],
   },
   {
     key: "square",
-    name: "Square",
+    name: { ja: "Square", en: "Square" },
     category: "credit",
     logoColor: "#006aff",
-    description:
-      "リアル店舗とオンラインを統合できる決済サービス。アクセストークンで連携します。",
+    description: {
+      ja: "リアル店舗とオンラインを統合できる決済サービス。アクセストークンで連携します。",
+      en: "Unified in-person and online payments. Connects with an access token.",
+    },
     docsUrl: "https://developer.squareup.com/",
     supportsTestMode: true,
     fields: [
       {
         key: "application_id",
-        label: "Application ID",
+        label: { ja: "Application ID", en: "Application ID" },
         type: "text",
         required: true,
         placeholder: "sq0idp-xxxxxxxx",
       },
       {
         key: "access_token",
-        label: "Access token",
+        label: { ja: "Access token", en: "Access token" },
         type: "password",
         required: true,
         secret: true,
@@ -111,253 +144,372 @@ export const PROVIDERS: ProviderDefinition[] = [
       },
       {
         key: "location_id",
-        label: "Location ID",
+        label: { ja: "Location ID", en: "Location ID" },
         type: "text",
         required: true,
         placeholder: "L0XXXXXXXXXX",
-        helpText: "決済を紐づけるロケーションID。",
+        helpText: {
+          ja: "決済を紐づけるロケーションID。",
+          en: "The location ID payments will be attributed to.",
+        },
       },
     ],
   },
   {
     key: "gmo_pg",
-    name: "GMOペイメントゲートウェイ",
+    name: { ja: "GMOペイメントゲートウェイ", en: "GMO Payment Gateway" },
     category: "credit",
     logoColor: "#e60012",
-    description:
-      "国内大手の決済代行。サイトIDとショップID、各種パスワードで接続します。",
+    description: {
+      ja: "国内大手の決済代行。サイトIDとショップID、各種パスワードで接続します。",
+      en: "A leading Japanese PSP. Connects with a site ID, shop ID and their passwords.",
+    },
     docsUrl: "https://www.gmopg.jp/",
     supportsTestMode: true,
     fields: [
-      { key: "site_id", label: "サイトID", type: "text", required: true },
+      {
+        key: "site_id",
+        label: { ja: "サイトID", en: "Site ID" },
+        type: "text",
+        required: true,
+      },
       {
         key: "site_password",
-        label: "サイトパスワード",
+        label: { ja: "サイトパスワード", en: "Site password" },
         type: "password",
         required: true,
         secret: true,
       },
-      { key: "shop_id", label: "ショップID", type: "text", required: true },
+      {
+        key: "shop_id",
+        label: { ja: "ショップID", en: "Shop ID" },
+        type: "text",
+        required: true,
+      },
       {
         key: "shop_password",
-        label: "ショップパスワード",
+        label: { ja: "ショップパスワード", en: "Shop password" },
         type: "password",
         required: true,
         secret: true,
       },
       {
         key: "api_endpoint",
-        label: "APIエンドポイント",
+        label: { ja: "APIエンドポイント", en: "API endpoint" },
         type: "url",
         placeholder: "https://p01.mul-pay.jp",
-        helpText: "本番/テストで異なるエンドポイントを指定できます。",
+        helpText: {
+          ja: "本番/テストで異なるエンドポイントを指定できます。",
+          en: "You can point to different endpoints for live and test.",
+        },
       },
     ],
   },
 
-  // ─────────────────────────── QRコード ───────────────────────────
+  // ─────────────────────────── QR code ───────────────────────────
   {
     key: "paypay",
-    name: "PayPay",
+    name: { ja: "PayPay", en: "PayPay" },
     category: "qr",
     logoColor: "#ff0033",
-    description: "国内シェアNo.1のQR決済。Merchant IDとAPIキーで接続します。",
+    description: {
+      ja: "国内シェアNo.1のQR決済。Merchant IDとAPIキーで接続します。",
+      en: "Japan's #1 QR payment service. Connects with a Merchant ID and API key.",
+    },
     docsUrl: "https://developer.paypay.ne.jp/",
     supportsTestMode: true,
     fields: [
-      { key: "merchant_id", label: "Merchant ID", type: "text", required: true },
-      { key: "api_key", label: "API Key", type: "text", required: true },
+      {
+        key: "merchant_id",
+        label: { ja: "Merchant ID", en: "Merchant ID" },
+        type: "text",
+        required: true,
+      },
+      {
+        key: "api_key",
+        label: { ja: "API Key", en: "API key" },
+        type: "text",
+        required: true,
+      },
       {
         key: "api_secret",
-        label: "API Secret",
+        label: { ja: "API Secret", en: "API secret" },
         type: "password",
         required: true,
         secret: true,
       },
       {
         key: "store_id",
-        label: "Store ID",
+        label: { ja: "Store ID", en: "Store ID" },
         type: "text",
-        helpText: "複数店舗を運用する場合に指定します。",
+        helpText: {
+          ja: "複数店舗を運用する場合に指定します。",
+          en: "Set this when operating multiple stores.",
+        },
       },
     ],
   },
   {
     key: "au_pay",
-    name: "au PAY",
+    name: { ja: "au PAY", en: "au PAY" },
     category: "qr",
     logoColor: "#ee7800",
-    description:
-      "au / UQ mobile ユーザーを中心に利用されるQR決済。加盟店IDとAPIキーで連携します。",
+    description: {
+      ja: "au / UQ mobile ユーザーを中心に利用されるQR決済。加盟店IDとAPIキーで連携します。",
+      en: "QR payments popular with au / UQ mobile users. Connects with a merchant ID and API key.",
+    },
     docsUrl: "https://aupay.wallet.auone.jp/business/",
     supportsTestMode: true,
     fields: [
-      { key: "merchant_id", label: "加盟店ID", type: "text", required: true },
-      { key: "store_id", label: "店舗ID", type: "text", required: true },
-      { key: "api_key", label: "APIキー", type: "text", required: true },
+      {
+        key: "merchant_id",
+        label: { ja: "加盟店ID", en: "Merchant ID" },
+        type: "text",
+        required: true,
+      },
+      {
+        key: "store_id",
+        label: { ja: "店舗ID", en: "Store ID" },
+        type: "text",
+        required: true,
+      },
+      {
+        key: "api_key",
+        label: { ja: "APIキー", en: "API key" },
+        type: "text",
+        required: true,
+      },
       {
         key: "api_secret",
-        label: "APIシークレット",
+        label: { ja: "APIシークレット", en: "API secret" },
         type: "password",
         required: true,
         secret: true,
       },
       {
         key: "callback_url",
-        label: "コールバックURL",
+        label: { ja: "コールバックURL", en: "Callback URL" },
         type: "url",
-        helpText: "決済結果の通知を受け取るURL (Webhook)。",
+        helpText: {
+          ja: "決済結果の通知を受け取るURL (Webhook)。",
+          en: "URL that receives payment result notifications (webhook).",
+        },
       },
     ],
   },
   {
     key: "rakuten_pay",
-    name: "楽天ペイ (オンライン)",
+    name: { ja: "楽天ペイ (オンライン)", en: "Rakuten Pay (Online)" },
     category: "qr",
     logoColor: "#bf0000",
-    description:
-      "楽天会員のIDで決済できる、ECサイト向けのQR/オンライン決済。",
+    description: {
+      ja: "楽天会員のIDで決済できる、ECサイト向けのQR/オンライン決済。",
+      en: "QR / online payments for EC sites, letting customers pay with their Rakuten ID.",
+    },
     docsUrl: "https://checkout.rakuten.co.jp/",
     supportsTestMode: true,
     fields: [
-      { key: "service_id", label: "サービスID", type: "text", required: true },
+      {
+        key: "service_id",
+        label: { ja: "サービスID", en: "Service ID" },
+        type: "text",
+        required: true,
+      },
       {
         key: "auth_key",
-        label: "認証キー",
+        label: { ja: "認証キー", en: "Auth key" },
         type: "password",
         required: true,
         secret: true,
       },
-      { key: "shop_url", label: "ショップURL", type: "url" },
+      {
+        key: "shop_url",
+        label: { ja: "ショップURL", en: "Shop URL" },
+        type: "url",
+      },
     ],
   },
   {
     key: "docomo_pay",
-    name: "d払い",
+    name: { ja: "d払い", en: "d Payment" },
     category: "qr",
     logoColor: "#cc0033",
-    description:
-      "ドコモ回線契約者向けのQR/キャリア決済。加盟店IDとAPIキーで連携します。",
+    description: {
+      ja: "ドコモ回線契約者向けのQR/キャリア決済。加盟店IDとAPIキーで連携します。",
+      en: "QR / carrier billing for docomo subscribers. Connects with a merchant ID and API key.",
+    },
     docsUrl: "https://docomokessai.docomo.ne.jp/",
     supportsTestMode: true,
     fields: [
-      { key: "merchant_id", label: "加盟店ID", type: "text", required: true },
+      {
+        key: "merchant_id",
+        label: { ja: "加盟店ID", en: "Merchant ID" },
+        type: "text",
+        required: true,
+      },
       {
         key: "api_key",
-        label: "APIキー",
+        label: { ja: "APIキー", en: "API key" },
         type: "password",
         required: true,
         secret: true,
       },
       {
         key: "callback_url",
-        label: "コールバックURL",
+        label: { ja: "コールバックURL", en: "Callback URL" },
         type: "url",
-        helpText: "決済完了時にdocomoから通知を受け取るURL。",
+        helpText: {
+          ja: "決済完了時にdocomoから通知を受け取るURL。",
+          en: "URL that receives completion notifications from docomo.",
+        },
       },
     ],
   },
 
-  // ─────────────────────────── コンビニ ───────────────────────────
+  // ─────────────────────────── Konbini ───────────────────────────
   {
     key: "bitcash",
-    name: "ビットキャッシュ",
+    name: { ja: "ビットキャッシュ", en: "BitCash" },
     category: "convenience",
     logoColor: "#f7b900",
-    description:
-      "プリペイド型電子マネー。加盟店コードと認証キーで連携します。",
+    description: {
+      ja: "プリペイド型電子マネー。加盟店コードと認証キーで連携します。",
+      en: "Prepaid e-money. Connects with a merchant code and auth key.",
+    },
     docsUrl: "https://bitcash.jp/",
     supportsTestMode: true,
     fields: [
-      { key: "merchant_code", label: "加盟店コード", type: "text", required: true },
+      {
+        key: "merchant_code",
+        label: { ja: "加盟店コード", en: "Merchant code" },
+        type: "text",
+        required: true,
+      },
       {
         key: "auth_key",
-        label: "認証キー",
+        label: { ja: "認証キー", en: "Auth key" },
         type: "password",
         required: true,
         secret: true,
       },
       {
         key: "notify_url",
-        label: "結果通知URL",
+        label: { ja: "結果通知URL", en: "Result notification URL" },
         type: "url",
-        helpText: "決済結果のPOST通知を受け取るURL。",
+        helpText: {
+          ja: "決済結果のPOST通知を受け取るURL。",
+          en: "URL that receives POSTed payment results.",
+        },
       },
     ],
   },
   {
     key: "smartpit",
-    name: "スマートピット",
+    name: { ja: "スマートピット", en: "Smart Pit" },
     category: "convenience",
     logoColor: "#0091ea",
-    description:
-      "全国のコンビニで支払い番号を入力して決済。事業者IDと認証情報で接続します。",
+    description: {
+      ja: "全国のコンビニで支払い番号を入力して決済。事業者IDと認証情報で接続します。",
+      en: "Pay at any konbini nationwide with a payment number. Connects with a client ID and credentials.",
+    },
     docsUrl: "https://www.smartpit.jp/",
     supportsTestMode: true,
     fields: [
-      { key: "client_id", label: "事業者ID", type: "text", required: true },
+      {
+        key: "client_id",
+        label: { ja: "事業者ID", en: "Client ID" },
+        type: "text",
+        required: true,
+      },
       {
         key: "client_secret",
-        label: "クライアントシークレット",
+        label: { ja: "クライアントシークレット", en: "Client secret" },
         type: "password",
         required: true,
         secret: true,
       },
       {
         key: "expiry_days",
-        label: "支払期限 (日数)",
+        label: { ja: "支払期限 (日数)", en: "Payment window (days)" },
         type: "text",
         placeholder: "14",
-        helpText: "支払いコード発行から失効までの日数。",
+        helpText: {
+          ja: "支払いコード発行から失効までの日数。",
+          en: "Days until an issued payment code expires.",
+        },
       },
     ],
   },
   {
     key: "web_conveni",
-    name: "Webコンビニ決済",
+    name: { ja: "Webコンビニ決済", en: "Multi-Konbini Payment" },
     category: "convenience",
     logoColor: "#388e3c",
-    description:
-      "ローソン・ファミマ・ミニストップなど複数コンビニを横断して受付。",
+    description: {
+      ja: "ローソン・ファミマ・ミニストップなど複数コンビニを横断して受付。",
+      en: "Accept payments across multiple konbini chains — Lawson, FamilyMart, Ministop and more.",
+    },
     supportsTestMode: true,
     fields: [
-      { key: "contract_code", label: "契約コード", type: "text", required: true },
+      {
+        key: "contract_code",
+        label: { ja: "契約コード", en: "Contract code" },
+        type: "text",
+        required: true,
+      },
       {
         key: "api_token",
-        label: "APIトークン",
+        label: { ja: "APIトークン", en: "API token" },
         type: "password",
         required: true,
         secret: true,
       },
       {
         key: "stores",
-        label: "対応コンビニ",
+        label: { ja: "対応コンビニ", en: "Supported chains" },
         type: "select",
         options: [
-          { value: "all", label: "全社対応" },
-          { value: "lawson", label: "ローソンのみ" },
-          { value: "familymart", label: "ファミリーマートのみ" },
-          { value: "seven", label: "セブン-イレブンのみ" },
+          { value: "all", label: { ja: "全社対応", en: "All chains" } },
+          { value: "lawson", label: { ja: "ローソンのみ", en: "Lawson only" } },
+          {
+            value: "familymart",
+            label: { ja: "ファミリーマートのみ", en: "FamilyMart only" },
+          },
+          {
+            value: "seven",
+            label: { ja: "セブン-イレブンのみ", en: "7-Eleven only" },
+          },
         ],
       },
     ],
   },
 
-  // ─────────────────────────── 銀行振込 ───────────────────────────
+  // ─────────────────────────── Bank transfer ───────────────────────────
   {
     key: "pay_easy",
-    name: "ペイジー (Pay-easy)",
+    name: { ja: "ペイジー (Pay-easy)", en: "Pay-easy" },
     category: "bank",
     logoColor: "#1565c0",
-    description:
-      "金融機関のATM・ネットバンキングから収納機関番号で支払いを受け付けます。",
+    description: {
+      ja: "金融機関のATM・ネットバンキングから収納機関番号で支払いを受け付けます。",
+      en: "Accept payments via bank ATMs and online banking using a collection agency number.",
+    },
     supportsTestMode: true,
     fields: [
-      { key: "collection_agency", label: "収納機関番号", type: "text", required: true },
-      { key: "customer_number_prefix", label: "お客様番号プレフィックス", type: "text" },
+      {
+        key: "collection_agency",
+        label: { ja: "収納機関番号", en: "Collection agency number" },
+        type: "text",
+        required: true,
+      },
+      {
+        key: "customer_number_prefix",
+        label: { ja: "お客様番号プレフィックス", en: "Customer number prefix" },
+        type: "text",
+      },
       {
         key: "confirmation_number",
-        label: "確認番号生成キー",
+        label: { ja: "確認番号生成キー", en: "Confirmation number key" },
         type: "password",
         secret: true,
       },
@@ -365,75 +517,106 @@ export const PROVIDERS: ProviderDefinition[] = [
   },
   {
     key: "virtual_account",
-    name: "バーチャル口座 (GMO/SBI等)",
+    name: {
+      ja: "バーチャル口座 (GMO/SBI等)",
+      en: "Virtual Account (GMO/SBI etc.)",
+    },
     category: "bank",
     logoColor: "#2e7d32",
-    description:
-      "注文ごとに一意の振込口座を発行。自動消込と入金通知に対応します。",
+    description: {
+      ja: "注文ごとに一意の振込口座を発行。自動消込と入金通知に対応します。",
+      en: "Issue a unique transfer account per order, with automatic reconciliation and deposit notifications.",
+    },
     supportsTestMode: true,
     fields: [
       {
         key: "bank_partner",
-        label: "提携銀行",
+        label: { ja: "提携銀行", en: "Partner bank" },
         type: "select",
         required: true,
         options: [
-          { value: "gmo_aozora", label: "GMOあおぞらネット銀行" },
-          { value: "sbi", label: "住信SBIネット銀行" },
-          { value: "mizuho", label: "みずほ銀行" },
-          { value: "rakuten", label: "楽天銀行" },
+          {
+            value: "gmo_aozora",
+            label: { ja: "GMOあおぞらネット銀行", en: "GMO Aozora Net Bank" },
+          },
+          {
+            value: "sbi",
+            label: { ja: "住信SBIネット銀行", en: "SBI Sumishin Net Bank" },
+          },
+          { value: "mizuho", label: { ja: "みずほ銀行", en: "Mizuho Bank" } },
+          { value: "rakuten", label: { ja: "楽天銀行", en: "Rakuten Bank" } },
         ],
       },
-      { key: "api_user", label: "API ユーザーID", type: "text", required: true },
+      {
+        key: "api_user",
+        label: { ja: "API ユーザーID", en: "API user ID" },
+        type: "text",
+        required: true,
+      },
       {
         key: "api_password",
-        label: "API パスワード",
+        label: { ja: "API パスワード", en: "API password" },
         type: "password",
         required: true,
         secret: true,
       },
       {
         key: "branch_code",
-        label: "支店コード",
+        label: { ja: "支店コード", en: "Branch code" },
         type: "text",
-        helpText: "バーチャル口座を発行する支店のコード。",
+        helpText: {
+          ja: "バーチャル口座を発行する支店のコード。",
+          en: "Code of the branch that issues virtual accounts.",
+        },
       },
       {
         key: "webhook_url",
-        label: "入金通知Webhook URL",
+        label: { ja: "入金通知Webhook URL", en: "Deposit notification webhook URL" },
         type: "url",
       },
     ],
   },
 
-  // ─────────────────────────── その他 ───────────────────────────
+  // ─────────────────────────── Other ───────────────────────────
   {
     key: "custom_webhook",
-    name: "カスタムWebhook連携",
+    name: { ja: "カスタムWebhook連携", en: "Custom Webhook" },
     category: "other",
     logoColor: "#546e7a",
-    description:
-      "未対応の決済サービスを、HTTP APIとWebhookで自由に連携できます。",
+    description: {
+      ja: "未対応の決済サービスを、HTTP APIとWebhookで自由に連携できます。",
+      en: "Integrate any unsupported payment service with an HTTP API and webhooks.",
+    },
     supportsTestMode: false,
     fields: [
-      { key: "service_name", label: "サービス名", type: "text", required: true },
-      { key: "endpoint", label: "API エンドポイント", type: "url", required: true },
+      {
+        key: "service_name",
+        label: { ja: "サービス名", en: "Service name" },
+        type: "text",
+        required: true,
+      },
+      {
+        key: "endpoint",
+        label: { ja: "API エンドポイント", en: "API endpoint" },
+        type: "url",
+        required: true,
+      },
       {
         key: "auth_header",
-        label: "Authorization ヘッダ",
+        label: { ja: "Authorization ヘッダ", en: "Authorization header" },
         type: "password",
         secret: true,
         placeholder: "Bearer xxxxxxxxxx",
       },
       {
         key: "webhook_secret",
-        label: "Webhook 検証シークレット",
+        label: { ja: "Webhook 検証シークレット", en: "Webhook verification secret" },
         type: "password",
         secret: true,
       },
       {
         key: "notes",
-        label: "メモ",
+        label: { ja: "メモ", en: "Notes" },
         type: "textarea",
       },
     ],

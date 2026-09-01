@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { buildCredentialStore } from "@/lib/providers/credentials";
 import { getProviderDefinition } from "@/lib/providers/registry";
+import { langFromRequest, pickText, translate } from "@/lib/i18n";
 
 const CreateSchema = z.object({
   providerKey: z.string().min(1),
@@ -12,18 +13,19 @@ const CreateSchema = z.object({
 });
 
 export async function POST(req: Request) {
+  const lang = langFromRequest(req);
   const body = await req.json().catch(() => null);
   const parsed = CreateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "入力内容に誤りがあります", details: parsed.error.flatten() },
+      { error: translate(lang, "errors.invalidInput"), details: parsed.error.flatten() },
       { status: 400 },
     );
   }
   const def = getProviderDefinition(parsed.data.providerKey);
   if (!def) {
     return NextResponse.json(
-      { error: "未対応のプロバイダです" },
+      { error: translate(lang, "errors.unsupportedProvider") },
       { status: 400 },
     );
   }
@@ -31,7 +33,7 @@ export async function POST(req: Request) {
   for (const field of def.fields) {
     if (field.required && !parsed.data.credentials[field.key]) {
       return NextResponse.json(
-        { error: `必須項目が未入力です: ${field.label}` },
+        { error: translate(lang, "errors.missingRequired", { fields: pickText(field.label, lang) }) },
         { status: 400 },
       );
     }
