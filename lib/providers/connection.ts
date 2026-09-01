@@ -1,3 +1,4 @@
+import { pickText, translate, type Lang } from "@/lib/i18n";
 import { getProviderDefinition } from "./registry";
 
 export interface ConnectionTestResult {
@@ -7,27 +8,33 @@ export interface ConnectionTestResult {
 
 /**
  * Validates that all required credentials are present for the given provider
- * and returns a friendly diagnosis. In demo mode this does NOT call external
- * APIs — it only verifies that the form was filled out. Replace this function
- * with real provider SDK calls when going live.
+ * and returns a friendly diagnosis in the requested language. In demo mode
+ * this does NOT call external APIs — it only verifies that the form was
+ * filled out. Replace this function with real provider SDK calls when going
+ * live.
  */
 export function runConnectionTest(
   providerKey: string,
   credentials: Record<string, string | undefined>,
   testMode: boolean,
+  lang: Lang,
 ): ConnectionTestResult {
   const def = getProviderDefinition(providerKey);
   if (!def) {
-    return { ok: false, message: "未対応のプロバイダです" };
+    return { ok: false, message: translate(lang, "errors.unsupportedProvider") };
   }
   const missing: string[] = [];
   for (const field of def.fields) {
-    if (field.required && !credentials[field.key]) missing.push(field.label);
+    if (field.required && !credentials[field.key]) {
+      missing.push(pickText(field.label, lang));
+    }
   }
   if (missing.length > 0) {
     return {
       ok: false,
-      message: `必須項目が未入力です: ${missing.join(", ")}`,
+      message: translate(lang, "errors.missingRequired", {
+        fields: missing.join(", "),
+      }),
     };
   }
   // Cheap shape validation for credential-looking fields.
@@ -37,13 +44,17 @@ export function runConnectionTest(
     if (field.type === "url" && !/^https?:\/\//i.test(v)) {
       return {
         ok: false,
-        message: `${field.label} はURL形式で入力してください`,
+        message: translate(lang, "errors.invalidUrl", {
+          field: pickText(field.label, lang),
+        }),
       };
     }
   }
-  const modeLabel = testMode ? "テストモード" : "本番モード";
   return {
     ok: true,
-    message: `${def.name} (${modeLabel}) への接続情報を確認しました。デモ環境のため、実APIは呼び出していません。`,
+    message: translate(lang, "connection.ok", {
+      name: pickText(def.name, lang),
+      mode: translate(lang, testMode ? "common.testMode" : "common.liveMode"),
+    }),
   };
 }

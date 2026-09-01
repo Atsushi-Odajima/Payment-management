@@ -3,66 +3,52 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import type { ProviderDefinition, ProviderField } from "@/lib/providers/types";
+import { pickText, type Lang } from "@/lib/i18n";
+import { getProviderDefinition } from "@/lib/providers/registry";
+import type { ProviderField } from "@/lib/providers/types";
+import { useApiFetch, useLang, useT } from "./language-provider";
 
-type Mode =
-  | { kind: "create"; provider: ProviderDefinition }
-  | {
-      kind: "edit";
-      provider: ProviderDefinition;
-      record: {
-        id: string;
-        displayName: string;
-        status: string;
-        testMode: boolean;
-      };
-      initialFields: Record<string, { value: string; masked: boolean }>;
-    };
+interface EditRecord {
+  id: string;
+  displayName: string;
+  status: string;
+  testMode: boolean;
+}
+
+type InitialFields = Record<string, { value: string; masked: boolean }>;
 
 export function ProviderForm(
   props:
-    | { provider: ProviderDefinition }
+    | { providerKey: string }
     | {
-        provider: ProviderDefinition;
-        record: {
-          id: string;
-          displayName: string;
-          status: string;
-          testMode: boolean;
-        };
-        initialFields: Record<string, { value: string; masked: boolean }>;
+        providerKey: string;
+        record: EditRecord;
+        initialFields: InitialFields;
       },
 ) {
   const router = useRouter();
-  const mode: Mode =
-    "record" in props
-      ? {
-          kind: "edit",
-          provider: props.provider,
-          record: props.record,
-          initialFields: props.initialFields,
-        }
-      : { kind: "create", provider: props.provider };
+  const t = useT();
+  const { lang } = useLang();
+  const apiFetch = useApiFetch();
 
-  const def = mode.provider;
+  const def = getProviderDefinition(props.providerKey);
+  const record = "record" in props ? props.record : null;
+  const initialFields = "record" in props ? props.initialFields : null;
+  const isEdit = record !== null;
 
   const [displayName, setDisplayName] = useState(
-    mode.kind === "edit" ? mode.record.displayName : def.name,
+    record ? record.displayName : def ? pickText(def.name, lang) : "",
   );
-  const [testMode, setTestMode] = useState(
-    mode.kind === "edit" ? mode.record.testMode : true,
-  );
-  const [status, setStatus] = useState(
-    mode.kind === "edit" ? mode.record.status : "active",
-  );
+  const [testMode, setTestMode] = useState(record ? record.testMode : true);
+  const [status, setStatus] = useState(record ? record.status : "active");
 
   // For edit mode, secret fields show the mask as placeholder; leaving the
   // field empty means "keep existing value".
   const [values, setValues] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
-    if (mode.kind === "edit") {
+    if (def && initialFields) {
       for (const f of def.fields) {
-        const stored = mode.initialFields[f.key];
+        const stored = initialFields[f.key];
         if (!stored) continue;
         if (!f.secret) initial[f.key] = stored.value;
       }
@@ -76,21 +62,21 @@ export function ProviderForm(
     null | { ok: boolean; message: string }
   >(null);
 
+  if (!def) return null;
+
   function setField(key: string, value: string) {
     setValues((v) => ({ ...v, [key]: value }));
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!def) return;
     setError(null);
     setSubmitting(true);
     try {
-      const url =
-        mode.kind === "create"
-          ? "/api/providers"
-          : `/api/providers/${mode.record.id}`;
-      const method = mode.kind === "create" ? "POST" : "PATCH";
-      const res = await fetch(url, {
+      const url = record ? `/api/providers/${record.id}` : "/api/providers";
+      const method = record ? "PATCH" : "POST";
+      const res = await apiFetch(url, {
         method,
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -102,28 +88,28 @@ export function ProviderForm(
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "保存に失敗しました");
-      if (mode.kind === "create") {
+      if (!res.ok) throw new Error(data?.error ?? t("providerForm.saveFailed"));
+      if (!record) {
         router.push(`/providers/${data.id}?created=1`);
       } else {
         router.refresh();
-        setTestResult({ ok: true, message: "設定を更新しました。" });
+        setTestResult({ ok: true, message: t("providerForm.updated") });
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "エラーが発生しました");
+      setError(err instanceof Error ? err.message : t("common.genericError"));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function onTestConnection() {
+    if (!def) return;
     setTestResult(null);
     setSubmitting(true);
     try {
-      const id = mode.kind === "edit" ? mode.record.id : null;
-      if (!id) {
+      if (!record) {
         // ephemeral test against current form values
-        const res = await fetch(`/api/providers/test`, {
+        const res = await apiFetch(`/api/providers/test`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -135,16 +121,24 @@ export function ProviderForm(
         const data = await res.json();
         setTestResult({
           ok: !!data.ok,
-          message: data.message ?? (data.ok ? "接続成功" : "接続失敗"),
+          message:
+            data.message ??
+            (data.ok
+              ? t("providerForm.connectionOk")
+              : t("providerForm.connectionFailed")),
         });
       } else {
-        const res = await fetch(`/api/providers/${id}/test`, {
+        const res = await apiFetch(`/api/providers/${record.id}/test`, {
           method: "POST",
         });
         const data = await res.json();
         setTestResult({
           ok: !!data.ok,
-          message: data.message ?? (data.ok ? "接続成功" : "接続失敗"),
+          message:
+            data.message ??
+            (data.ok
+              ? t("providerForm.connectionOk")
+              : t("providerForm.connectionFailed")),
         });
         router.refresh();
       }
@@ -154,22 +148,18 @@ export function ProviderForm(
   }
 
   async function onDelete() {
-    if (mode.kind !== "edit") return;
-    if (
-      !confirm(
-        `「${mode.record.displayName}」の接続を削除します。よろしいですか？関連する決済履歴も削除されます。`,
-      )
-    )
+    if (!record) return;
+    if (!confirm(t("providerForm.confirmDelete", { name: record.displayName })))
       return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/providers/${mode.record.id}`, {
+      const res = await apiFetch(`/api/providers/${record.id}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error("削除に失敗しました");
+      if (!res.ok) throw new Error(t("providerForm.deleteFailed"));
       router.push("/providers");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "エラーが発生しました");
+      setError(err instanceof Error ? err.message : t("common.genericError"));
       setSubmitting(false);
     }
   }
@@ -179,7 +169,7 @@ export function ProviderForm(
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="displayName">
-            管理用の表示名 <span className="text-rose-600">*</span>
+            {t("providerForm.displayName")} <span className="text-rose-600">*</span>
           </label>
           <input
             id="displayName"
@@ -188,11 +178,11 @@ export function ProviderForm(
             onChange={(e) => setDisplayName(e.target.value)}
             required
           />
-          <p className="help">複数アカウントを使う場合に区別するための名前です。</p>
+          <p className="help">{t("providerForm.displayNameHelp")}</p>
         </div>
         {def.supportsTestMode && (
           <div>
-            <span className="label">モード</span>
+            <span className="label">{t("providerForm.mode")}</span>
             <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white text-sm">
               <button
                 type="button"
@@ -204,7 +194,7 @@ export function ProviderForm(
                     : "text-slate-600 hover:bg-slate-50",
                 )}
               >
-                テスト (Sandbox)
+                {t("providerForm.testSandbox")}
               </button>
               <button
                 type="button"
@@ -216,35 +206,38 @@ export function ProviderForm(
                     : "text-slate-600 hover:bg-slate-50",
                 )}
               >
-                本番 (Live)
+                {t("providerForm.liveProduction")}
               </button>
             </div>
-            <p className="help">最初はテストモードでの接続を推奨します。</p>
+            <p className="help">{t("providerForm.modeHelp")}</p>
           </div>
         )}
       </div>
 
       <div className="space-y-4 border-t border-slate-100 pt-5">
-        <h3 className="text-sm font-semibold text-slate-800">API認証情報</h3>
+        <h3 className="text-sm font-semibold text-slate-800">
+          {t("providerForm.apiCredentials")}
+        </h3>
         {def.fields.map((field) => (
           <FieldInput
             key={field.key}
             field={field}
+            lang={lang}
             value={values[field.key] ?? ""}
             placeholder={
-              mode.kind === "edit" && field.secret
-                ? mode.initialFields[field.key]?.value || field.placeholder
+              isEdit && field.secret
+                ? initialFields?.[field.key]?.value || field.placeholder
                 : field.placeholder
             }
             onChange={(v) => setField(field.key, v)}
-            secretLeaveBlankHint={mode.kind === "edit" && !!field.secret}
+            secretLeaveBlankHint={isEdit && !!field.secret}
           />
         ))}
       </div>
 
-      {mode.kind === "edit" && (
+      {isEdit && (
         <div className="border-t border-slate-100 pt-5">
-          <span className="label">有効/無効</span>
+          <span className="label">{t("providerForm.enabledDisabled")}</span>
           <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white text-sm">
             <button
               type="button"
@@ -256,7 +249,7 @@ export function ProviderForm(
                   : "text-slate-600 hover:bg-slate-50",
               )}
             >
-              有効
+              {t("common.enabled")}
             </button>
             <button
               type="button"
@@ -268,7 +261,7 @@ export function ProviderForm(
                   : "text-slate-600 hover:bg-slate-50",
               )}
             >
-              無効
+              {t("common.disabled")}
             </button>
           </div>
         </div>
@@ -295,7 +288,9 @@ export function ProviderForm(
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-5">
         <div className="flex gap-2">
           <button type="submit" className="btn-primary" disabled={submitting}>
-            {mode.kind === "create" ? "接続を保存" : "変更を保存"}
+            {isEdit
+              ? t("providerForm.saveChanges")
+              : t("providerForm.saveConnection")}
           </button>
           <button
             type="button"
@@ -303,17 +298,17 @@ export function ProviderForm(
             onClick={onTestConnection}
             disabled={submitting}
           >
-            接続テスト
+            {t("providerForm.testConnection")}
           </button>
         </div>
-        {mode.kind === "edit" && (
+        {isEdit && (
           <button
             type="button"
             className="btn-danger"
             onClick={onDelete}
             disabled={submitting}
           >
-            この接続を削除
+            {t("providerForm.deleteConnection")}
           </button>
         )}
       </div>
@@ -323,25 +318,31 @@ export function ProviderForm(
 
 function FieldInput({
   field,
+  lang,
   value,
   placeholder,
   onChange,
   secretLeaveBlankHint,
 }: {
   field: ProviderField;
+  lang: Lang;
   value: string;
   placeholder?: string;
   onChange: (v: string) => void;
   secretLeaveBlankHint: boolean;
 }) {
+  const t = useT();
   const common = {
     id: field.key,
     name: field.key,
     value,
     placeholder,
     required: field.required && !secretLeaveBlankHint,
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-      onChange(e.target.value),
+    onChange: (
+      e: React.ChangeEvent<
+        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+      >,
+    ) => onChange(e.target.value),
   };
 
   let control: React.ReactNode;
@@ -350,38 +351,42 @@ function FieldInput({
   } else if (field.type === "select") {
     control = (
       <select {...common} className="input">
-        <option value="">選択してください</option>
+        <option value="">{t("common.select")}</option>
         {field.options?.map((o) => (
           <option key={o.value} value={o.value}>
-            {o.label}
+            {pickText(o.label, lang)}
           </option>
         ))}
       </select>
     );
   } else {
     const inputType =
-      field.type === "password" ? "password" : field.type === "url" ? "url" : field.type === "email" ? "email" : "text";
-    control = <input {...common} type={inputType} className="input" autoComplete="off" />;
+      field.type === "password"
+        ? "password"
+        : field.type === "url"
+          ? "url"
+          : field.type === "email"
+            ? "email"
+            : "text";
+    control = (
+      <input {...common} type={inputType} className="input" autoComplete="off" />
+    );
   }
 
   return (
     <div>
       <label className="label" htmlFor={field.key}>
-        {field.label}
+        {pickText(field.label, lang)}
         {field.required && <span className="ml-1 text-rose-600">*</span>}
         {field.secret && (
           <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-600">
-            暗号化保存
+            {t("providerForm.encryptedBadge")}
           </span>
         )}
       </label>
       {control}
-      {field.helpText && <p className="help">{field.helpText}</p>}
-      {secretLeaveBlankHint && (
-        <p className="help">
-          空欄のまま保存すると、既存の値が維持されます（マスク表示中）。
-        </p>
-      )}
+      {field.helpText && <p className="help">{pickText(field.helpText, lang)}</p>}
+      {secretLeaveBlankHint && <p className="help">{t("providerForm.secretKeepHint")}</p>}
     </div>
   );
 }

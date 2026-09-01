@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useApiFetch, useT } from "./language-provider";
 
 export function PaymentActions({
   id,
@@ -11,23 +12,25 @@ export function PaymentActions({
   status: string;
 }) {
   const router = useRouter();
+  const t = useT();
+  const apiFetch = useApiFetch();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function call(action: "capture" | "cancel" | "refund") {
-    if (action === "cancel" && !confirm("この決済を取消します。よろしいですか？")) return;
-    if (action === "refund" && !confirm("この決済を返金処理します。よろしいですか？")) return;
+    if (action === "cancel" && !confirm(t("paymentActions.confirmCancel"))) return;
+    if (action === "refund" && !confirm(t("paymentActions.confirmRefund"))) return;
     setBusy(action);
     setError(null);
     try {
-      const res = await fetch(`/api/payments/${id}/${action}`, {
+      const res = await apiFetch(`/api/payments/${id}/${action}`, {
         method: "POST",
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "処理に失敗しました");
+      if (!res.ok) throw new Error(data?.error ?? t("paymentActions.failed"));
       router.refresh();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "エラーが発生しました");
+      setError(err instanceof Error ? err.message : t("common.genericError"));
     } finally {
       setBusy(null);
     }
@@ -45,7 +48,7 @@ export function PaymentActions({
         disabled={!canCapture || !!busy}
         onClick={() => call("capture")}
       >
-        {busy === "capture" ? "処理中…" : "売上を確定 (Capture)"}
+        {busy === "capture" ? t("common.processing") : t("paymentActions.capture")}
       </button>
       <button
         type="button"
@@ -53,7 +56,7 @@ export function PaymentActions({
         disabled={!canCancel || !!busy}
         onClick={() => call("cancel")}
       >
-        {busy === "cancel" ? "処理中…" : "取消 (Void)"}
+        {busy === "cancel" ? t("common.processing") : t("paymentActions.cancel")}
       </button>
       <button
         type="button"
@@ -61,13 +64,11 @@ export function PaymentActions({
         disabled={!canRefund || !!busy}
         onClick={() => call("refund")}
       >
-        {busy === "refund" ? "処理中…" : "返金 (Refund)"}
+        {busy === "refund" ? t("common.processing") : t("paymentActions.refund")}
       </button>
-      {error && (
-        <p className="text-xs text-rose-700">{error}</p>
-      )}
+      {error && <p className="text-xs text-rose-700">{error}</p>}
       {!canCapture && !canCancel && !canRefund && (
-        <p className="text-xs text-slate-500">この決済に対して可能な操作はありません。</p>
+        <p className="text-xs text-slate-500">{t("paymentActions.noActions")}</p>
       )}
     </div>
   );

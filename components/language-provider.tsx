@@ -15,6 +15,7 @@ import {
 } from "react";
 import {
   DEFAULT_LANG,
+  LANG_HEADER,
   LANG_STORAGE_KEY,
   isLang,
   translate,
@@ -93,6 +94,22 @@ export function useFormatDateTime() {
   const { lang } = useLang();
   return useCallback(
     (date: Date | string) => formatDateTime(date, lang),
+    [lang],
+  );
+}
+
+/**
+ * fetch() wrapper that sends the current language in the x-lang header so
+ * API routes can respond with localized error messages.
+ */
+export function useApiFetch() {
+  const { lang } = useLang();
+  return useCallback(
+    (input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(input, {
+        ...init,
+        headers: { ...(init?.headers as Record<string, string>), [LANG_HEADER]: lang },
+      }),
     [lang],
   );
 }

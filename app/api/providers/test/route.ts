@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { runConnectionTest } from "@/lib/providers/connection";
+import { langFromRequest, translate } from "@/lib/i18n";
 
 const Schema = z.object({
   providerKey: z.string(),
@@ -9,11 +10,12 @@ const Schema = z.object({
 });
 
 export async function POST(req: Request) {
+  const lang = langFromRequest(req);
   const body = await req.json().catch(() => null);
   const parsed = Schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { ok: false, message: "入力内容を確認してください" },
+      { ok: false, message: translate(lang, "errors.checkInput") },
       { status: 400 },
     );
   }
@@ -21,6 +23,7 @@ export async function POST(req: Request) {
     parsed.data.providerKey,
     parsed.data.credentials,
     parsed.data.testMode,
+    lang,
   );
   return NextResponse.json(result);
 }
