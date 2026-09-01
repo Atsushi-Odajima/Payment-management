@@ -108,7 +108,7 @@ export function DashboardView(props: DashboardViewProps) {
                         {p.orderNumber}
                       </Link>
                       <p className="mt-0.5 truncate text-xs text-slate-500">
-                        {def ? pickText(def.name, lang) : p.providerKey} ・{" "}
+                        {def ? pickText(def.name, lang) : p.providerKey} ·{" "}
                         {formatDate(p.createdAt)}
                       </p>
                     </div>
