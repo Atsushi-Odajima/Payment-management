@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Wire Pay(黒) — 決済管理ダッシュボード",
-    short_name: "Wire Pay(黒)",
+    name: "Wire Pay — 決済管理ダッシュボード",
+    short_name: "Wire Pay",
     description:
       "小規模ECストア向けの決済プロバイダ統合ダッシュボード。",
     start_url: "/",

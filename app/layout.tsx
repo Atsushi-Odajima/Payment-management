@@ -4,12 +4,12 @@ import { LanguageProvider } from "@/components/language-provider";
 import { AppShell } from "@/components/app-shell";
 
 export const metadata: Metadata = {
-  title: "Wire Pay(黒) — 決済管理ダッシュボード",
+  title: "Wire Pay — 決済管理ダッシュボード",
   description:
     "小規模ECストア向けの決済プロバイダ統合ダッシュボード。PayPay・クレジット・コンビニ・銀行振込などを一括管理できます。",
   appleWebApp: {
     capable: true,
-    title: "Wire Pay(黒)",
+    title: "Wire Pay",
     statusBarStyle: "default",
   },
   formatDetection: {
