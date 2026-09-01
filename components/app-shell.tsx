@@ -19,9 +19,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/" className="flex items-center gap-2">
             <WirePayIcon
               className="h-8 w-8 shrink-0 rounded-lg shadow"
-              title="Wire Pay(黒)"
+              title="Wire Pay"
             />
-            <span className="text-sm font-semibold text-slate-900">Wire Pay(黒)</span>
+            <span className="text-sm font-semibold text-slate-900">Wire Pay</span>
           </Link>
           <p className="mt-1 text-xs text-slate-500">{t("brand.tagline")}</p>
         </div>
@@ -52,9 +52,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/" className="flex items-center gap-2 md:invisible">
             <WirePayIcon
               className="h-7 w-7 shrink-0 rounded-md shadow-sm"
-              title="Wire Pay(黒)"
+              title="Wire Pay"
             />
-            <span className="text-sm font-semibold text-slate-900">Wire Pay(黒)</span>
+            <span className="text-sm font-semibold text-slate-900">Wire Pay</span>
           </Link>
           <LanguageToggle />
         </header>
