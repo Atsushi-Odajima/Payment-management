@@ -9,6 +9,7 @@ import { useState } from "react";
 import { NavLink } from "./nav-link";
 import { WirePayIcon } from "./wire-pay-icon";
 import { LanguageToggle } from "./language-toggle";
+import { RoleToggle } from "./role-toggle";
 import { ConfirmProvider } from "./confirm-dialog";
 import { ToastProvider } from "./toast";
 import { useApiJson, useT } from "./language-provider";
@@ -34,6 +35,7 @@ export function AppShell({ children, authConfigured, authenticated }: AppShellPr
           </Link>
           <div className="flex items-center gap-2">
             <AuthControl configured={authConfigured} authenticated={authenticated} />
+            <RoleToggle />
             <LanguageToggle />
           </div>
         </header>
