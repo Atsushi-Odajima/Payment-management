@@ -374,6 +374,26 @@ export const en: MessageShape<typeof ja> = {
     product_id: "Product ID (passed when the payment was created)",
     domain: "Domain of the site where the payment happened",
   },
+  role: {
+    label: "Role (demo)",
+    master: "Master",
+    general: "General",
+    masterHint: "Master role: can reveal and regenerate merchant passwords",
+    generalHint: "General role: passwords stay masked",
+  },
+  merchantDetail: {
+    edit: "Edit",
+    editing: "Editing",
+    updated: "Merchant updated.",
+    updatedAt: "Last updated",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
+    regenerate: "Regenerate",
+    regenerateBody: "Regenerate the password? The current one stops working and the merchant must update their configuration.",
+    regenerated: "Password regenerated. Share the value shown with the merchant.",
+    masterOnly: "Revealing or regenerating the password requires the master role (switch with the toggle in the header).",
+    passwordHelpMaster: "Use the eye icon to show / hide. Regenerating invalidates the old password.",
+  },
   auth: {
     title: "Log in",
     description:
