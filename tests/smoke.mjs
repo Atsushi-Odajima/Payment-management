@@ -51,9 +51,12 @@ const check = (name, ok, extra = "") => {
 
   // Unauthenticated mutation is refused with a localized message
   await page.goto(BASE + "/payments/pay_demo_003", { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Capture" }).click();
+  await page.getByRole("button", { name: "Master" }).click();
+  await page.waitForTimeout(300);
+  await page.getByRole("button", { name: "Mark completed" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "Mark completed" }).click();
   await page.waitForSelector("[role=alert]:not(#__next-route-announcer__)");
-  check("unauthenticated capture → 'Login required'", (await page.locator("[role=alert]:not(#__next-route-announcer__)").textContent())?.includes("Login required"));
+  check("unauthenticated complete → 'Login required'", (await page.locator("[role=alert]:not(#__next-route-announcer__)").textContent())?.includes("Login required"));
 
   // Login
   await page.goto(BASE + "/login", { waitUntil: "networkidle" });
@@ -71,19 +74,29 @@ const check = (name, ok, extra = "") => {
   await page.goto(BASE + "/providers/new/stripe", { waitUntil: "networkidle" });
   await page.screenshot({ path: `${OUT}/provider-config-en.png` });
 
-  // Create a payment (authorize only) → capture → partial refund → full refund
+  // Create a transaction (authorize only) → it lands in the applications list →
+  // complete (master) → partial refund → full refund
   await page.goto(BASE + "/payments/new", { waitUntil: "networkidle" });
+  // The newest provider (bank transfer) is preselected; pick the Stripe one for the card flow.
+  const stripeValue = await page.locator("#providerId option", { hasText: "Stripe" }).first().getAttribute("value");
+  await page.selectOption("#providerId", stripeValue);
   await page.fill("#amount", "6000");
   await page.getByRole("checkbox").uncheck();
   await page.getByRole("button", { name: "Create Payment" }).click();
-  await page.waitForURL(/\/payments\/[a-z0-9]+$/);
+  await page.waitForURL(/\/applications\/[a-z0-9]+$/);
   await page.getByText("Authorized").first().waitFor({ timeout: 15000 });
-  check("created payment is Authorized", (await page.locator(".badge").allTextContents()).includes("Authorized"));
+  check("created transaction is Authorized (applications detail)", (await page.locator(".badge").allTextContents()).includes("Authorized"));
 
-  await page.getByRole("button", { name: "Capture" }).click();
-  await page.getByText("Payment captured.").waitFor({ timeout: 15000 });
+  await page.getByRole("button", { name: "General" }).click();
   await page.waitForTimeout(400);
-  check("capture succeeds", (await page.locator(".badge").allTextContents()).includes("Captured"));
+  check("general role cannot complete", await page.getByRole("button", { name: "Mark completed" }).isDisabled());
+  await page.getByRole("button", { name: "Master" }).click();
+  await page.waitForTimeout(500);
+  await page.getByRole("button", { name: "Mark completed" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "Mark completed" }).click();
+  await page.getByText("Transaction completed.").waitFor({ timeout: 15000 });
+  await page.waitForTimeout(400);
+  check("complete succeeds (master)", (await page.locator(".badge").allTextContents()).includes("Completed"));
 
   await page.getByRole("button", { name: "Refund" }).click();
   await page.waitForSelector("dialog[open]");
@@ -103,7 +116,7 @@ const check = (name, ok, extra = "") => {
   await page.waitForTimeout(800);
   const body2 = await page.textContent("body");
   check("full refund → Refunded, no actions left", body2.includes("No actions are available"));
-  check("event timeline lists created/capture/refund", body2.includes("Event history") && (body2.match(/Refunded/g) || []).length >= 2);
+  check("event timeline lists created/capture/refund", body2.includes("Status history") && (body2.match(/Refunded/g) || []).length >= 2);
 
   // Webhook simulator on the seeded authorized Stripe payment
   await page.goto(BASE + "/payments/pay_demo_003", { waitUntil: "networkidle" });
@@ -112,7 +125,7 @@ const check = (name, ok, extra = "") => {
   await page.getByText("Webhook received and processed").waitFor({ timeout: 20000 });
   await page.waitForTimeout(600);
   const body3 = await page.textContent("body");
-  check("webhook simulate → captured via webhook", (await page.locator(".badge").allTextContents()).includes("Captured") && body3.includes("Webhook"));
+  check("webhook simulate → completed via webhook", (await page.locator(".badge").allTextContents()).includes("Completed") && body3.includes("Webhook"));
   await page.screenshot({ path: `${OUT}/payment-detail-en.png`, fullPage: false });
 
   // Duplicate protection is exercised by the second identical event id server-side;
@@ -125,7 +138,7 @@ const check = (name, ok, extra = "") => {
   // Language toggle persists via cookie: switch to JA, reload → SSR Japanese
   await page.getByRole("button", { name: "日本語" }).click();
   await page.reload({ waitUntil: "networkidle" });
-  check("toggle → 日本語 persists across reload", (await page.locator("h1").textContent())?.startsWith("決済"));
+  check("toggle → 日本語 persists across reload", (await page.locator("h1").textContent())?.startsWith("取引"));
   check("no page errors during flow", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 300));
   await ctx.close();
 }

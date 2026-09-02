@@ -20,12 +20,14 @@ export function formatYen(amount: number): string {
 // Status labels live in the i18n catalogs (status.*); only the colors stay here.
 export const PAYMENT_STATUS_COLOR: Record<PaymentStatus, string> = {
   pending: "bg-amber-100 text-amber-800 ring-amber-200",
+  awaiting_transfer: "bg-sky-100 text-sky-800 ring-sky-200",
   authorized: "bg-blue-100 text-blue-800 ring-blue-200",
   captured: "bg-emerald-100 text-emerald-800 ring-emerald-200",
   partially_refunded: "bg-violet-100 text-violet-800 ring-violet-200",
   refunded: "bg-purple-100 text-purple-800 ring-purple-200",
   cancelled: "bg-slate-200 text-slate-700 ring-slate-300",
   failed: "bg-rose-100 text-rose-800 ring-rose-200",
+  expired: "bg-orange-100 text-orange-800 ring-orange-200",
 };
 
 export const PROVIDER_STATUSES = ["active", "disabled"] as const;

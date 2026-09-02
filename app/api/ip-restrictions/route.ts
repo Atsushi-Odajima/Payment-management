@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateIpRestrictionInput } from "@/lib/ip-restrictions/schema";
+import { assertNotSelfBlock } from "@/lib/ip-restrictions/self-block";
 import { normalizeCidr } from "@/lib/ip";
 import { DEMO_LIMITS } from "@/lib/demo";
 import { IP_RESTRICTION_SELECT } from "./select";
@@ -13,7 +14,7 @@ export const GET = withApiHandler(async () => {
   return ok({ rules });
 });
 
-/** POST /api/ip-restrictions — add an allow-list entry (IPv4 or CIDR). */
+/** POST /api/ip-restrictions — add a rule (IPv4 or CIDR; deny blocks, allow is informational). */
 export const POST = withApiHandler(async (req) => {
   const v = validateIpRestrictionInput(await readJson(req));
   if (!v.ok) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: v.errors });
@@ -21,6 +22,7 @@ export const POST = withApiHandler(async (req) => {
     const m = await prisma.merchant.findUnique({ where: { id: v.data.merchantId }, select: { id: true } });
     if (!m) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: { merchantId: "invalid" } });
   }
+  assertNotSelfBlock(req, v.data);
   const count = await prisma.ipRestriction.count();
   if (count >= DEMO_LIMITS.ipRestrictions) {
     throw new ApiError(403, "demo_limit", "errors.demoLimit", { limit: DEMO_LIMITS.ipRestrictions });

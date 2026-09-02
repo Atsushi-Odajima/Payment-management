@@ -19,6 +19,8 @@ const createPayment2 = (req: Request) => createPayment(req, {});
 const createProvider2 = (req: Request) => createProvider(req, {});
 
 const BASE = "http://localhost";
+// Application-stage actions (capture / cancel / fail / expire / deposit) need the master role.
+const MASTER = { cookie: "wirepay.role=master" };
 
 function json(path: string, method: string, body?: unknown, headers: Record<string, string> = {}) {
   return new Request(BASE + path, {
@@ -39,7 +41,7 @@ beforeEach(async () => {
 
 describe("payments", () => {
   it("refuses to capture an already captured payment (409, localized)", async () => {
-    const res = await paymentAction(json(`/api/payments/${SEED_IDS.payment1}/capture`, "POST", undefined, { "x-lang": "en" }), {
+    const res = await paymentAction(json(`/api/payments/${SEED_IDS.payment1}/capture`, "POST", undefined, { "x-lang": "en", ...MASTER }), {
       params: { id: SEED_IDS.payment1, action: "capture" },
     });
     const { status, body } = await read(res);
@@ -49,7 +51,7 @@ describe("payments", () => {
   });
 
   it("captures an authorized payment atomically and records an event", async () => {
-    const res = await paymentAction(json(`/api/payments/${SEED_IDS.payment3}/capture`, "POST"), {
+    const res = await paymentAction(json(`/api/payments/${SEED_IDS.payment3}/capture`, "POST", undefined, MASTER), {
       params: { id: SEED_IDS.payment3, action: "capture" },
     });
     expect((await read(res)).body.data.status).toBe("captured");
@@ -77,10 +79,22 @@ describe("payments", () => {
   });
 
   it("rejects unknown actions with 404", async () => {
-    const res = await paymentAction(json(`/api/payments/${SEED_IDS.payment1}/fail`, "POST"), {
-      params: { id: SEED_IDS.payment1, action: "fail" },
+    const res = await paymentAction(json(`/api/payments/${SEED_IDS.payment1}/bogus`, "POST", undefined, MASTER), {
+      params: { id: SEED_IDS.payment1, action: "bogus" },
     });
     expect(res.status).toBe(404);
+  });
+
+  it("refuses application-stage actions for the general role but not refunds", async () => {
+    const denied = await paymentAction(json(`/api/payments/${SEED_IDS.payment3}/capture`, "POST"), {
+      params: { id: SEED_IDS.payment3, action: "capture" },
+    });
+    expect((await read(denied)).body.error.code).toBe("role_required");
+    expect(denied.status).toBe(403);
+    const refund = await paymentAction(json(`/api/payments/${SEED_IDS.payment2}/refund`, "POST", { amount: 100 }), {
+      params: { id: SEED_IDS.payment2, action: "refund" },
+    });
+    expect(refund.status).toBe(200);
   });
 
   it("replays the same response for a repeated Idempotency-Key", async () => {
@@ -123,7 +137,7 @@ describe("providers", () => {
   it("never returns credentials from the list endpoint", async () => {
     const { body } = await read(await listProviders(new Request(BASE + "/api/providers"), {}));
     expect(JSON.stringify(body)).not.toContain("credentials");
-    expect(body.data.providers).toHaveLength(2);
+    expect(body.data.providers).toHaveLength(3);
   });
 
   it("keeps the existing ciphertext when a secret is saved blank", async () => {

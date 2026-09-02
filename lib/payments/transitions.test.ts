@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  APPLICATION_STATUSES,
+  MASTER_ACTIONS,
   PAYMENT_ACTIONS,
   PAYMENT_STATUSES,
+  SALES_STATUSES,
   TERMINAL_STATUSES,
+  UI_ACTIONS,
   canTransition,
   initialStatus,
   isPaymentStatus,
@@ -15,13 +19,15 @@ import {
 // The full legal matrix, written out so a change to TRANSITIONS is a
 // deliberate, reviewed change.
 const LEGAL: Record<PaymentStatus, PaymentAction[]> = {
-  pending: ["capture", "cancel", "fail"],
+  pending: ["capture", "cancel", "fail", "expire"],
+  awaiting_transfer: ["capture", "cancel", "fail", "expire", "deposit"],
   authorized: ["capture", "cancel", "fail"],
   captured: ["refund"],
   partially_refunded: ["refund"],
   refunded: [],
   cancelled: [],
   failed: [],
+  expired: [],
 };
 
 describe("payment state machine", () => {
@@ -31,8 +37,18 @@ describe("payment state machine", () => {
     });
   });
 
-  it("marks refunded / cancelled / failed as terminal", () => {
-    expect([...TERMINAL_STATUSES].sort()).toEqual(["cancelled", "failed", "refunded"]);
+  it("marks refunded / cancelled / failed / expired as terminal", () => {
+    expect([...TERMINAL_STATUSES].sort()).toEqual(["cancelled", "expired", "failed", "refunded"]);
+  });
+
+  it("splits every status between the application list and the sales list", () => {
+    const union = [...APPLICATION_STATUSES, ...SALES_STATUSES].sort();
+    expect(union).toEqual([...PAYMENT_STATUSES].sort());
+    expect(APPLICATION_STATUSES.some((s) => SALES_STATUSES.includes(s))).toBe(false);
+  });
+
+  it("gates every UI action except refund behind the master role", () => {
+    expect([...MASTER_ACTIONS].sort()).toEqual(UI_ACTIONS.filter((a) => a !== "refund").sort());
   });
 
   it("resolves the status after a refund", () => {
@@ -41,9 +57,9 @@ describe("payment state machine", () => {
     expect(statusAfterRefund(1000, 0, 1000)).toBe("refunded");
   });
 
-  it("starts konbini / bank payments as pending, card & QR by autoCapture", () => {
+  it("starts bank transfers awaiting transfer, konbini applied, card & QR by autoCapture", () => {
+    expect(initialStatus("bank", true)).toBe("awaiting_transfer");
     expect(initialStatus("convenience", true)).toBe("pending");
-    expect(initialStatus("bank", true)).toBe("pending");
     expect(initialStatus("credit", true)).toBe("captured");
     expect(initialStatus("qr", false)).toBe("authorized");
   });

@@ -34,4 +34,4 @@ The detail screen opens in **read-only mode**. Press **Edit** (top right) to swi
 
 ## Enabled payment methods
 
-“Enabled payment methods” are added by **approving payment applications**; they cannot be edited directly on the merchant form.
+“Enabled payment methods” and “Transfer ID length” are edited in the **Payment settings** section of the merchant form. The transfer ID length (7 or 8 digits) is the length of the transfer IDs issued for this merchant's bank transfer transactions.

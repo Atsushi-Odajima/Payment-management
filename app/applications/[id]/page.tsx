@@ -1,13 +1,12 @@
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/db";
-import { ApplicationDetailView } from "@/components/views/application-detail-view";
-import { APPLICATION_SELECT } from "@/app/api/applications/select";
-import { toApplicationView } from "@/lib/applications/serialize";
+import { PaymentDetailView } from "@/components/views/payment-detail-view";
+import { loadTransactionDetail } from "@/lib/payments/detail";
 
 export const dynamic = "force-dynamic";
 
+/** Same detail as /payments/[id]; only the breadcrumb / manual link differ. */
 export default async function ApplicationDetailPage({ params }: { params: { id: string } }) {
-  const row = await prisma.paymentApplication.findUnique({ where: { id: params.id }, select: APPLICATION_SELECT });
-  if (!row) notFound();
-  return <ApplicationDetailView application={toApplicationView(row)} />;
+  const payment = await loadTransactionDetail(params.id);
+  if (!payment) notFound();
+  return <PaymentDetailView payment={payment} origin="applications" />;
 }

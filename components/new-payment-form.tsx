@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useApiJson, useLang, useT } from "./language-provider";
 import { getCategory, getProviderDefinition } from "@/lib/providers/registry";
 import { ASYNC_CATEGORIES } from "@/lib/payments/transitions";
+import { TRANSFER_DUE_DAYS } from "@/lib/payments/transfer";
 import { pickText } from "@/lib/i18n";
 
 export interface ProviderOption {
@@ -12,6 +13,12 @@ export interface ProviderOption {
   displayName: string;
   providerKey: string;
   testMode: boolean;
+}
+
+export interface MerchantChoice {
+  id: string;
+  merchantCode: string;
+  siteName: string;
 }
 
 const MAX_AMOUNT = 99_999_999;
@@ -22,15 +29,18 @@ function newIdempotencyKey(): string {
     : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function NewPaymentForm({ providers }: { providers: ProviderOption[] }) {
+export function NewPaymentForm({ providers, merchants }: { providers: ProviderOption[]; merchants: MerchantChoice[] }) {
   const router = useRouter();
   const t = useT();
   const { lang } = useLang();
   const apiJson = useApiJson();
   const [providerId, setProviderId] = useState(providers[0]?.id ?? "");
+  const [merchantId, setMerchantId] = useState(merchants[0]?.id ?? "");
   const [orderNumber, setOrderNumber] = useState(() => `ORD-${Date.now().toString(36).toUpperCase()}`);
   const [amount, setAmount] = useState("3980");
+  const [productName, setProductName] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [customerId, setCustomerId] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [description, setDescription] = useState("");
   const [autoCapture, setAutoCapture] = useState(true);
@@ -43,13 +53,15 @@ export function NewPaymentForm({ providers }: { providers: ProviderOption[] }) {
 
   const selectedProvider = providers.find((p) => p.id === providerId);
   const selectedDef = selectedProvider ? getProviderDefinition(selectedProvider.providerKey) : undefined;
-  const isAsync = selectedDef ? ASYNC_CATEGORIES.includes(selectedDef.category) : false;
+  const category = selectedDef?.category ?? "other";
+  const isAsync = ASYNC_CATEGORIES.includes(category);
+  const isBank = category === "bank";
 
   function optionLabel(p: ProviderOption): string {
     const def = getProviderDefinition(p.providerKey);
     const name = def ? pickText(def.name, lang) : p.providerKey;
-    const category = def ? getCategory(def.category) : undefined;
-    const categoryLabel = category ? pickText(category.label, lang) : "";
+    const cat = def ? getCategory(def.category) : undefined;
+    const categoryLabel = cat ? pickText(cat.label, lang) : "";
     const mode = p.testMode ? t("common.test") : t("common.live");
     return `${p.displayName} — ${name} (${categoryLabel}) · ${mode}`;
   }
@@ -64,9 +76,12 @@ export function NewPaymentForm({ providers }: { providers: ProviderOption[] }) {
       headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
       body: JSON.stringify({
         providerId,
+        merchantId: merchantId || null,
         orderNumber,
         amount: Number(amount),
+        productName: productName || null,
         customerName: customerName || null,
+        customerId: customerId || null,
         customerEmail: customerEmail || null,
         description: description || null,
         autoCapture: isAsync ? false : autoCapture,
@@ -82,29 +97,39 @@ export function NewPaymentForm({ providers }: { providers: ProviderOption[] }) {
       return;
     }
     setIdempotencyKey(newIdempotencyKey());
-    router.push(`/payments/${res.data.id}`);
+    router.push(`/${isAsync || !autoCapture ? "applications" : "payments"}/${res.data.id}`);
   }
 
   return (
     <form onSubmit={onSubmit} className="card space-y-5 p-6" aria-busy={submitting}>
-      <div>
-        <label htmlFor="providerId" className="label">
-          {t("newPayment.provider")} <span className="text-rose-600">*</span>
-        </label>
-        <select
-          id="providerId"
-          className="input"
-          value={providerId}
-          onChange={(e) => setProviderId(e.target.value)}
-          required
-        >
-          {providers.map((p) => (
-            <option key={p.id} value={p.id}>
-              {optionLabel(p)}
-            </option>
-          ))}
-        </select>
-        {selectedProvider?.testMode && <p className="help">{t("newPayment.testModeHint")}</p>}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label htmlFor="merchantId" className="label">
+            {t("newPayment.merchant")}
+          </label>
+          <select id="merchantId" className="input" value={merchantId} onChange={(e) => setMerchantId(e.target.value)} aria-invalid={fieldErrors.merchantId || undefined}>
+            <option value="">{t("newPayment.merchantNone")}</option>
+            {merchants.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.merchantCode} — {m.siteName}
+              </option>
+            ))}
+          </select>
+          <p className="help">{t("newPayment.merchantHelp")}</p>
+        </div>
+        <div>
+          <label htmlFor="providerId" className="label">
+            {t("newPayment.provider")} <span className="text-rose-600">*</span>
+          </label>
+          <select id="providerId" className="input" value={providerId} onChange={(e) => setProviderId(e.target.value)} required>
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {optionLabel(p)}
+              </option>
+            ))}
+          </select>
+          {selectedProvider?.testMode && <p className="help">{t("newPayment.testModeHint")}</p>}
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -112,15 +137,7 @@ export function NewPaymentForm({ providers }: { providers: ProviderOption[] }) {
           <label htmlFor="orderNumber" className="label">
             {t("newPayment.orderNumber")} <span className="text-rose-600">*</span>
           </label>
-          <input
-            id="orderNumber"
-            className="input"
-            value={orderNumber}
-            onChange={(e) => setOrderNumber(e.target.value)}
-            required
-            maxLength={64}
-            aria-invalid={fieldErrors.orderNumber || undefined}
-          />
+          <input id="orderNumber" className="input" value={orderNumber} onChange={(e) => setOrderNumber(e.target.value)} required maxLength={64} aria-invalid={fieldErrors.orderNumber || undefined} />
         </div>
         <div>
           <label htmlFor="amount" className="label">
@@ -142,19 +159,25 @@ export function NewPaymentForm({ providers }: { providers: ProviderOption[] }) {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label htmlFor="productName" className="label">
+          {t("newPayment.productName")}
+        </label>
+        <input id="productName" className="input" value={productName} onChange={(e) => setProductName(e.target.value)} placeholder={t("newPayment.productNamePlaceholder")} maxLength={200} />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
         <div>
           <label htmlFor="customerName" className="label">
             {t("newPayment.customerName")}
           </label>
-          <input
-            id="customerName"
-            className="input"
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-            placeholder={t("newPayment.customerNamePlaceholder")}
-            maxLength={120}
-          />
+          <input id="customerName" className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder={t("newPayment.customerNamePlaceholder")} maxLength={120} />
+        </div>
+        <div>
+          <label htmlFor="customerId" className="label">
+            {t("newPayment.customerId")}
+          </label>
+          <input id="customerId" className="input font-mono" value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder="u_10021" maxLength={64} />
         </div>
         <div>
           <label htmlFor="customerEmail" className="label">
@@ -177,28 +200,16 @@ export function NewPaymentForm({ providers }: { providers: ProviderOption[] }) {
         <label htmlFor="description" className="label">
           {t("newPayment.memo")}
         </label>
-        <textarea
-          id="description"
-          className="input min-h-[80px]"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder={t("newPayment.memoPlaceholder")}
-          maxLength={2000}
-        />
+        <textarea id="description" className="input min-h-[80px]" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("newPayment.memoPlaceholder")} maxLength={2000} />
       </div>
 
-      {isAsync ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          {t("newPayment.asyncHint")}
-        </p>
+      {isBank ? (
+        <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">{t("newPayment.bankHint", { days: TRANSFER_DUE_DAYS })}</p>
+      ) : isAsync ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{t("newPayment.asyncHint")}</p>
       ) : (
         <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={autoCapture}
-            onChange={(e) => setAutoCapture(e.target.checked)}
-            className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-300"
-          />
+          <input type="checkbox" checked={autoCapture} onChange={(e) => setAutoCapture(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-300" />
           {t("newPayment.autoCapture")}
         </label>
       )}

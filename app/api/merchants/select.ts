@@ -15,15 +15,29 @@ export const MERCHANT_SELECT = {
   emailNotification: true,
   agentId: true,
   enabledMethods: true,
+  transferIdDigits: true,
   agent: { select: { id: true, agentCode: true, name: true } },
   createdAt: true,
   updatedAt: true,
 } as const;
 
-import { parseEnabledMethods } from "@/lib/merchants/types";
+import { parseEnabledMethods, type MerchantInput } from "@/lib/merchants/types";
+import { DEFAULT_TRANSFER_ID_DIGITS, isTransferIdDigits, type TransferIdDigits } from "@/lib/payments/transfer";
+import type { PaymentMethod } from "@/lib/payments/methods";
 
-/** Shape a selected row for the client: enabledMethods JSON → string[]. */
-export function serialize<T extends { enabledMethods: string }>(row: T): Omit<T, "enabledMethods"> & { enabledMethods: string[] } {
-  const { enabledMethods, ...rest } = row;
-  return { ...rest, enabledMethods: parseEnabledMethods(enabledMethods) };
+/** Shape a selected row for the client: enabledMethods JSON → array, digits narrowed. */
+export function serialize<T extends { enabledMethods: string; transferIdDigits: number }>(
+  row: T,
+): Omit<T, "enabledMethods" | "transferIdDigits"> & { enabledMethods: PaymentMethod[]; transferIdDigits: TransferIdDigits } {
+  const { enabledMethods, transferIdDigits, ...rest } = row;
+  return {
+    ...rest,
+    enabledMethods: parseEnabledMethods(enabledMethods),
+    transferIdDigits: isTransferIdDigits(transferIdDigits) ? transferIdDigits : DEFAULT_TRANSFER_ID_DIGITS,
+  };
+}
+
+/** Validated input → Prisma data (enabledMethods stored as JSON). */
+export function toMerchantData(input: MerchantInput) {
+  return { ...input, enabledMethods: JSON.stringify(input.enabledMethods) };
 }
