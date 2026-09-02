@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { isValidCidr } from "@/lib/ip";
-import { IP_TARGETS, type IpRestrictionInput } from "./types";
+import { IP_MODES, IP_TARGETS, type IpRestrictionInput } from "./types";
 
 export const ipRestrictionInputSchema = z
   .object({
@@ -8,6 +8,8 @@ export const ipRestrictionInputSchema = z
     merchantId: z.string().trim().min(1).max(64).nullable().default(null),
     cidr: z.string().trim().min(1, "required").max(43, "tooLong").refine(isValidCidr, "cidr"),
     label: z.string().trim().min(1, "required").max(80, "tooLong"),
+    // Older clients omit it; "allow" keeps their rules informational.
+    mode: z.enum(IP_MODES).default("allow"),
     enabled: z.boolean().default(true),
   })
   .superRefine((v, ctx) => {
@@ -17,7 +19,7 @@ export const ipRestrictionInputSchema = z
   }) satisfies z.ZodType<IpRestrictionInput, z.ZodTypeDef, unknown>;
 
 export type IpFieldKey = keyof IpRestrictionInput;
-export type IpErrorCode = "required" | "tooLong" | "cidr" | "invalid";
+export type IpErrorCode = "required" | "tooLong" | "cidr" | "selfBlock" | "invalid";
 
 export function validateIpRestrictionInput(
   input: unknown,
@@ -37,10 +39,12 @@ export function validateIpRestrictionInput(
   return { ok: false, errors };
 }
 
+/** New rules default to blocking: entering an address is meant to shut it out. */
 export const EMPTY_IP_INPUT: IpRestrictionInput = {
   target: "admin",
   merchantId: null,
   cidr: "",
   label: "",
+  mode: "deny",
   enabled: true,
 };

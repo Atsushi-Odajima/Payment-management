@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   clientIpFromHeaders,
   evaluateAllowList,
+  evaluateRules,
   formatIpv4,
   ipInCidr,
+  ipMatchesCidr,
+  isBlocked,
   isValidCidr,
   normalizeCidr,
   parseCidr,
@@ -57,6 +60,21 @@ describe("allow-list evaluation", () => {
     expect(evaluateAllowList("2001:db8::1", rules)).toEqual({ kind: "unsupported" });
     expect(evaluateAllowList("::ffff:203.0.113.10", rules).kind).toBe("allowed");
     expect(unwrapMappedIpv6("::1")).toBe("127.0.0.1");
+  });
+  it("lets deny rules win over allow rules and keeps allow rules informational", () => {
+    const rules = [
+      { cidr: "203.0.113.200", mode: "deny" as const },
+      { cidr: "203.0.113.0/24", mode: "allow" as const },
+    ];
+    expect(evaluateRules("203.0.113.200", rules)).toEqual({ kind: "blocked", matched: "203.0.113.200" });
+    expect(evaluateRules("203.0.113.5", rules)).toEqual({ kind: "allowed", matched: "203.0.113.0/24" });
+    expect(evaluateRules("192.0.2.1", rules)).toEqual({ kind: "denied" });
+    expect(evaluateRules("192.0.2.1", [rules[0]])).toEqual({ kind: "no_rules" });
+    expect(isBlocked("::ffff:203.0.113.200", rules)).toBe(true);
+    expect(isBlocked("2001:db8::1", rules)).toBe(false);
+    expect(ipMatchesCidr("10.1.2.3", "10.0.0.0/8")).toBe(true);
+    expect(ipMatchesCidr("11.1.2.3", "10.0.0.0/8")).toBe(false);
+    expect(ipMatchesCidr("nope", "10.0.0.0/8")).toBe(false);
   });
   it("reads the client IP from proxy headers", () => {
     const h = (m: Record<string, string>) => (n: string) => m[n] ?? null;

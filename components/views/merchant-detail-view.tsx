@@ -103,7 +103,13 @@ export function MerchantDetailView({ merchant: initial, agents }: { merchant: Me
                 <span className="text-slate-500">{t("merchantForm.agentNone")}</span>
               )}
             </DetailRow>
-            <DetailRow label={t("merchantDetail.enabledMethods")}>
+          </section>
+
+          <section className="card divide-y divide-slate-100" aria-labelledby="sec-payment">
+            <h2 id="sec-payment" className="px-5 py-3 text-sm font-semibold text-slate-800">
+              {t("merchantForm.sectionPayment")}
+            </h2>
+            <DetailRow label={t("merchantForm.enabledMethods")}>
               {merchant.enabledMethods.length === 0 ? (
                 <span className="text-slate-500">{t("merchantDetail.noEnabledMethods")}</span>
               ) : (
@@ -119,6 +125,7 @@ export function MerchantDetailView({ merchant: initial, agents }: { merchant: Me
                 </span>
               )}
             </DetailRow>
+            <DetailRow label={t("merchantForm.transferIdDigits")}>{t("merchantForm.digits", { n: merchant.transferIdDigits })}</DetailRow>
           </section>
 
           <section className="card divide-y divide-slate-100" aria-labelledby="sec-contact">

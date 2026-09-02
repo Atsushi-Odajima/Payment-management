@@ -1,5 +1,6 @@
-// IPv4 / CIDR helpers used by the IP-restriction screens. Pure functions,
-// no Node APIs, so they run on the client for inline validation too.
+// IPv4 / CIDR helpers used by the IP-restriction screens and the enforcement
+// in app/layout.tsx / lib/api/handler.ts. Pure functions, no Node APIs, so
+// they run on the client for inline validation too.
 
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 
@@ -58,25 +59,61 @@ export function normalizeCidr(s: string): string | null {
   return c.prefix === 32 ? formatIpv4(c.network) : `${formatIpv4(c.network)}/${c.prefix}`;
 }
 
+/** True when the IPv4 address `ip` falls inside `cidr` (either side may be malformed → false). */
+export function ipMatchesCidr(ip: string, cidr: string): boolean {
+  const n = parseIpv4(unwrapMappedIpv6(ip));
+  const c = parseCidr(cidr);
+  return n !== null && c !== null && ipInCidr(n, c);
+}
+
+export interface IpRule {
+  cidr: string;
+  mode: "allow" | "deny";
+}
+
 export type AllowVerdict =
+  | { kind: "blocked"; matched: string }
   | { kind: "allowed"; matched: string }
   | { kind: "denied" }
   | { kind: "no_rules" }
   | { kind: "unsupported" };
 
 /**
- * Evaluate an allow-list. IPv6 (including ::1) is reported as unsupported
- * except for the IPv4-mapped form ::ffff:a.b.c.d which is unwrapped.
+ * Evaluate a caller against enabled rules. Deny rules win: a matching deny
+ * rule blocks the caller regardless of allow rules. Allow rules are
+ * informational: "allowed" when one matches, "denied" (not on the list) when
+ * none does, "no_rules" when there are no allow rules at all. IPv6 (including
+ * ::1) is reported as unsupported except for the IPv4-mapped form
+ * ::ffff:a.b.c.d which is unwrapped.
  */
-export function evaluateAllowList(clientIp: string, rules: readonly string[]): AllowVerdict {
+export function evaluateRules(clientIp: string, rules: readonly IpRule[]): AllowVerdict {
   const ip = parseIpv4(unwrapMappedIpv6(clientIp));
   if (ip === null) return { kind: "unsupported" };
-  if (rules.length === 0) return { kind: "no_rules" };
   for (const r of rules) {
-    const c = parseCidr(r);
-    if (c && ipInCidr(ip, c)) return { kind: "allowed", matched: r };
+    if (r.mode !== "deny") continue;
+    const c = parseCidr(r.cidr);
+    if (c && ipInCidr(ip, c)) return { kind: "blocked", matched: r.cidr };
+  }
+  const allows = rules.filter((r) => r.mode === "allow");
+  if (allows.length === 0) return { kind: "no_rules" };
+  for (const r of allows) {
+    const c = parseCidr(r.cidr);
+    if (c && ipInCidr(ip, c)) return { kind: "allowed", matched: r.cidr };
   }
   return { kind: "denied" };
+}
+
+/** Allow-list only evaluation (kept for callers that have no deny rules). */
+export function evaluateAllowList(clientIp: string, rules: readonly string[]): AllowVerdict {
+  return evaluateRules(
+    clientIp,
+    rules.map((cidr) => ({ cidr, mode: "allow" as const })),
+  );
+}
+
+/** Whether the caller is blocked by an enabled deny rule. */
+export function isBlocked(clientIp: string, rules: readonly IpRule[]): boolean {
+  return evaluateRules(clientIp, rules).kind === "blocked";
 }
 
 export function unwrapMappedIpv6(s: string): string {

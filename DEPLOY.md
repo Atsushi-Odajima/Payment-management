@@ -22,6 +22,7 @@ Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Ve
 | `SESSION_SECRET` | 任意 | セッション Cookie の HMAC 鍵。未設定時は `ENCRYPTION_KEY` を流用 |
 | `DEMO_READONLY` | 任意 | `1` で DELETE とプロバイダの PATCH を 403 に（デモ荒らし対策） |
 | `CRON_SECRET` | 任意 | 設定すると `GET/POST /api/demo/reset` が有効になり、Vercel Cron（毎日 03:00 JST）がデモデータを初期化 |
+| `DEPOSIT_NOTIFY_SECRET` | 任意 | `POST /api/demo/deposit-notify`（銀行の入金通知を模した消込 API）の Bearer トークン。未設定時は本番で 404、開発では認証なし |
 
 鍵の生成:
 
@@ -38,6 +39,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 3. Environment Variables に上表の値を設定（最低 `DATABASE_URL`, `ENCRYPTION_KEY`。公開デモなら `ADMIN_PASSWORD`, `DEMO_LOGIN_HINT`, `DEMO_READONLY=1`, `CRON_SECRET` も）
 4. Deploy。`vercel.json` の buildCommand が以下を順に実行します:
    `prepare-prisma → prisma generate → prisma db push → next build → seed（テーブル単位の upsert。既存 DB でも新テーブルのサンプルだけが追加され、何度実行しても件数は増えない）`
+   `db push` は非空テーブルの削除を拒否するため、テーブルを廃止するときは **二段階** で行う: ① モデルは残したまま seed で空にするリリース → ② モデルを削除するリリース（空テーブルの drop は通る）。`PaymentApplication` は現在①の状態。
+   入金通知 API（`/api/demo/deposit-notify`）を本番で使う場合は `DEPOSIT_NOTIFY_SECRET` を設定する（未設定なら本番では 404）。
 5. **Preview デプロイ用に Neon の Branch を別 DB として割り当てる**ことを推奨（Preview と Production が同じ DB を共有しないように）
 
 `ENCRYPTION_KEY` を変更すると既存の暗号化済み認証情報は復号できなくなり、編集画面で「再入力が必要」と表示されます（500 にはなりません）。
@@ -76,6 +79,6 @@ Workers ランタイムは Node.js のファイルシステムを持たないた
 1. `/` を開く → ダッシュボード。右上の **EN / 日本語** で言語が切り替わり、リロード後も維持される
 2. `ADMIN_PASSWORD` を設定した場合は右上「ログイン」→ パスワード入力
 3. **プロバイダ → 新規接続 → PayPay** などを選び、ダミーの認証情報で保存 → 接続テスト
-4. **決済を作成** → 詳細画面で **売上を確定 / 一部返金 / 取消**、イベント履歴に記録されることを確認
+4. **決済を作成** → 詳細画面で **完了 / 一部返金 / キャンセル**（マスター権限）、銀行振込は **入金消込**。ステータス変更履歴に記録されることを確認。未完了の取引は **決済申請一覧** に、完了後は **決済一覧** に表示される
 5. Stripe プロバイダの決済で **Webhook をシミュレート** → 署名検証・重複排除を通って状態が変わる
 6. スマホ幅では下部タブバーでナビゲーションできる

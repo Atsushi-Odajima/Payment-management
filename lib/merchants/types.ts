@@ -1,4 +1,6 @@
 import { formatCode, parseCode } from "@/lib/ids";
+import type { PaymentMethod } from "@/lib/payments/methods";
+import type { TransferIdDigits } from "@/lib/payments/transfer";
 
 // Merchant (加盟店) domain vocabulary. Stored as strings (SQLite has no
 // enums); narrowed at the boundary with the guards below.
@@ -44,14 +46,16 @@ export interface MerchantInput {
   emailNotification: EmailNotification;
   /** Referring agent id, or null. */
   agentId: string | null;
+  /** Payment methods the merchant may offer at checkout (e.g. ["credit","qr"]). */
+  enabledMethods: PaymentMethod[];
+  /** Length of the bank-transfer ids issued to this merchant's customers. */
+  transferIdDigits: TransferIdDigits;
 }
 
 /** What the UI receives — never includes the password. */
 export interface MerchantView extends MerchantInput {
   id: string;
   merchantCode: string;
-  /** Payment categories approved through PaymentApplication (e.g. ["credit","qr"]). */
-  enabledMethods: string[];
   agent: { id: string; agentCode: string; name: string } | null;
   createdAt: Date;
   updatedAt: Date;
@@ -65,10 +69,17 @@ export interface AgentOption {
   status: string;
 }
 
-export function parseEnabledMethods(json: string): string[] {
+export function parseEnabledMethods(json: string): PaymentMethod[] {
   try {
-    const v = JSON.parse(json);
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+    const v: unknown = JSON.parse(json);
+    if (!Array.isArray(v)) return [];
+    const out: PaymentMethod[] = [];
+    for (const x of v) {
+      if (typeof x === "string" && (["credit", "qr", "convenience", "bank", "other"] as const).some((m) => m === x)) {
+        out.push(x as PaymentMethod);
+      }
+    }
+    return out;
   } catch {
     return [];
   }

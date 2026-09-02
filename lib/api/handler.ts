@@ -4,13 +4,16 @@
 //   failure: { ok: false, error: { code, message, details? } }
 //
 // Route handlers throw ApiError (or let Zod / Prisma / crypto errors bubble)
-// and withApiHandler turns them into localized JSON responses.
+// and withApiHandler turns them into localized JSON responses. It also
+// applies the admin IP block list (lib/ip-restrictions/enforce.ts) unless the
+// route opts out because it is not admin traffic (webhooks, demo endpoints).
 
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
 import { DecryptionError, EncryptionKeyError } from "@/lib/crypto";
 import { langFromRequest, type Lang, type MessageParams } from "@/lib/i18n";
+import { checkAdminAccess } from "@/lib/ip-restrictions/enforce";
 import { failBody, type ApiFail, type ApiOk, type ErrorKey } from "./envelope";
 
 export type { ApiFail, ApiOk, ApiResult } from "./envelope";
@@ -45,14 +48,30 @@ export function fail(
 
 type Handler<Ctx> = (req: Request, ctx: Ctx) => Promise<Response> | Response;
 
+export interface HandlerOptions {
+  /**
+   * Apply the admin IP block list (default true). Set false for endpoints
+   * that are called by third parties — PSP webhooks, the bank deposit
+   * notification, the cron reset — which authenticate on their own.
+   */
+  ipRestricted?: boolean;
+}
+
 /**
  * Wrap a Route Handler so every thrown error becomes a consistent, localized
  * JSON failure envelope instead of a text/plain 500.
  */
-export function withApiHandler<Ctx = unknown>(handler: Handler<Ctx>): Handler<Ctx> {
+export function withApiHandler<Ctx = unknown>(handler: Handler<Ctx>, options: HandlerOptions = {}): Handler<Ctx> {
+  const ipRestricted = options.ipRestricted ?? true;
   return async (req, ctx) => {
     const lang = langFromRequest(req);
     try {
+      if (ipRestricted) {
+        const access = await checkAdminAccess((n) => req.headers.get(n));
+        if (access.blocked) {
+          throw new ApiError(403, "ip_blocked", "errors.ipBlocked", { ip: access.ip ?? "" });
+        }
+      }
       return await handler(req, ctx);
     } catch (err) {
       return errorToResponse(err, lang);

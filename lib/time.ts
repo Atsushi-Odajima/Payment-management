@@ -29,6 +29,29 @@ export function startOfDayInTz(now: Date, tz: string = BUSINESS_TZ): Date {
   return new Date(utcMidnight - offsetMs);
 }
 
+/**
+ * Parse a "YYYY-MM-DD" string (from a date input / query) as local midnight
+ * in the business time zone. Returns null for anything else.
+ */
+export function parseDateInTz(value: string | undefined | null, tz: string = BUSINESS_TZ): Date | null {
+  if (!value) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const utcMidnight = Date.UTC(y, mo - 1, d, 0, 0, 0, 0);
+  const probe = new Date(utcMidnight);
+  if (probe.getUTCMonth() !== mo - 1) return null; // e.g. 2026-02-31
+  return new Date(utcMidnight - tzOffsetMs(probe, tz));
+}
+
+/** Exclusive upper bound for a "to" date: the start of the following day. */
+export function nextDayInTz(day: Date): Date {
+  return new Date(day.getTime() + 24 * 60 * 60 * 1000);
+}
+
 /** Offset of `tz` from UTC at `date`, in milliseconds (JST → +9h). */
 export function tzOffsetMs(date: Date, tz: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {

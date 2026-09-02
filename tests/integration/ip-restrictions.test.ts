@@ -26,8 +26,9 @@ beforeEach(async () => {
 describe("IP restrictions API", () => {
   it("lists seeded rules", async () => {
     const { body } = await read(await listRules(new Request(BASE + "/api/ip-restrictions"), {}));
-    expect(body.data.rules).toHaveLength(3);
-    expect(body.data.rules.filter((r: { target: string }) => r.target === "admin")).toHaveLength(2);
+    expect(body.data.rules).toHaveLength(4);
+    expect(body.data.rules.filter((r: { target: string }) => r.target === "admin")).toHaveLength(3);
+    expect(body.data.rules.filter((r: { mode: string }) => r.mode === "deny")).toHaveLength(1);
   });
 
   it("normalizes CIDR host bits and drops the merchant for admin rules", async () => {
@@ -68,6 +69,6 @@ describe("IP restrictions API", () => {
     const gone = await read(await getRule(new Request(BASE + "/x"), ctx(SEED_IDS.ip3)));
     expect(gone.status).toBe(404);
     const { body } = await read(await listRules(new Request(BASE + "/api/ip-restrictions"), {}));
-    expect(body.data.rules).toHaveLength(2);
+    expect(body.data.rules).toHaveLength(3);
   });
 });

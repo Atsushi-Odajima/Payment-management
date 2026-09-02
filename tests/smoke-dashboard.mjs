@@ -42,7 +42,8 @@ check(
   ["/merchants", "/agents", "/payments", "/applications", "/ip-restrictions", "/manual"].every((h) => cardHrefs.includes(h)),
   cardHrefs.join(","),
 );
-check("pending badge on applications card", (await page.getByText("2 pending").count()) === 1);
+check("overdue badge on applications card", (await page.getByText("1 overdue").count()) === 1);
+check("applications card counts open transactions", (await page.getByText("3 open").count()) === 1);
 check("no payment table on the top page", (await page.locator("main table").count()) === 0);
 check("sidebar has Agents", await page.getByRole("link", { name: "Agents", exact: true }).first().isVisible());
 check("sidebar has IP Restrictions", await page.getByRole("link", { name: "IP Restrictions", exact: true }).first().isVisible());
@@ -71,42 +72,65 @@ await page.goto(BASE + "/merchants/new", { waitUntil: "networkidle" });
 const agentSelect = page.getByLabel(/^Referring agent/).first();
 check("merchant form has an agent select with 2 agents", (await agentSelect.locator("option").count()) === 3);
 
-// Applications
+// Applications (transactions not completed yet)
 await page.goto(BASE + "/applications", { waitUntil: "networkidle" });
 const appRows = page.locator("tbody tr");
-check("applications list shows 4 rows", (await appRows.count()) === 4);
-const firstTwo = [await appRows.nth(0).textContent(), await appRows.nth(1).textContent()];
-check("pending applications listed first", firstTwo.every((t) => t.includes("Pending")));
+check("applications list shows the 4 open / failed transactions", (await appRows.count()) === 4);
+const firstRow = await appRows.nth(0).textContent();
+check("overdue transfer listed first, in red", firstRow.includes("ORD-DEMO-005") && firstRow.includes("Overdue") && (await appRows.nth(0).getAttribute("class")).includes("bg-rose-50"));
+check("next awaiting transfer second", (await appRows.nth(1).textContent()).includes("ORD-DEMO-004"));
+check("completed transactions are not listed", !(await page.textContent("body")).includes("ORD-DEMO-001"));
 await page.screenshot({ path: `${OUT}/applications-en.png` });
-await appRows.first().click();
+// Filter by method
+await page.selectOption("select:near(:text('Payment method'))", "bank");
+await page.waitForURL(/method=bank/);
+await page.waitForTimeout(400);
+check("method filter → 2 bank transfers", (await page.locator("tbody tr").count()) === 2);
+await page.goto(BASE + "/applications", { waitUntil: "networkidle" });
+await page.locator("tbody tr").nth(1).getByRole("link").first().click();
 await page.waitForURL(/\/applications\/[a-z0-9_]+$/);
-check("general role sees no Approve button", (await page.getByRole("button", { name: "Approve" }).count()) === 0);
+check("detail shows transfer ID and history", (await page.textContent("body")).includes("48213907") && (await page.getByText("Status history").count()) === 1);
+check("general role: reconcile disabled", await page.getByRole("button", { name: "Reconcile deposit" }).isDisabled());
 await page.getByRole("button", { name: "Master" }).click();
 await page.waitForTimeout(600);
-check("master role sees Approve / Reject / Return", (await page.getByRole("button", { name: "Approve" }).count()) === 1 && (await page.getByRole("button", { name: "Return" }).count()) === 1);
-// Reject requires a reason: confirm button disabled until typed
-await page.getByRole("button", { name: "Reject" }).click();
+check("master role: reconcile enabled", await page.getByRole("button", { name: "Reconcile deposit" }).isEnabled());
+// Short deposit → still awaiting with the short flag
+await page.getByRole("button", { name: "Reconcile deposit" }).click();
 const dialog = page.locator("dialog[open]");
 await dialog.waitFor();
-const confirmBtn = dialog.getByRole("button", { name: "Reject" });
-check("reject: confirm disabled without a reason", await confirmBtn.isDisabled());
-await dialog.getByLabel(/^Reason/).fill("Documents incomplete");
-check("reject: confirm enabled with a reason", await confirmBtn.isEnabled());
-await dialog.getByRole("button", { name: "Cancel" }).click();
-await page.waitForTimeout(200);
-// Approve
-await page.getByRole("button", { name: "Approve" }).click();
-await page.locator("dialog[open]").getByRole("button", { name: "Approve" }).click();
-await page.getByText("Application approved").waitFor({ timeout: 8000 });
+check("deposit dialog defaults to the outstanding amount", (await page.inputValue("#deposit-amount")) === "24800");
+await page.fill("#deposit-amount", "10000");
+await dialog.getByRole("button", { name: "Reconcile deposit" }).click();
+await page.getByText("deposit is short").waitFor({ timeout: 8000 });
 await page.waitForTimeout(500);
-check("approve → status Approved, actions gone", (await page.getByText("Approved").count()) >= 1 && (await page.getByRole("button", { name: "Approve" }).count()) === 0);
+check("short deposit → Awaiting transfer + Short flag", (await page.locator(".badge").allTextContents()).includes("Awaiting transfer") && (await page.textContent("body")).includes("Short"));
+// Balance → completed
+await page.getByRole("button", { name: "Reconcile deposit" }).click();
+await page.locator("dialog[open]").waitFor();
+check("second deposit defaults to the remaining 14800", (await page.inputValue("#deposit-amount")) === "14800");
+await page.locator("dialog[open]").getByRole("button", { name: "Reconcile deposit" }).click();
+await page.getByText("transaction is completed").waitFor({ timeout: 8000 });
+await page.waitForTimeout(500);
+check("exact balance → Completed, refund now offered", (await page.locator(".badge").allTextContents()).includes("Completed") && (await page.getByRole("button", { name: "Refund" }).isEnabled()));
 await page.screenshot({ path: `${OUT}/application-detail-en.png` });
+// Expire the overdue one
+await page.goto(BASE + "/applications", { waitUntil: "networkidle" });
+await page.locator("tbody tr").nth(0).getByRole("link").first().click();
+await page.waitForURL(/\/applications\/[a-z0-9_]+$/);
+await page.getByRole("button", { name: "Mark expired" }).click();
+await page.locator("dialog[open]").getByRole("button", { name: "Mark expired" }).click();
+await page.getByText("marked as expired").waitFor({ timeout: 8000 });
+await page.waitForTimeout(400);
+check("overdue transfer → Expired", (await page.locator(".badge").allTextContents()).includes("Expired"));
 await page.goto(BASE + "/", { waitUntil: "networkidle" });
-check("dashboard badge drops to 1 pending", (await page.getByText("1 pending").count()) === 1);
+check("dashboard: no overdue badge, 1 open", (await page.getByText("1 overdue").count()) === 0 && (await page.getByText("1 open").count()) === 1);
+await page.goto(BASE + "/payments", { waitUntil: "networkidle" });
+check("completed transfer now in the payments list", (await page.textContent("body")).includes("ORD-DEMO-004"));
 
 // IP restrictions: current IP verdict + list
 await page.goto(BASE + "/ip-restrictions", { waitUntil: "networkidle" });
-check("ip list shows 3 seeded rules", (await page.locator("tbody tr").count()) === 3);
+check("ip list shows 4 seeded rules", (await page.locator("tbody tr").count()) === 4);
+check("block rule shown with Block badge", (await page.locator("tbody tr", { hasText: "203.0.113.200" }).textContent()).includes("Block"));
 check("current IP shown", (await page.getByText("198.51.100.42").count()) >= 1);
 check("current IP is on the allow-list (198.51.100.0/24)", (await page.getByText("On the allow-list").count()) === 1);
 await page.screenshot({ path: `${OUT}/ip-restrictions-en.png` });
@@ -115,17 +139,35 @@ await page.getByLabel(/^IP address \/ CIDR/).fill("10.20.30.40/24");
 await page.waitForTimeout(150);
 check("cidr live-normalizes host bits", (await page.getByText("Normalized: 10.20.30.0/24").count()) === 1);
 await page.getByLabel(/^Label/).fill("Smoke office");
+// Blocking our own address (198.51.100.42 ∈ 198.51.100.0/24) is refused
+await page.fill("input.font-mono", "198.51.100.0/24");
+await page.getByRole("button", { name: "Add rule" }).click();
+await page.waitForSelector("p[role=alert]");
+check("self-block refused with inline error", (await page.locator("p[role=alert]").first().textContent()).includes("own current IP"));
+await page.fill("input.font-mono", "10.20.30.40/24");
 await page.getByRole("button", { name: "Add rule" }).click();
 await page.waitForURL(BASE + "/ip-restrictions", { timeout: 10000 });
 await page.waitForTimeout(300);
-check("rule added → 4 rows", (await page.locator("tbody tr").count()) === 4);
+check("rule added → 5 rows", (await page.locator("tbody tr").count()) === 5);
+// A caller inside the blocked range gets the blocked screen and a 403 from the API
+{
+  const blockedCtx = await browser.newContext({ locale: "en-US", extraHTTPHeaders: { "x-forwarded-for": "10.20.30.7" } });
+  const bp = await blockedCtx.newPage();
+  const resp = await bp.goto(BASE + "/merchants", { waitUntil: "networkidle" });
+  check("blocked IP sees the blocked screen", (await bp.textContent("body")).includes("Access blocked") && (await bp.locator("nav").count()) === 0, String(resp?.status()));
+  const api = await bp.request.get(BASE + "/api/agents");
+  check("blocked IP gets 403 from the API", api.status() === 403);
+  const ok = await (await browser.newContext({ extraHTTPHeaders: { "x-forwarded-for": "10.21.0.1" } })).request.get(BASE + "/api/agents");
+  check("IP outside the range still allowed", ok.status() === 200);
+  await blockedCtx.close();
+}
 // Delete it again via the confirm dialog
 const smokeRow = page.locator("tbody tr", { hasText: "Smoke office" });
 await smokeRow.getByRole("button", { name: "Delete" }).click();
 await page.locator("dialog[open]").getByRole("button", { name: "Delete" }).click();
 await page.getByText("Rule deleted.").waitFor({ timeout: 8000 });
 await page.waitForTimeout(300);
-check("rule deleted → 3 rows", (await page.locator("tbody tr").count()) === 3);
+check("rule deleted → 4 rows", (await page.locator("tbody tr").count()) === 4);
 
 // Manual
 await page.goto(BASE + "/manual", { waitUntil: "networkidle" });

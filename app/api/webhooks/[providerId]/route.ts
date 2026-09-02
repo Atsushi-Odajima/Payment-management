@@ -112,4 +112,6 @@ export const POST = withApiHandler<{ params: { providerId: string } }>(
       throw err;
     }
   },
+  // PSP callbacks are not admin traffic; the admin IP block list does not apply.
+  { ipRestricted: false },
 );
