@@ -6,6 +6,7 @@
 
 import type { PrismaClient } from "@prisma/client";
 import { buildCredentialStore } from "../lib/providers/credentials";
+import { encryptMerchantPassword } from "../lib/merchants/secrets";
 
 export const SEED_IDS = {
   stripeProvider: "prov_stripe_demo",
@@ -13,6 +14,16 @@ export const SEED_IDS = {
   payment1: "pay_demo_001",
   payment2: "pay_demo_002",
   payment3: "pay_demo_003",
+  merchant1: "mer_demo_001",
+  merchant2: "mer_demo_002",
+  merchant3: "mer_demo_003",
+} as const;
+
+/** Demo merchant passwords (fixed so the master-role reveal is reproducible). */
+export const SEED_MERCHANT_PASSWORDS = {
+  [SEED_IDS.merchant1]: "Kotori2026Demo",
+  [SEED_IDS.merchant2]: "Sakura2026Demo",
+  [SEED_IDS.merchant3]: "Tsukiji2026Demo",
 } as const;
 
 export interface SeedOptions {
@@ -147,11 +158,74 @@ export async function seed(
     });
   }
 
+  const merchants = [
+    {
+      id: SEED_IDS.merchant1,
+      merchantCode: "MER-00001",
+      siteName: "ハンドメイド雑貨 コトリ",
+      siteNameKana: "ハンドメイドザッカ コトリ",
+      companyName: "株式会社コトリ",
+      contactName: "小鳥 遊",
+      email: "info@kotori.example.jp",
+      statementEmail: "billing@kotori.example.jp",
+      notifyUrl: "https://kotori.example.jp/wirepay/notify",
+      notifyFormat: "json_post",
+      notifyParamSet: "standard",
+      notifyIdFormat: "payment_id",
+      emailNotification: "per_payment",
+      createdAt: hoursAgo(24 * 40),
+    },
+    {
+      id: SEED_IDS.merchant2,
+      merchantCode: "MER-00002",
+      siteName: "サクラ茶舗 オンラインストア",
+      siteNameKana: "サクラチャホ オンラインストア",
+      companyName: "有限会社桜茶舗",
+      contactName: "佐倉 花",
+      email: "shop@sakura-cha.example.jp",
+      statementEmail: "shop@sakura-cha.example.jp",
+      notifyUrl: "https://sakura-cha.example.jp/api/payment/callback",
+      notifyFormat: "form_post",
+      notifyParamSet: "full",
+      notifyIdFormat: "both",
+      emailNotification: "daily",
+      createdAt: hoursAgo(24 * 12),
+    },
+    {
+      id: SEED_IDS.merchant3,
+      merchantCode: "MER-00003",
+      siteName: "築地まぐろ直送便",
+      siteNameKana: "ツキジマグロチョクソウビン",
+      companyName: "築地水産株式会社",
+      contactName: "築地 太郎",
+      email: "order@tsukiji-maguro.example.jp",
+      statementEmail: "accounting@tsukiji-maguro.example.jp",
+      notifyUrl: "https://tsukiji-maguro.example.jp/notify",
+      notifyFormat: "query_get",
+      notifyParamSet: "minimal",
+      notifyIdFormat: "transaction_id",
+      emailNotification: "none",
+      createdAt: hoursAgo(24 * 2),
+    },
+  ] as const;
+
+  for (const m of merchants) {
+    await prisma.merchant.upsert({
+      where: { id: m.id },
+      update: {},
+      create: {
+        ...m,
+        passwordEnc: encryptMerchantPassword(SEED_MERCHANT_PASSWORDS[m.id]),
+      },
+    });
+  }
+
   return { skipped: false };
 }
 
 /** Remove all demo data (used by the demo reset endpoint and tests). */
 export async function truncateAll(prisma: PrismaClient): Promise<void> {
+  await prisma.merchant.deleteMany();
   await prisma.webhookEvent.deleteMany();
   await prisma.paymentEvent.deleteMany();
   await prisma.refund.deleteMany();
