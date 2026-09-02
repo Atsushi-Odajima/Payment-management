@@ -37,7 +37,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 2. <https://vercel.com/new> → GitHub からこのリポジトリをインポート（`main` ブランチ）
 3. Environment Variables に上表の値を設定（最低 `DATABASE_URL`, `ENCRYPTION_KEY`。公開デモなら `ADMIN_PASSWORD`, `DEMO_LOGIN_HINT`, `DEMO_READONLY=1`, `CRON_SECRET` も）
 4. Deploy。`vercel.json` の buildCommand が以下を順に実行します:
-   `prepare-prisma → prisma generate → prisma db push → next build → seed（空DBのときだけ投入）`
+   `prepare-prisma → prisma generate → prisma db push → next build → seed（テーブル単位の upsert。既存 DB でも新テーブルのサンプルだけが追加され、何度実行しても件数は増えない）`
 5. **Preview デプロイ用に Neon の Branch を別 DB として割り当てる**ことを推奨（Preview と Production が同じ DB を共有しないように）
 
 `ENCRYPTION_KEY` を変更すると既存の暗号化済み認証情報は復号できなくなり、編集画面で「再入力が必要」と表示されます（500 にはなりません）。

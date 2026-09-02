@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { MerchantsView } from "@/components/views/merchants-view";
 import { isEmailNotification } from "@/lib/merchants/types";
-import { DEFAULT_PAGE_SIZE, parsePage } from "@/components/pagination";
+import { DEFAULT_PAGE_SIZE, parsePage } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
