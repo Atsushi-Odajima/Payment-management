@@ -567,6 +567,22 @@ export const ja = {
       invalid: "入力内容が正しくありません。",
     },
   },
+  manual: {
+    title: "管理画面マニュアル",
+    description: "各機能の使い方と、加盟店へ送信する通知パラメータの仕様です。表示言語に合わせて切り替わります。",
+    toc: "目次",
+    chapterLabel: "第 {n} 章 / 全 {total} 章",
+    chapters: {
+      intro: "はじめに",
+      dashboard: "ダッシュボード",
+      merchants: "加盟店管理",
+      agents: "代理店管理",
+      payments: "決済一覧",
+      applications: "決済申請一覧",
+      "ip-restrictions": "IP制限管理",
+      "notification-spec": "通知パラメータ仕様",
+    },
+  },
   auth: {
     title: "ログイン",
     description: "決済の作成・操作やプロバイダの変更にはログインが必要です。閲覧はログインなしで可能です。",

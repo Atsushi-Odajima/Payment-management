@@ -569,6 +569,22 @@ export const en: MessageShape<typeof ja> = {
       invalid: "Invalid value.",
     },
   },
+  manual: {
+    title: "Admin Manual",
+    description: "How each feature works, and the specification of the notification sent to merchants. Follows the UI language.",
+    toc: "Contents",
+    chapterLabel: "Chapter {n} of {total}",
+    chapters: {
+      intro: "Introduction",
+      dashboard: "Dashboard",
+      merchants: "Merchants",
+      agents: "Agents",
+      payments: "Payments",
+      applications: "Payment Applications",
+      "ip-restrictions": "IP Restrictions",
+      "notification-spec": "Notification Spec",
+    },
+  },
   auth: {
     title: "Log in",
     description:
