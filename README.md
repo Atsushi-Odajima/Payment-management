@@ -20,6 +20,10 @@
   <img src="docs/screenshots/payment-detail-en.png" alt="決済詳細: イベント履歴・一部返金・Webhookシミュレート" width="66%">
   <img src="docs/screenshots/mobile-payments.png" alt="スマホ表示（下部タブバー）" width="24%">
 </p>
+<p align="center">
+  <img src="docs/screenshots/merchant-form-preview-en.png" alt="加盟店追加フォーム: 通知設定に応じたリクエストのリアルタイムプレビュー" width="49%">
+  <img src="docs/screenshots/merchant-detail-en.png" alt="加盟店詳細: マスター権限でのパスワード表示・再発行" width="49%">
+</p>
 
 ## 主な機能
 
@@ -33,6 +37,7 @@
 - **日本語 / 英語** — ヘッダーの「EN / 日本語」トグル。cookie + localStorage に保存し、SSR から正しい言語で描画。APIのエラー文言も翻訳。通貨は JPY 固定、時刻は Asia/Tokyo 固定
 - **テスト / 本番モード** — プロバイダのモードを決済に `livemode` としてスナップショット。ダッシュボードと一覧で切替表示
 - **モバイル対応** — 下部タブバー、横スクロールするテーブル、`<dialog>` ベースの確認ダイアログ、loading / error / not-found の各ページ
+- **加盟店管理（PSP 視点）** — 加盟店アカウントの発行（`MER-00001` 自動採番・パスワード自動生成/暗号化保存）、サイト名ふりがな（カタカナ）/ メール / https の検証、通知設定（型 × パラメータセット × 識別子）に応じて **実際に送信されるリクエストをリアルタイムでプレビュー**、閲覧 → 編集 → 更新のモード切替、マスター権限のみパスワード表示・再発行（権限は cookie を API 側で検査）
 
 ## アーキテクチャ
 
@@ -99,7 +104,7 @@ stateDiagram-v2
 - Tailwind CSS
 - Prisma 5 + SQLite（ローカル / Docker）、Postgres（Vercel + Neon）
 - Zod（リクエスト検証。プロバイダの認証情報スキーマは registry から動的生成）
-- Vitest（ユニット + Route Handler 統合テスト、90 ケース）
+- Vitest（ユニット + Route Handler 統合テスト、110 ケース超）
 - GitHub Actions CI（lint → typecheck → i18n 検査 → test → build → audit）、Dependabot
 
 ## ローカル開発
@@ -129,6 +134,7 @@ npm test         # Vitest のみ（SQLite の test.db を自動作成）
 app/
   page.tsx                   ダッシュボード（純売上・本日の売上・テスト/本番切替）
   payments/                  決済一覧 / 作成 / 詳細（イベント履歴・返金・Webhookシミュレート）
+  merchants/                 加盟店一覧 / 追加 / 詳細・編集（通知サンプルのプレビュー付き）
   providers/                 プロバイダ一覧 / 新規接続（カテゴリ→サービス→フォーム）/ 編集
   login/                     管理者ログイン
   loading.tsx error.tsx not-found.tsx
@@ -136,6 +142,7 @@ app/
     payments/                POST（冪等キー）, [id]/[action]（capture|cancel|refund）, simulate-webhook
     providers/               CRUD + 接続テスト（credentials は返さない）
     webhooks/[providerId]/   HMAC 署名検証 + 重複排除 → 状態遷移
+    merchants/               加盟店 CRUD + パスワード表示/再発行（マスター権限のみ）
     auth/                    login / logout（署名付き Cookie）
     demo/reset/              CRON_SECRET で保護されたデモ初期化
 middleware.ts                rate limit · CSRF · DEMO_READONLY · セッション
@@ -146,6 +153,7 @@ components/
   language-provider.tsx      言語 Context・useT・useApiJson
 lib/
   payments/                  transitions.ts（状態遷移表）, actions.ts（アトミック適用 + 監査ログ）
+  merchants/                 types / schema（Zod）/ ids（採番）/ secrets（PW）/ notification（通知サンプル）
   providers/                 registry（定義）, credentials（暗号化 I/O）, validation（Zod 生成）, connection
   webhooks/                  verify.ts（署名）, events.ts（イベント語彙）
   api/                       handler.ts（レスポンス統一・エラー変換）, envelope.ts
@@ -172,6 +180,7 @@ tests/integration/           Route Handler の統合テスト
 - [x] 暗号鍵の fail-closed と復号失敗時の UI
 - [x] JA/EN i18n（型同期）・Asia/Tokyo 固定・cookie による SSR 言語決定
 - [x] Vitest 90 ケース + GitHub Actions CI
+- [x] 加盟店管理（発行・編集・通知仕様プレビュー・権限別パスワード表示）
 - [ ] Postgres 専用 migration 履歴への一本化（現在 Vercel は `db push`）
 - [ ] Next.js 15 へのアップグレード（`params` / `searchParams` の await 化）
 - [ ] レートリミットを Upstash Redis に（現在はインスタンス内メモリ）
@@ -216,6 +225,7 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 - **Japanese / English** — an EN / 日本語 toggle in the header. Stored in a cookie + localStorage so SSR already renders the right language; API error messages are localized too. Currency stays JPY; times are Asia/Tokyo.
 - **Test / live mode** — each payment snapshots the provider's mode as `livemode`; dashboard and list can filter on it.
 - **Mobile** — bottom tab bar, horizontally scrolling tables, `<dialog>`-based confirmations, loading / error / not-found routes.
+- **Merchant management (PSP side)** — issue merchant accounts (auto-numbered `MER-00001`, generated + encrypted password), katakana / email / https validation, and notification settings (format × parameter set × identifier) with a **live preview of the exact request the merchant will receive**; read → edit → update mode switch; only the master role can reveal or regenerate the password (the role is enforced server-side from a cookie).
 
 ## Architecture
 
