@@ -17,6 +17,9 @@ import {
  */
 export const KATAKANA_RE = /^[\u30A1-\u30FA\u30FC\u3000 ]+$/u;
 
+/** Example katakana value shown as the placeholder in both languages (the field itself is katakana-only). */
+export const KANA_PLACEHOLDER = "\u30EF\u30A4\u30E4\u30FC\u30DA\u30A4 \u30B7\u30E7\u30C3\u30D7";
+
 const HTTPS_RE = /^https:\/\/[^\s/$.?#].[^\s]*$/i;
 
 const text = (max: number) => z.string().trim().min(1, "required").max(max, "tooLong");
