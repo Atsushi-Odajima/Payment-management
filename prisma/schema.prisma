@@ -114,6 +114,36 @@ model PaymentEvent {
   @@index([paymentId, createdAt])
 }
 
+// Merchant (加盟店) accounts managed by the PSP operator. The merchant password
+// is encrypted with the same AES-GCM key as provider credentials and is only
+// revealed to the "master" role (see lib/role.ts).
+model Merchant {
+  id                String   @id @default(cuid())
+  // Auto-numbered public identifier, MER-00001 …
+  merchantCode      String   @unique
+  passwordEnc       String
+  siteName          String
+  siteNameKana      String
+  companyName       String
+  contactName       String
+  email             String
+  statementEmail    String
+  // HTTPS endpoint that receives payment-result notifications (webhooks).
+  notifyUrl         String
+  // json_post | form_post | query_get      (lib/merchants/types.ts)
+  notifyFormat      String   @default("json_post")
+  // minimal | standard | full
+  notifyParamSet    String   @default("standard")
+  // payment_id | transaction_id | both
+  notifyIdFormat    String   @default("payment_id")
+  // per_payment | daily | none
+  emailNotification String   @default("per_payment")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
 // Inbound provider notifications, deduplicated on (provider, external event id).
 model WebhookEvent {
   id              String    @id @default(cuid())
