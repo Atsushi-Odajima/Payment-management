@@ -29,6 +29,7 @@ export function ProvidersView({ providers }: { providers: ProviderListItem[] }) 
       <PageHeader
         title={t("providers.title")}
         description={t("providers.description")}
+        helpHref="/manual/dashboard"
         actions={
           <Link href="/providers/new" className="btn-primary">
             {t("providers.newConnection")}
