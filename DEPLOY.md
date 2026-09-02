@@ -42,6 +42,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
    **`--accept-data-loss` を付ける理由**: `db push` は非対話環境では「一意制約の追加」「テーブル削除」などの *警告* があるだけでエラー終了する。デモ DB はダミーデータで毎日リセットされるため受け入れている。実データを持つ本番 DB に使う場合はこのフラグを外し、`prisma migrate deploy`（migration 履歴）に切り替えること。
    入金通知 API（`/api/demo/deposit-notify`）を本番で使う場合は `DEPOSIT_NOTIFY_SECRET` を設定する（未設定なら本番では 404）。
 5. **Preview デプロイ用に Neon の Branch を別 DB として割り当てる**ことを推奨（Preview と Production が同じ DB を共有しないように）
+6. **push してもデプロイが作られないとき**: Vercel の Settings → Git → **Require Verified Commits** が有効（チーム設定から継承）だと、署名のないコミット（手元や外部環境からの `git push`。GitHub 上で「Verified」バッジが付かないもの）は **エラーにならず静かにデプロイ対象から外れます**。この設定を「Not required」にするか、GitHub の Web UI / API 経由（自動署名される）でコミットするか、Settings → Git の **Deploy Hooks** で `main` を手動デプロイしてください。
 
 `ENCRYPTION_KEY` を変更すると既存の暗号化済み認証情報は復号できなくなり、編集画面で「再入力が必要」と表示されます（500 にはなりません）。
 
