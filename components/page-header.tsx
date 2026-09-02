@@ -2,17 +2,21 @@
 
 import Link from "next/link";
 import { useT } from "./language-provider";
+import { Icon } from "./icons";
 
 export function PageHeader({
   title,
   description,
   breadcrumbs,
   actions,
+  helpHref,
 }: {
   title: string;
   description?: string;
   breadcrumbs?: { label: string; href?: string }[];
   actions?: React.ReactNode;
+  /** Link to the matching manual chapter, rendered as a "?" icon next to the title. */
+  helpHref?: string;
 }) {
   const t = useT();
   return (
@@ -42,7 +46,19 @@ export function PageHeader({
       )}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-slate-900">
+            {title}
+            {helpHref && (
+              <Link
+                href={helpHref}
+                aria-label={t("nav.help")}
+                title={t("nav.help")}
+                className="grid h-7 w-7 place-items-center rounded-full text-slate-400 transition hover:bg-brand-50 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+              >
+                <Icon name="help" className="h-5 w-5" />
+              </Link>
+            )}
+          </h1>
           {description && <p className="mt-1 text-sm text-slate-600">{description}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
