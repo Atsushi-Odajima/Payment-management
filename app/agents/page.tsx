@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { AgentsView } from "@/components/views/agents-view";
-import { DEFAULT_PAGE_SIZE, parsePage } from "@/components/pagination";
+import { DEFAULT_PAGE_SIZE, parsePage } from "@/lib/pagination";
 import { isAgentStatus } from "@/lib/agents/types";
 
 export const dynamic = "force-dynamic";

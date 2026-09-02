@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApplicationsView } from "@/components/views/applications-view";
-import { DEFAULT_PAGE_SIZE, parsePage } from "@/components/pagination";
+import { DEFAULT_PAGE_SIZE, parsePage } from "@/lib/pagination";
 import { APPLICATION_SELECT } from "@/app/api/applications/select";
 import { toApplicationView } from "@/lib/applications/serialize";
 import { isApplicationStatus } from "@/lib/applications/types";

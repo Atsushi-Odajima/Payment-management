@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { IpRestrictionsView } from "@/components/views/ip-restrictions-view";
-import { DEFAULT_PAGE_SIZE, parsePage } from "@/components/pagination";
+import { DEFAULT_PAGE_SIZE, parsePage } from "@/lib/pagination";
 import { IP_RESTRICTION_SELECT } from "@/app/api/ip-restrictions/select";
 import { isIpTarget } from "@/lib/ip-restrictions/types";
 import { clientIpFromHeaders, evaluateAllowList } from "@/lib/ip";

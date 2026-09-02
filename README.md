@@ -24,6 +24,14 @@
   <img src="docs/screenshots/merchant-form-preview-en.png" alt="加盟店追加フォーム: 通知設定に応じたリクエストのリアルタイムプレビュー" width="49%">
   <img src="docs/screenshots/merchant-detail-en.png" alt="加盟店詳細: マスター権限でのパスワード表示・再発行" width="49%">
 </p>
+<p align="center">
+  <img src="docs/screenshots/application-detail-en.png" alt="決済申請詳細: マスター権限での承認・否認・差戻し" width="49%">
+  <img src="docs/screenshots/ip-restrictions-en.png" alt="IP制限管理: 現在の接続元IPと許可リストの判定" width="49%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/manual-ja.png" alt="管理画面マニュアル（日本語）" width="49%">
+  <img src="docs/screenshots/manual-en.png" alt="Admin manual (English)" width="49%">
+</p>
 
 ## 主な機能
 
@@ -37,7 +45,12 @@
 - **日本語 / 英語** — ヘッダーの「EN / 日本語」トグル。cookie + localStorage に保存し、SSR から正しい言語で描画。APIのエラー文言も翻訳。通貨は JPY 固定、時刻は Asia/Tokyo 固定
 - **テスト / 本番モード** — プロバイダのモードを決済に `livemode` としてスナップショット。ダッシュボードと一覧で切替表示
 - **モバイル対応** — 下部タブバー、横スクロールするテーブル、`<dialog>` ベースの確認ダイアログ、loading / error / not-found の各ページ
-- **加盟店管理（PSP 視点）** — 加盟店アカウントの発行（`MER-00001` 自動採番・パスワード自動生成/暗号化保存）、サイト名ふりがな（カタカナ）/ メール / https の検証、通知設定（型 × パラメータセット × 識別子）に応じて **実際に送信されるリクエストをリアルタイムでプレビュー**、閲覧 → 編集 → 更新のモード切替、マスター権限のみパスワード表示・再発行（権限は cookie を API 側で検査）
+- **加盟店管理（PSP 視点）** — 加盟店アカウントの発行（`MER-00001` 自動採番・パスワード自動生成/暗号化保存）、サイト名ふりがな（カタカナ）/ メール / https の検証、通知設定（型 × パラメータセット × 識別子）に応じて **実際に送信されるリクエストをリアルタイムでプレビュー**、閲覧 → 編集 → 更新のモード切替、マスター権限のみパスワード表示・再発行（権限は cookie を API 側で検査）、担当代理店の紐付け
+- **ダッシュボード（6 カード）** — 加盟店 / 代理店 / 決済一覧（本日の件数・金額）/ 決済申請（審査中件数をバッジ表示）/ IP制限（有効ルール数）/ マニュアル。サイドバーも同じ 6 項目
+- **代理店管理** — `AGT-00001` 自動採番、手数料率（% 小数2桁）、有効/無効、詳細画面に担当加盟店の一覧
+- **決済申請一覧** — 加盟店からの決済手段利用申請（新規利用 / 決済手段追加 / 限度額変更 × クレジット / QR / コンビニ / 銀行振込）を状態・加盟店で絞り込み、審査中を先頭に表示。承認 / 否認 / 差戻しはマスター権限のみで、否認・差戻しは理由必須。承認すると同一トランザクションで加盟店の利用可能手段に追加され、審査済みの申請は 409 で二重審査を防ぐ
+- **IP制限管理** — 管理画面 / 加盟店API 向けの許可リスト（IPv4 単体または CIDR）。ホストビットを落として正規化、現在の接続元 IP と有効ルールに対する判定（許可 / 拒否 / ルールなし）を表示。実際の遮断は本番導入時に middleware に組み込む前提
+- **管理画面マニュアル** — 左に目次・右に本文の 8 章構成。`content/manual/{ja,en}/*.md` を自前の Markdown レンダラで描画し、表示言語に連動。各画面ヘッダーの「?」から該当章へ
 
 ## アーキテクチャ
 
@@ -104,7 +117,7 @@ stateDiagram-v2
 - Tailwind CSS
 - Prisma 5 + SQLite（ローカル / Docker）、Postgres（Vercel + Neon）
 - Zod（リクエスト検証。プロバイダの認証情報スキーマは registry から動的生成）
-- Vitest（ユニット + Route Handler 統合テスト、110 ケース超）
+- Vitest（ユニット + Route Handler 統合テスト、130 ケース超）
 - GitHub Actions CI（lint → typecheck → i18n 検査 → test → build → audit）、Dependabot
 
 ## ローカル開発
@@ -117,7 +130,8 @@ cp .env.example .env
 # （任意）ADMIN_PASSWORD を設定するとログインが有効になる
 
 npx prisma migrate deploy   # スキーマ適用
-npm run db:seed             # デモデータ（2 プロバイダ・3 決済）
+npm run db:seed             # デモデータ（プロバイダ・決済・加盟店・代理店・申請・IP ルール）。テーブル単位の upsert で何度実行しても増えない
+npm run db:reset            # 全削除 → seed（操作して汚れたデモ DB を初期状態に戻す）
 npm run dev                 # http://localhost:3000
 ```
 
@@ -132,9 +146,13 @@ npm test         # Vitest のみ（SQLite の test.db を自動作成）
 
 ```
 app/
-  page.tsx                   ダッシュボード（純売上・本日の売上・テスト/本番切替）
-  payments/                  決済一覧 / 作成 / 詳細（イベント履歴・返金・Webhookシミュレート）
-  merchants/                 加盟店一覧 / 追加 / 詳細・編集（通知サンプルのプレビュー付き）
+  page.tsx                   ダッシュボード（6 カード: 加盟店 / 代理店 / 決済 / 申請 / IP制限 / マニュアル）
+  payments/                  決済一覧（純売上・本日の売上・テスト/本番切替）/ 作成 / 詳細（イベント履歴・返金・Webhookシミュレート）
+  merchants/                 加盟店一覧 / 追加 / 詳細・編集（通知サンプルのプレビュー・担当代理店）
+  agents/                    代理店一覧 / 追加 / 詳細・編集（担当加盟店）
+  applications/              決済申請一覧（状態・加盟店で絞り込み）/ 詳細（承認・否認・差戻し）
+  ip-restrictions/           IP制限一覧（現在IPの判定）/ 追加 / 編集
+  manual/[chapter]/          管理画面マニュアル（content/manual/{ja,en}/*.md）
   providers/                 プロバイダ一覧 / 新規接続（カテゴリ→サービス→フォーム）/ 編集
   login/                     管理者ログイン
   loading.tsx error.tsx not-found.tsx
@@ -143,6 +161,9 @@ app/
     providers/               CRUD + 接続テスト（credentials は返さない）
     webhooks/[providerId]/   HMAC 署名検証 + 重複排除 → 状態遷移
     merchants/               加盟店 CRUD + パスワード表示/再発行（マスター権限のみ）
+    agents/                  代理店 CRUD
+    applications/            一覧 + [id]/review（approve|reject|return、マスター権限のみ）
+    ip-restrictions/         許可ルール CRUD
     auth/                    login / logout（署名付き Cookie）
     demo/reset/              CRON_SECRET で保護されたデモ初期化
 middleware.ts                rate limit · CSRF · DEMO_READONLY · セッション
@@ -154,14 +175,19 @@ components/
 lib/
   payments/                  transitions.ts（状態遷移表）, actions.ts（アトミック適用 + 監査ログ）
   merchants/                 types / schema（Zod）/ ids（採番）/ secrets（PW）/ notification（通知サンプル）
+  agents/ applications/      代理店の語彙・Zod・採番 / 申請の語彙と review.ts（条件付き updateMany）
+  ip-restrictions/ ip.ts     ルールの Zod / IPv4・CIDR の純関数（parseCidr, ipInCidr, evaluateAllowList）
+  manual/                    chapters.ts（章の定義）, markdown.tsx（自前レンダラ）, load.ts
+  api/role-guard.ts          requireMaster（マスター限定 API の唯一の検査点）
   providers/                 registry（定義）, credentials（暗号化 I/O）, validation（Zod 生成）, connection
   webhooks/                  verify.ts（署名）, events.ts（イベント語彙）
   api/                       handler.ts（レスポンス統一・エラー変換）, envelope.ts
   i18n/                      型付き辞書 ja.ts / en.ts とコア
   auth.ts crypto.ts rate-limit.ts time.ts
 prisma/
-  schema.prisma migrations/  PaymentProvider · Payment · Refund · PaymentEvent · WebhookEvent
-  seed-data.ts               決定的な seed（固定ID・upsert）
+  schema.prisma migrations/  PaymentProvider · Payment · Refund · PaymentEvent · WebhookEvent · Merchant · Agent · PaymentApplication · IpRestriction
+  seed-data.ts               決定的な seed（固定ID・テーブル単位の upsert で冪等）
+content/manual/{ja,en}/      マニュアル本文（Markdown）
 scripts/
   check-i18n.mjs build-icons.mts prepare-prisma.mjs
 tests/integration/           Route Handler の統合テスト
@@ -179,7 +205,7 @@ tests/integration/           Route Handler の統合テスト
 - [x] 管理者ログイン・CSRF・レートリミット・セキュリティヘッダ
 - [x] 暗号鍵の fail-closed と復号失敗時の UI
 - [x] JA/EN i18n（型同期）・Asia/Tokyo 固定・cookie による SSR 言語決定
-- [x] Vitest 90 ケース + GitHub Actions CI
+- [x] Vitest 130 ケース超 + GitHub Actions CI
 - [x] 加盟店管理（発行・編集・通知仕様プレビュー・権限別パスワード表示）
 - [ ] Postgres 専用 migration 履歴への一本化（現在 Vercel は `db push`）
 - [ ] Next.js 15 へのアップグレード（`params` / `searchParams` の await 化）
@@ -225,7 +251,12 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 - **Japanese / English** — an EN / 日本語 toggle in the header. Stored in a cookie + localStorage so SSR already renders the right language; API error messages are localized too. Currency stays JPY; times are Asia/Tokyo.
 - **Test / live mode** — each payment snapshots the provider's mode as `livemode`; dashboard and list can filter on it.
 - **Mobile** — bottom tab bar, horizontally scrolling tables, `<dialog>`-based confirmations, loading / error / not-found routes.
-- **Merchant management (PSP side)** — issue merchant accounts (auto-numbered `MER-00001`, generated + encrypted password), katakana / email / https validation, and notification settings (format × parameter set × identifier) with a **live preview of the exact request the merchant will receive**; read → edit → update mode switch; only the master role can reveal or regenerate the password (the role is enforced server-side from a cookie).
+- **Merchant management (PSP side)** — issue merchant accounts (auto-numbered `MER-00001`, generated + encrypted password), katakana / email / https validation, and notification settings (format × parameter set × identifier) with a **live preview of the exact request the merchant will receive**; read → edit → update mode switch; only the master role can reveal or regenerate the password (the role is enforced server-side from a cookie); optional referring agent.
+- **Dashboard (6 cards)** — Merchants / Agents / Payments (today's count and amount) / Payment Applications (pending count as a badge) / IP Restrictions (active rules) / Manual. The sidebar mirrors the same six items.
+- **Agent management** — auto-numbered `AGT-00001`, fee rate (%, two decimals), active / inactive, and the merchants each agent refers on the detail page.
+- **Payment applications** — merchants' requests to use a payment method (new use / add method / limit change × credit / QR / konbini / bank transfer), filtered by status and merchant with pending first. Approve / reject / return are master-only; reject and return require a reason. Approval appends the method to the merchant's enabled methods in the same transaction, and an already-reviewed application answers 409.
+- **IP restrictions** — allow lists for the admin UI and the merchant API (single IPv4 or CIDR), normalized on save, with the caller's current IP evaluated against the active rules (allowed / denied / no rules). Enforcement is left to the middleware for a real deployment.
+- **In-app manual** — eight chapters, table of contents on the left and the chapter on the right, rendered from `content/manual/{ja,en}/*.md` by a small in-house Markdown renderer and linked to the UI language. Every page header has a "?" that opens its chapter.
 
 ## Architecture
 
@@ -242,7 +273,7 @@ See the Mermaid diagrams in the Japanese section above (they render on GitHub): 
 
 ## Tech stack
 
-Next.js 14 (App Router, Route Handlers, Edge Middleware) · TypeScript strict · Tailwind CSS · Prisma 5 (SQLite locally / Docker, Postgres on Vercel + Neon) · Zod (credential schemas generated from the registry) · Vitest (90 unit + route-handler integration tests) · GitHub Actions CI · Dependabot.
+Next.js 14 (App Router, Route Handlers, Edge Middleware) · TypeScript strict · Tailwind CSS · Prisma 5 (SQLite locally / Docker, Postgres on Vercel + Neon) · Zod (credential schemas generated from the registry) · Vitest (130+ unit and route-handler integration tests) · GitHub Actions CI · Dependabot.
 
 ## Running locally
 

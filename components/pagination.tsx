@@ -4,13 +4,6 @@ import Link from "next/link";
 import { useT } from "./language-provider";
 import { cn } from "@/lib/utils";
 
-export const DEFAULT_PAGE_SIZE = 20;
-
-export function parsePage(value: string | undefined): number {
-  const n = Number(value);
-  return Number.isInteger(n) && n >= 1 ? n : 1;
-}
-
 /** "1–20 / 45" summary plus previous / next links that keep other query params. */
 export function Pagination({
   basePath,

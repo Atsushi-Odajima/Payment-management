@@ -27,7 +27,7 @@ const check = (name, ok, extra = "") => {
   const page = await ctx.newPage();
   await page.goto(BASE + "/", { waitUntil: "networkidle" });
   await page.screenshot({ path: `${OUT}/dashboard-ja.png` });
-  check("dashboard renders in Japanese", (await page.locator("h1").textContent()) === "決済管理ダッシュボード");
+  check("dashboard renders in Japanese", (await page.locator("h1").textContent()) === "ダッシュボード");
   await ctx.close();
 }
 
@@ -46,7 +46,7 @@ const check = (name, ok, extra = "") => {
   });
 
   await page.goto(BASE + "/", { waitUntil: "networkidle" });
-  check("dashboard renders in English (Accept-Language)", (await page.locator("h1").textContent()) === "Payment Management Dashboard");
+  check("dashboard renders in English (Accept-Language)", (await page.locator("h1").textContent()) === "Dashboard");
   await page.screenshot({ path: `${OUT}/dashboard-en.png` });
 
   // Unauthenticated mutation is refused with a localized message
