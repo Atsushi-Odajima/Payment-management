@@ -9,7 +9,7 @@ case "$DATABASE_URL" in
 esac
 
 echo "→ Applying database migrations…"
-npx prisma migrate deploy
+node node_modules/prisma/build/index.js migrate deploy
 
-echo "→ Starting Next.js on :$PORT"
-exec npx next start -p "${PORT:-3000}" -H "${HOSTNAME:-0.0.0.0}"
+echo "→ Starting Next.js (standalone) on :${PORT:-3000}"
+exec node server.js

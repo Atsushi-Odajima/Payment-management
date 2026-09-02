@@ -1,6 +1,12 @@
 // Prisma schema for the payment management dashboard.
-// Uses SQLite by default for easy local demo; swap provider to "postgresql"
-// and update DATABASE_URL when moving to production.
+//
+// Local development uses SQLite. On Vercel, scripts/prepare-prisma.mjs
+// rewrites the datasource provider from DATABASE_URL (postgresql://…) at
+// build time, so this file is never edited by hand for deploys.
+//
+// Enums are modeled as String because SQLite has no native enum support;
+// the application narrows them at the boundary (lib/payments/transitions.ts,
+// lib/utils.ts) so no raw string leaks into the UI.
 
 generator client {
   provider = "prisma-client-js"
@@ -16,10 +22,13 @@ model PaymentProvider {
   category    String
   providerKey String
   displayName String
+  // "active" | "disabled" — see PROVIDER_STATUSES. Providers with payments
+  // are disabled rather than deleted (Restrict below) so the ledger survives.
   status      String   @default("active")
-  // JSON-encoded map of credential field key -> AES-encrypted ciphertext.
-  // Non-secret fields (mode, merchant labels, etc.) are stored alongside as plaintext JSON.
+  // JSON-encoded map of credential field key -> AES-GCM ciphertext for secret
+  // fields, plaintext for non-secret fields (see lib/providers/credentials.ts).
   credentials String
+  // Reserved for per-provider options (fee rate, capture policy). Unused today.
   settings    String   @default("{}")
   testMode    Boolean  @default(true)
   lastTestAt  DateTime?
@@ -27,7 +36,8 @@ model PaymentProvider {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  payments    Payment[]
+  payments      Payment[]
+  webhookEvents WebhookEvent[]
 
   @@index([category])
   @@index([providerKey])
@@ -36,14 +46,26 @@ model PaymentProvider {
 model Payment {
   id                String    @id @default(cuid())
   providerId        String
-  provider          PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  // Restrict: a provider that has payments cannot be deleted (409 from the
+  // API). Transaction history outlives connection settings.
+  provider          PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Restrict)
   externalId        String?
   orderNumber       String
   customerName      String?
   customerEmail     String?
+  // JPY has no minor unit, so amounts are whole yen.
   amount            Int
   currency          String    @default("JPY")
+  // Sum of all refunds so far; status becomes partially_refunded / refunded.
+  amountRefunded    Int       @default(0)
+  // One of PAYMENT_STATUSES (lib/payments/transitions.ts).
   status            String    @default("pending")
+  // Snapshot of provider.testMode at creation so flipping a provider to live
+  // later never re-labels historical test payments.
+  livemode          Boolean   @default(false)
+  // Client-supplied Idempotency-Key; a retry with the same key returns the
+  // original payment instead of creating a duplicate.
+  idempotencyKey    String?   @unique
   description       String?
   metadata          String    @default("{}")
   createdAt         DateTime  @default(now())
@@ -52,7 +74,58 @@ model Payment {
   cancelledAt       DateTime?
   refundedAt        DateTime?
 
+  refunds Refund[]
+  events  PaymentEvent[]
+
+  @@unique([providerId, externalId])
   @@index([providerId])
   @@index([status])
   @@index([createdAt])
+  @@index([livemode])
+}
+
+// One row per (partial) refund. Full refund history is preserved even after
+// the payment reaches "refunded".
+model Refund {
+  id        String   @id @default(cuid())
+  paymentId String
+  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  amount    Int
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([paymentId])
+}
+
+// Append-only audit trail of every status change on a payment.
+model PaymentEvent {
+  id         String   @id @default(cuid())
+  paymentId  String
+  payment    Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  // "created" | "capture" | "cancel" | "refund" | "fail"
+  type       String
+  fromStatus String?
+  toStatus   String?
+  amount     Int?
+  // Who triggered it: "dashboard" | "webhook" | "seed" | "system"
+  actor      String   @default("dashboard")
+  createdAt  DateTime @default(now())
+
+  @@index([paymentId, createdAt])
+}
+
+// Inbound provider notifications, deduplicated on (provider, external event id).
+model WebhookEvent {
+  id              String    @id @default(cuid())
+  providerId      String
+  provider        PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  externalEventId String
+  type            String
+  payload         String
+  receivedAt      DateTime  @default(now())
+  processedAt     DateTime?
+  error           String?
+
+  @@unique([providerId, externalEventId])
+  @@index([receivedAt])
 }

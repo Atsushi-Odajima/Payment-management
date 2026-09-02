@@ -1,173 +1,268 @@
-# Payment Management — 決済管理ダッシュボード
+# Wire Pay — 決済管理ダッシュボード
+
+[![CI](https://github.com/Atsushi-Odajima/Payment-management/actions/workflows/ci.yml/badge.svg)](https://github.com/Atsushi-Odajima/Payment-management/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+![Next.js 14](https://img.shields.io/badge/Next.js-14-black)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
 
 日本語 | [English](#english)
 
-小規模ECストア向けに、複数の決済手段（クレジット / QR / コンビニ / 銀行振込 / その他Web決済）を一元管理できる管理画面です。
+小規模ECストア向けに、複数の決済手段（クレジット / QR / コンビニ / 銀行振込 / その他Web決済）の **接続・認証情報の保管・決済ライフサイクル（与信 → 売上確定 → 返金）** を一画面で管理するダッシュボードです。
+
+**🔗 ライブデモ: <https://payment-management-green.vercel.app>**
+デモモードで動作し、外部の決済APIは呼び出しません。接続テストは入力の妥当性のみ検証し、決済は自由に作成・確定・取消・返金できます（データは毎日リセット）。ログイン画面にデモ用パスワードを表示しています。
+
+<p align="center">
+  <img src="docs/screenshots/dashboard-ja.png" alt="ダッシュボード（日本語）" width="49%">
+  <img src="docs/screenshots/dashboard-en.png" alt="Dashboard (English)" width="49%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/payment-detail-en.png" alt="決済詳細: イベント履歴・一部返金・Webhookシミュレート" width="66%">
+  <img src="docs/screenshots/mobile-payments.png" alt="スマホ表示（下部タブバー）" width="24%">
+</p>
 
 ## 主な機能
 
-- **決済プロバイダ接続フロー**: カテゴリ選択 → サービス選択 → 認証情報入力の3ステップで連携。
-- **対応プロバイダ (初期)**:
-  - クレジット: Stripe / Square / GMOペイメントゲートウェイ
-  - QRコード: PayPay / au PAY / 楽天ペイ / d払い
-  - コンビニ: ビットキャッシュ / スマートピット / Webコンビニ決済
-  - 銀行振込: ペイジー / バーチャル口座 (GMOあおぞら・SBI・みずほ・楽天)
-  - その他: カスタムWebhook連携
-- **認証情報の暗号化保存**: AES-256-GCM でDBに保存。再表示時は末尾4文字以外マスク。
-- **接続テスト**: 必須項目の充足や形式を即時検証。
-- **決済の作成 / キャプチャ / 取消 / 返金**: デモ環境で各操作の動作確認が可能。
-- **売上一覧 / ステータスフィルタ**: 注文番号・顧客・金額・状態を一覧表示。
-- **ダッシュボード**: 累計売上・本日の売上・カテゴリ別接続数を一覧。
-- **日本語 / 英語切り替え**: ヘッダーの「EN / 日本語」トグルでUI全体を切り替え。選択は localStorage に保存され、初回はブラウザ言語で自動判定。日付表記もロケールに追従（通貨は JPY 固定）。
+- **決済プロバイダ接続フロー** — カテゴリ → サービス → 認証情報の3ステップ。対応: Stripe / Square / GMO PG / PayPay / au PAY / 楽天ペイ / d払い / ビットキャッシュ / スマートピット / Webコンビニ / ペイジー / バーチャル口座 / カスタムWebhook（[`lib/providers/registry.ts`](./lib/providers/registry.ts) にデータとして定義。フォーム・必須チェック・暗号化対象・マスク表示が全て定義から派生）
+- **認証情報の暗号化保存** — シークレットはフィールド単位で AES-256-GCM 暗号化。管理画面では末尾4文字のみ表示。鍵は本番で未設定なら起動しない（fail-closed）。鍵を変更しても 500 にならず「再入力が必要」と案内
+- **決済ライフサイクル** — 与信 (Authorized) → 売上確定 (Capture) → 取消 (Void) / 返金 (Refund)。**一部返金**対応、状態遷移は1つの遷移表に集約し、更新は status 条件付きの `updateMany` で**アトミック**（二重返金が構造的に通らない）
+- **冪等キー** — 決済作成 API は `Idempotency-Key` ヘッダを受け、同じキーの再送には同じ結果を返す
+- **監査ログ（PaymentEvent）** — 誰が（ダッシュボード / Webhook）いつ何をしたかを追記専用で記録し、詳細画面にタイムライン表示
+- **Webhook 受信** — Stripe 互換の HMAC-SHA256 署名検証（timestamp tolerance 付き）と、イベントIDによる重複排除。詳細画面から署名付き Webhook を自サーバーに送って挙動を確認できる
+- **管理者ログイン + CSRF + レートリミット + セキュリティヘッダ** — 閲覧は公開、更新操作はログイン必須。Origin 検証と `X-Requested-With`、IP 単位の rate limit、CSP / HSTS / frame-ancestors
+- **日本語 / 英語** — ヘッダーの「EN / 日本語」トグル。cookie + localStorage に保存し、SSR から正しい言語で描画。APIのエラー文言も翻訳。通貨は JPY 固定、時刻は Asia/Tokyo 固定
+- **テスト / 本番モード** — プロバイダのモードを決済に `livemode` としてスナップショット。ダッシュボードと一覧で切替表示
+- **モバイル対応** — 下部タブバー、横スクロールするテーブル、`<dialog>` ベースの確認ダイアログ、loading / error / not-found の各ページ
+
+## アーキテクチャ
+
+```mermaid
+flowchart LR
+  B[Browser] -->|GET| RSC["app/**/page.tsx<br/>Server Components<br/>(表示列のみ select)"]
+  RSC --> V["components/views/*<br/>Client Views · useT()"]
+  B -->|"fetch<br/>x-lang · X-Requested-With"| MW["middleware.ts<br/>rate limit → CSRF → session"]
+  MW --> API["app/api/**<br/>withApiHandler"]
+  API --> TR["lib/payments/transitions.ts<br/>状態遷移表"]
+  API --> CR["lib/providers/credentials.ts"] --> CY["lib/crypto.ts<br/>AES-256-GCM"]
+  API --> DB[("Prisma<br/>SQLite / Postgres")]
+  PSP["PSP Webhook"] -->|"HMAC 署名"| API
+```
+
+### 決済ステータス
+
+```mermaid
+stateDiagram-v2
+  [*] --> pending: コンビニ / 銀行振込
+  [*] --> authorized: カード / QR
+  [*] --> captured: カード / QR（即時確定）
+  pending --> captured: capture · webhook
+  pending --> cancelled: cancel
+  pending --> failed: webhook
+  authorized --> captured: capture
+  authorized --> cancelled: cancel
+  authorized --> failed: webhook
+  captured --> partially_refunded: refund（一部）
+  captured --> refunded: refund（全額）
+  partially_refunded --> partially_refunded: refund（一部）
+  partially_refunded --> refunded: refund（残額）
+```
+
+遷移表は [`lib/payments/transitions.ts`](./lib/payments/transitions.ts)、適用は [`lib/payments/actions.ts`](./lib/payments/actions.ts)。全マトリクスをテストで固定しています。
+
+## 設計判断
+
+**1. 認証情報を client に渡さない境界を Server Component で引く**
+`app/**/page.tsx` は Prisma で表示に必要な列だけを `select` し、`components/views/*`（client）に渡す。プロバイダ編集画面は [`readCredentialsForDisplay`](./lib/providers/credentials.ts) でマスク後の値だけを渡し、復号はマスク計算のためだけに行って平文は捨てる。PATCH で secret を空欄のまま保存すると既存の暗号文を維持する — 実運用の管理画面で必要な挙動。
+*トレードオフ*: 各画面が Server + View の2ファイルになる。*本番なら*: 監査ログにアクセス主体を残す（現状は `actor` のみ）。
+
+**2. 状態遷移を1ファイルに集約し、条件付き updateMany でアトミックにする**
+以前は capture / cancel / refund の各 route が `findUnique → if → update` と書いており、二重返金が通り得た。今は `TRANSITIONS` から UI の活性/非活性・API の許可判定・Webhook の適用を全て導出し、`updateMany({ where: { id, status: { in: from } } })` の件数で競合を検知する。
+*トレードオフ*: 楽観ロックの version カラムは入れていない（現規模では過剰）。
+
+**3. 暗号鍵は fail-closed**
+`ENCRYPTION_KEY` は base64 32 バイトを厳密に検証し、本番で未設定・不正なら例外。開発時のみ警告付きで固定鍵にフォールバック。復号失敗は `DecryptionError` に統一し、UI は「再入力が必要」を表示する。
+*本番なら*: KMS 管理 + 暗号文に鍵バージョンを付与してローテーション。
+
+**4. i18n はライブラリを入れず型で同期を強制する**
+`en.ts` を `MessageShape<typeof ja>` 型にすることでキーの欠落・過剰がビルドエラーになり、`t("nav.dashbord")` のような typo もコンパイルエラー。データ内在文言は `{ ja, en }` ペア。`{param}` 集合の一致と英語側の日本語混入はテストで検査。
+*トレードオフ*: 複数形や ICU 構文は非対応（必要になった時点で導入する）。
+
+**5. 決済履歴は帳簿として守る**
+プロバイダ → 決済は `onDelete: Restrict`。履歴のあるプロバイダは削除ではなく無効化。`livemode` は決済作成時にスナップショットし、後でプロバイダを本番に切り替えても過去のテスト決済が本番売上に混入しない。「本日の売上」は Asia/Tokyo で日付境界を計算する。
+
+**6. デモモードの境界**
+実 PSP を呼ぶ箇所は [`lib/providers/connection.ts`](./lib/providers/connection.ts) の `runConnectionTest` と [`app/api/payments/route.ts`](./app/api/payments/route.ts) の作成処理、Webhook のベンダー固有ペイロード変換（[`lib/webhooks/events.ts`](./lib/webhooks/events.ts)）に閉じている。
 
 ## 技術スタック
 
-- Next.js 14 (App Router) + TypeScript
+- Next.js 14 (App Router, Route Handlers, Edge Middleware) + TypeScript (strict)
 - Tailwind CSS
-- Prisma + SQLite (本番は PostgreSQL 等に切替可能)
-- Zod でリクエストバリデーション
-- i18n は外部ライブラリ不使用（型付き辞書 + React Context の自前実装）
+- Prisma 5 + SQLite（ローカル / Docker）、Postgres（Vercel + Neon）
+- Zod（リクエスト検証。プロバイダの認証情報スキーマは registry から動的生成）
+- Vitest（ユニット + Route Handler 統合テスト、90 ケース）
+- GitHub Actions CI（lint → typecheck → i18n 検査 → test → build → audit）、Dependabot
 
-## iPhone・公開URLで確認したい場合
-
-[`DEPLOY.md`](./DEPLOY.md) に Railway / Vercel+Neon / Cloudflare Pages の3通りの手順をまとめています。最短は Railway (SQLite のままコード変更ゼロで5分)。
-
-## ローカル開発のセットアップ
+## ローカル開発
 
 ```bash
-# 1. 依存をインストール
 npm install
-
-# 2. 環境変数を設定
 cp .env.example .env
-# .env を編集し、ENCRYPTION_KEY を 32 バイトの base64 値に置き換える:
+# ENCRYPTION_KEY を 32 バイトの base64 に置き換える:
 #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# （任意）ADMIN_PASSWORD を設定するとログインが有効になる
 
-# 3. DB を初期化 & デモデータ投入 (任意)
-npx prisma db push
-npm run db:seed
+npx prisma migrate deploy   # スキーマ適用
+npm run db:seed             # デモデータ（2 プロバイダ・3 決済）
+npm run dev                 # http://localhost:3000
+```
 
-# 4. 開発サーバ起動
-npm run dev
-# → http://localhost:3000
+品質チェックは CI と同じ順で一括実行できます:
+
+```bash
+npm run verify   # lint → typecheck → check:i18n → test → build
+npm test         # Vitest のみ（SQLite の test.db を自動作成）
 ```
 
 ## ディレクトリ構成
 
 ```
 app/
-  page.tsx                 ダッシュボード
-  providers/               決済プロバイダ管理 UI
-    new/                   新規接続フロー (カテゴリ→サービス→フォーム)
-    [id]/                  既存プロバイダの編集
-  payments/                売上 / 決済管理 UI
-    new/                   決済作成フォーム
-    [id]/                  決済詳細・操作
+  page.tsx                   ダッシュボード（純売上・本日の売上・テスト/本番切替）
+  payments/                  決済一覧 / 作成 / 詳細（イベント履歴・返金・Webhookシミュレート）
+  providers/                 プロバイダ一覧 / 新規接続（カテゴリ→サービス→フォーム）/ 編集
+  login/                     管理者ログイン
+  loading.tsx error.tsx not-found.tsx
   api/
-    providers/             プロバイダ CRUD / 接続テスト
-    payments/              決済 作成 / capture / cancel / refund
+    payments/                POST（冪等キー）, [id]/[action]（capture|cancel|refund）, simulate-webhook
+    providers/               CRUD + 接続テスト（credentials は返さない）
+    webhooks/[providerId]/   HMAC 署名検証 + 重複排除 → 状態遷移
+    auth/                    login / logout（署名付き Cookie）
+    demo/reset/              CRON_SECRET で保護されたデモ初期化
+middleware.ts                rate limit · CSRF · DEMO_READONLY · セッション
 components/
-  views/                   各画面の表示コンポーネント (client, i18n対応)
-  language-provider.tsx    言語Context (localStorage永続化 / useT / useApiFetch)
+  views/                     各画面の表示（client, i18n）
+  ui/                        Badge / SegmentedControl / DetailRow
+  confirm-dialog.tsx         <dialog> ベースの確認ダイアログ（useConfirm）
+  language-provider.tsx      言語 Context・useT・useApiJson
 lib/
-  i18n/                    型付き翻訳辞書 (ja.ts / en.ts) とコア
-  crypto.ts                AES-256-GCM 暗号化
-  db.ts                    Prisma クライアント
-  providers/
-    registry.ts            プロバイダ定義 (文言は {ja, en} ペア)
-    credentials.ts         認証情報の入出力 (マスク / 暗号化)
-    connection.ts          接続テストロジック
+  payments/                  transitions.ts（状態遷移表）, actions.ts（アトミック適用 + 監査ログ）
+  providers/                 registry（定義）, credentials（暗号化 I/O）, validation（Zod 生成）, connection
+  webhooks/                  verify.ts（署名）, events.ts（イベント語彙）
+  api/                       handler.ts（レスポンス統一・エラー変換）, envelope.ts
+  i18n/                      型付き辞書 ja.ts / en.ts とコア
+  auth.ts crypto.ts rate-limit.ts time.ts
 prisma/
-  schema.prisma            DB スキーマ
-  seed.ts                  デモデータ投入スクリプト
+  schema.prisma migrations/  PaymentProvider · Payment · Refund · PaymentEvent · WebhookEvent
+  seed-data.ts               決定的な seed（固定ID・upsert）
+scripts/
+  check-i18n.mjs build-icons.mts prepare-prisma.mjs
+tests/integration/           Route Handler の統合テスト
 ```
 
-## 本番化に向けて
+## デプロイ
 
-このリポジトリは UI と設定保存 + デモ用の決済フローを実装しています。
-本番に乗せる際は、以下を追加してください。
+[`DEPLOY.md`](./DEPLOY.md) を参照。公開デモは Vercel (hnd1) + Neon、Docker（standalone 出力・非 root）で Railway / Render / Fly.io にも置けます。
 
-1. **管理者認証**: NextAuth / Auth.js などで管理画面にログインを追加。
-2. **実 API 呼び出し**: `lib/providers/connection.ts` の `runConnectionTest` を各プロバイダの SDK (Stripe / PayPay / GMO PG …) を使った実装に差し替え。`app/api/payments/route.ts` の決済作成も同様に SDK 呼び出しへ。
-3. **Webhook 受信**: 各プロバイダから決済結果通知を受け取る `app/api/webhooks/[provider]/route.ts` を追加し、署名検証 + 決済ステータス更新。
-4. **DB の本番化**: `prisma/schema.prisma` の `provider` を `postgresql` に変更し、`DATABASE_URL` を本番DBへ。
-5. **暗号鍵管理**: `ENCRYPTION_KEY` を KMS (AWS KMS / GCP KMS) で管理し、ローテーション戦略を整備。
-6. **監査ログ**: プロバイダ設定変更・決済操作のログを別テーブルに保存。
+## Roadmap
+
+- [x] 状態遷移表 + アトミック更新 + 冪等キー
+- [x] 一部返金（Refund）と監査ログ（PaymentEvent）
+- [x] Webhook 受信（HMAC 検証・重複排除）とシミュレーター
+- [x] 管理者ログイン・CSRF・レートリミット・セキュリティヘッダ
+- [x] 暗号鍵の fail-closed と復号失敗時の UI
+- [x] JA/EN i18n（型同期）・Asia/Tokyo 固定・cookie による SSR 言語決定
+- [x] Vitest 90 ケース + GitHub Actions CI
+- [ ] Postgres 専用 migration 履歴への一本化（現在 Vercel は `db push`）
+- [ ] Next.js 15 へのアップグレード（`params` / `searchParams` の await 化）
+- [ ] レートリミットを Upstash Redis に（現在はインスタンス内メモリ）
+- [ ] 実 PSP SDK の接続（Stripe → PayPay → GMO PG の順）とベンダー別 Webhook アダプタ
+- [ ] KMS 管理の鍵ローテーション（暗号文に鍵バージョン付与）
+- [ ] Payout（入金）/ Dispute（チャージバック）の受信と記録
+- [ ] Playwright による E2E スモーク
+
+## How this was built
+
+初期スキャフォールドと定型的なコードの生成には AI（Claude Code）をペアプログラマーとして使いました。設計判断 — 認証情報の境界、状態遷移の集約とアトミック更新、fail-closed な鍵管理、型で同期させる i18n、帳簿としての決済履歴 — と、レビュー、テストケースの設計、本番化に向けた優先順位付けは自分で行っています。AI が出したコードはそのままマージせず、読んで理解した上で採用・修正しています。
 
 ## セキュリティ上のメモ
 
-- シークレット類は AES-256-GCM で暗号化して DB に保存します。
-- 管理画面で再表示する際は末尾4文字以外マスク。空欄での保存時は既存値を維持。
-- HTTPS の終端、CSRF 対策、レートリミットは本番化時に必ず追加してください。
+- シークレットは AES-256-GCM（毎回ランダム IV・16 バイト認証タグ）で暗号化して保存。復号は接続テストと（将来の）決済処理時のみ
+- 更新系 API は同一オリジンの Origin/Referer と `X-Requested-With: fetch` を要求（CSRF）。セッション Cookie は `HttpOnly; SameSite=Lax; Secure`
+- レートリミットはインスタンス内メモリのため、複数インスタンスでは best-effort（Roadmap 参照）
+- 公開デモは `DEMO_READONLY=1` で削除・設定変更を無効化し、毎日リセット
 
 ---
 
 <a id="english"></a>
 
-# Payment Management Dashboard
+# Wire Pay — Payment Management Dashboard
 
-[日本語](#payment-management--決済管理ダッシュボード) | English
+[日本語](#wire-pay--決済管理ダッシュボード) | English
 
-An admin dashboard for small e-commerce stores to manage multiple Japanese payment methods — credit cards, QR payments, konbini (convenience store) payments, bank transfers, and custom web integrations — in one place.
+A dashboard for small e-commerce stores to **connect Japanese payment providers, store their credentials safely, and run the payment lifecycle (authorize → capture → refund)** in one place.
 
-**Live demo:** https://payment-management-green.vercel.app
-
-The demo runs in **demo mode**: no external payment APIs are called. Connection tests validate the submitted credentials' shape only, and payments are simulated records you can freely create, capture, void, and refund to explore the flows.
+**🔗 Live demo: <https://payment-management-green.vercel.app>**
+Runs in demo mode: no external payment APIs are called. Connection tests only validate inputs, and payments can be freely created, captured, voided and refunded (data resets daily). The login page shows the demo password.
 
 ## Features
 
-- **PSP connection flow** — connect a payment service provider in three steps: pick a category, pick a service, enter API credentials.
-- **Supported providers (built-in registry)**
-  - Credit cards: Stripe, Square, GMO Payment Gateway
-  - QR payments: PayPay, au PAY, Rakuten Pay, d Payment
-  - Konbini: BitCash, Smart Pit, multi-konbini payment
-  - Bank transfer: Pay-easy, virtual accounts (GMO Aozora / SBI / Mizuho / Rakuten)
-  - Other: custom webhook integration
-- **Encrypted credential storage** — secrets are encrypted with AES-256-GCM at rest and shown masked (last 4 characters visible) in the UI.
-- **Connection tests** — instant validation of required fields and URL formats, with results tracked per provider.
-- **Payment lifecycle management** — create payments, then capture (settle), void, or refund them; every action is available from the payment detail screen.
-- **Sales list with status filters** — browse payments by status (Pending / Authorized / Captured / Voided / Refunded) with order, customer, and amount details.
-- **Dashboard** — total sales, today's sales, and connection counts per payment category at a glance.
+- **PSP connection flow** — category → service → credentials in three steps. Providers: Stripe, Square, GMO PG, PayPay, au PAY, Rakuten Pay, d Payment, BitCash, Smart Pit, multi-konbini, Pay-easy, virtual accounts, custom webhook. Everything (form, required checks, which fields are encrypted, masking) derives from the data in [`lib/providers/registry.ts`](./lib/providers/registry.ts).
+- **Encrypted credentials** — field-level AES-256-GCM; the UI shows only the last 4 characters. The key is fail-closed in production, and a rotated key surfaces as "please re-enter" instead of a 500.
+- **Payment lifecycle** — Authorized → Captured → Voided / Refunded with **partial refunds**. A single transition table drives the UI, the API and webhooks; updates are **atomic** (`updateMany` conditioned on the current status), so a double refund cannot slip through.
+- **Idempotency** — `POST /api/payments` honors an `Idempotency-Key` header and replays the original result.
+- **Audit trail (PaymentEvent)** — append-only record of who did what and when (dashboard vs. webhook), rendered as a timeline.
+- **Webhook ingestion** — Stripe-compatible HMAC-SHA256 signatures with a timestamp tolerance, plus deduplication on event id. The payment page can send itself a signed webhook to demonstrate the path end to end.
+- **Admin login, CSRF, rate limiting, security headers** — reads are public, mutations require a session. Origin check + `X-Requested-With`, per-IP limits, CSP / HSTS / `frame-ancestors 'none'`.
+- **Japanese / English** — an EN / 日本語 toggle in the header. Stored in a cookie + localStorage so SSR already renders the right language; API error messages are localized too. Currency stays JPY; times are Asia/Tokyo.
+- **Test / live mode** — each payment snapshots the provider's mode as `livemode`; dashboard and list can filter on it.
+- **Mobile** — bottom tab bar, horizontally scrolling tables, `<dialog>`-based confirmations, loading / error / not-found routes.
 
-## Language switching
+## Architecture
 
-The header on every screen has an **EN / 日本語** toggle:
+See the Mermaid diagrams in the Japanese section above (they render on GitHub): request flow through Server Components, the Edge middleware and the API layer, and the payment state machine. The transition table lives in [`lib/payments/transitions.ts`](./lib/payments/transitions.ts) and is applied by [`lib/payments/actions.ts`](./lib/payments/actions.ts); the full status × action matrix is pinned by tests.
 
-- The choice is saved to `localStorage` and survives reloads.
-- On first visit the language is auto-detected from the browser (`navigator.language`): Japanese browsers get Japanese, everything else gets English.
-- Dates follow the locale (ja: `2026/09/01 12:34`, en: `Sep 1, 2026, 12:34 PM`); amounts stay in JPY (¥) in both languages.
-- API error messages are localized too — the client sends its language in an `x-lang` header.
+## Design decisions
 
-Implementation note: there is no i18n library. The two message catalogs (`lib/i18n/messages/ja.ts` and `en.ts`) are plain typed objects, and TypeScript enforces that they always contain exactly the same keys. Provider/category copy in the registry is stored as `{ja, en}` pairs next to the data.
+1. **Credentials never cross to the client.** Server Components `select` only display columns; the provider edit page passes masked values computed by `readCredentialsForDisplay`, decrypting solely to compute the mask. Saving a secret field blank keeps the existing ciphertext. *Trade-off:* every screen is a Server page + a client View. *For production:* record the acting user in the audit log (today only `actor` = dashboard/webhook).
+2. **One transition table, atomic updates.** The old per-route `find → if → update` allowed double refunds under concurrency. Now `TRANSITIONS` drives everything and `updateMany({ where: { id, status: { in: from } } })` detects conflicts by row count. *Trade-off:* no optimistic-lock version column (overkill at this size).
+3. **Fail-closed encryption key.** `ENCRYPTION_KEY` must be canonical base64 of 32 bytes; production throws if it is missing or malformed, development falls back to a fixed key with a warning. Decryption failures are one `DecryptionError` type that the UI turns into a re-enter prompt. *For production:* KMS-managed keys with a key-version prefix on ciphertexts for rotation.
+4. **Type-enforced i18n without a library.** `en.ts` is typed as `MessageShape<typeof ja>`, so a missing or extra key fails the build and `t("nav.dashbord")` is a compile error. Data-embedded copy is `{ ja, en }` pairs. Tests assert identical `{param}` sets and no Japanese in the English catalog. *Trade-off:* no plurals / ICU (add when needed).
+5. **The ledger outlives connection settings.** Provider → payment is `onDelete: Restrict`; providers with history are disabled, not deleted. `livemode` is snapshotted at creation, so flipping a provider to live never relabels past test payments. "Today" is computed in Asia/Tokyo.
+6. **A narrow demo boundary.** Real PSP calls would go into `runConnectionTest`, the create handler, and a per-vendor webhook adapter (`lib/webhooks/events.ts`) — nothing else changes.
 
 ## Tech stack
 
-- Next.js 14 (App Router) + TypeScript
-- Tailwind CSS
-- Prisma + SQLite (swappable to PostgreSQL for production)
-- Zod for request validation
-- Hand-rolled i18n (typed catalogs + React Context, zero dependencies)
+Next.js 14 (App Router, Route Handlers, Edge Middleware) · TypeScript strict · Tailwind CSS · Prisma 5 (SQLite locally / Docker, Postgres on Vercel + Neon) · Zod (credential schemas generated from the registry) · Vitest (90 unit + route-handler integration tests) · GitHub Actions CI · Dependabot.
 
 ## Running locally
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Configure environment variables
 cp .env.example .env
-# Edit .env and set ENCRYPTION_KEY to a 32-byte base64 value:
+# set ENCRYPTION_KEY to base64 of 32 random bytes:
 #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# optionally set ADMIN_PASSWORD to enable the login
 
-# 3. Initialize the database & seed demo data (optional)
-npx prisma db push
+npx prisma migrate deploy
 npm run db:seed
+npm run dev        # http://localhost:3000
 
-# 4. Start the dev server
-npm run dev
-# → http://localhost:3000
+npm run verify     # lint → typecheck → check:i18n → test → build (same as CI)
 ```
 
-## Going to production
+## Deployment
 
-This repository implements the UI, encrypted settings storage, and a demo payment flow. To run it for real you would add: admin authentication, real provider SDK calls (replace `runConnectionTest` in `lib/providers/connection.ts` and the payment creation in `app/api/payments/route.ts`), webhook receivers with signature verification, a production database, KMS-managed encryption keys, and audit logging. See the Japanese section above for the detailed checklist.
+See [`DEPLOY.md`](./DEPLOY.md): Vercel (Tokyo) + Neon for the public demo, or the Docker image (standalone output, non-root) on Railway / Render / Fly.io.
+
+## Roadmap
+
+Done: transition table + atomic updates + idempotency · partial refunds + audit log · webhook verification + simulator · login / CSRF / rate limit / headers · fail-closed key · typed JA/EN i18n · 90 tests + CI.
+Next: Postgres-only migration history (Vercel currently uses `db push`) · Next.js 15 · Upstash-backed rate limiting · real PSP SDKs (Stripe → PayPay → GMO PG) with per-vendor webhook adapters · KMS key rotation · payouts & disputes · Playwright E2E.
+
+## How this was built
+
+The initial scaffold and boilerplate were generated with AI (Claude Code) as a pair programmer. The design decisions — the credential boundary, the centralized state machine with atomic updates, fail-closed key handling, type-synchronized i18n, and treating payments as a ledger — as well as code review, test design and production prioritization are my own. Nothing generated was merged without being read and understood first.
+
+## License
+
+[MIT](./LICENSE)

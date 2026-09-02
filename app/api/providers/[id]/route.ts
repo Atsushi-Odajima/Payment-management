@@ -1,87 +1,75 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { encrypt } from "@/lib/crypto";
+import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
+import { mergeCredentialStore } from "@/lib/providers/credentials";
 import { getProviderDefinition } from "@/lib/providers/registry";
-import { langFromRequest, translate } from "@/lib/i18n";
+import { credentialSchemaFor, missingRequiredFields } from "@/lib/providers/validation";
+import { langFromRequest, pickText } from "@/lib/i18n";
+import { PROVIDER_STATUSES } from "@/lib/utils";
 
 const UpdateSchema = z.object({
   displayName: z.string().min(1).max(80).optional(),
-  status: z.enum(["active", "disabled"]).optional(),
+  status: z.enum(PROVIDER_STATUSES).optional(),
   testMode: z.boolean().optional(),
   credentials: z.record(z.string(), z.string().optional()).optional(),
 });
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } },
-) {
+type Ctx = { params: { id: string } };
+
+export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
   const lang = langFromRequest(req);
-  const body = await req.json().catch(() => null);
-  const parsed = UpdateSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: translate(lang, "errors.invalidInput") }, { status: 400 });
-  }
+  const body = UpdateSchema.parse(await readJson(req));
+
   const existing = await prisma.paymentProvider.findUnique({
     where: { id: params.id },
+    select: {
+      providerKey: true,
+      credentials: true,
+      displayName: true,
+      status: true,
+      testMode: true,
+    },
   });
-  if (!existing) {
-    return NextResponse.json({ error: translate(lang, "errors.notFound") }, { status: 404 });
-  }
+  if (!existing) throw new ApiError(404, "not_found", "errors.notFound");
   const def = getProviderDefinition(existing.providerKey);
-  if (!def) {
-    return NextResponse.json({ error: translate(lang, "errors.unsupportedProvider") }, { status: 400 });
-  }
+  if (!def) throw new ApiError(400, "unsupported_provider", "errors.unsupportedProvider");
 
-  // merge credentials: empty secret fields keep existing ciphertext.
-  const current = safeJsonObject(existing.credentials);
-  const incoming = parsed.data.credentials ?? {};
-  const merged: Record<string, string> = { ...current };
-  for (const field of def.fields) {
-    const raw = incoming[field.key];
-    if (raw === undefined) continue;
-    if (raw === "" || raw == null) {
-      if (!field.secret) {
-        delete merged[field.key];
-      }
-      // for secret fields: empty => keep existing
-      continue;
-    }
-    merged[field.key] = field.secret ? encrypt(raw) : raw;
+  // Validate the shape of what was sent, then merge (secret "" = keep) and
+  // make sure the merged store still has every required field.
+  const incoming = credentialSchemaFor(def, "patch").parse(body.credentials ?? {});
+  const merged = mergeCredentialStore(def.key, existing.credentials, incoming);
+  const missing = missingRequiredFields(def, merged);
+  if (missing.length > 0) {
+    throw new ApiError(400, "missing_required", "errors.missingRequired", {
+      fields: missing.map((f) => pickText(f.label, lang)).join(", "),
+    });
   }
 
   const updated = await prisma.paymentProvider.update({
     where: { id: params.id },
     data: {
-      displayName: parsed.data.displayName ?? existing.displayName,
-      status: parsed.data.status ?? existing.status,
-      testMode: parsed.data.testMode ?? existing.testMode,
+      displayName: body.displayName ?? existing.displayName,
+      status: body.status ?? existing.status,
+      testMode: body.testMode ?? existing.testMode,
       credentials: JSON.stringify(merged),
     },
+    select: { id: true },
   });
-  return NextResponse.json({ id: updated.id });
-}
+  return ok({ id: updated.id });
+});
 
-export async function DELETE(
-  req: Request,
-  { params }: { params: { id: string } },
-) {
-  try {
-    await prisma.paymentProvider.delete({ where: { id: params.id } });
-  } catch {
-    return NextResponse.json(
-      { error: translate(langFromRequest(req), "errors.notFound") },
-      { status: 404 },
-    );
+export const DELETE = withApiHandler<Ctx>(async (_req, { params }) => {
+  const record = await prisma.paymentProvider.findUnique({
+    where: { id: params.id },
+    select: { id: true, _count: { select: { payments: true } } },
+  });
+  if (!record) throw new ApiError(404, "not_found", "errors.notFound");
+  if (record._count.payments > 0) {
+    // Ledger protection: disable instead of deleting a provider with history.
+    throw new ApiError(409, "provider_has_payments", "errors.providerHasPayments", {
+      count: record._count.payments,
+    });
   }
-  return NextResponse.json({ ok: true });
-}
-
-function safeJsonObject(value: string): Record<string, string> {
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
-}
+  await prisma.paymentProvider.delete({ where: { id: params.id } });
+  return ok({ deleted: true });
+});

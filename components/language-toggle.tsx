@@ -1,14 +1,15 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useLang } from "./language-provider";
+import { useLang, useT } from "./language-provider";
 
 export function LanguageToggle() {
   const { lang, setLang } = useLang();
+  const t = useT();
   return (
     <div
       role="group"
-      aria-label="Language"
+      aria-label={t("nav.language")}
       className="flex overflow-hidden rounded-lg border border-slate-300 bg-white text-xs font-medium"
     >
       <button
@@ -17,9 +18,7 @@ export function LanguageToggle() {
         aria-pressed={lang === "en"}
         className={cn(
           "px-3 py-1.5 transition",
-          lang === "en"
-            ? "bg-brand-600 text-white"
-            : "text-slate-600 hover:bg-slate-100",
+          lang === "en" ? "bg-brand-600 text-white" : "text-slate-600 hover:bg-slate-100",
         )}
       >
         EN
@@ -30,9 +29,7 @@ export function LanguageToggle() {
         aria-pressed={lang === "ja"}
         className={cn(
           "px-3 py-1.5 transition",
-          lang === "ja"
-            ? "bg-brand-600 text-white"
-            : "text-slate-600 hover:bg-slate-100",
+          lang === "ja" ? "bg-brand-600 text-white" : "text-slate-600 hover:bg-slate-100",
         )}
       >
         日本語

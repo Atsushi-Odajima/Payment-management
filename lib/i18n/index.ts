@@ -4,11 +4,13 @@
 
 import { ja } from "./messages/ja";
 import { en } from "./messages/en";
+import { BUSINESS_TZ } from "@/lib/time";
 
 export type Lang = "ja" | "en";
 
 export const DEFAULT_LANG: Lang = "ja";
 export const LANG_STORAGE_KEY = "wirepay.lang";
+export const LANG_COOKIE = "wirepay.lang";
 export const LANG_HEADER = "x-lang";
 
 const CATALOGS: Record<Lang, typeof ja> = { ja, en: en as typeof ja };
@@ -55,6 +57,22 @@ export function langFromRequest(req: Request): Lang {
   return isLang(value) ? value : DEFAULT_LANG;
 }
 
+/**
+ * Resolve the initial language for SSR: cookie first, then Accept-Language.
+ * Used by app/layout.tsx so English users never see a Japanese first paint.
+ */
+export function resolveInitialLang(
+  cookieValue: string | undefined,
+  acceptLanguage: string | null | undefined,
+): Lang {
+  if (isLang(cookieValue)) return cookieValue;
+  if (acceptLanguage) {
+    const first = acceptLanguage.split(",")[0]?.trim().toLowerCase() ?? "";
+    return first.startsWith("ja") ? "ja" : "en";
+  }
+  return DEFAULT_LANG;
+}
+
 // ─── Localized data text (used by lib/providers/registry.ts) ───
 // Data-embedded copy (provider names, field labels, …) lives next to the data
 // as {ja, en} pairs; the type makes both languages mandatory.
@@ -71,11 +89,14 @@ export function pickText(text: LocalizedText, lang: Lang): string {
 // ─── Locale-aware formatting ───
 // Currency stays JPY in both languages per product decision; only the date
 // format switches (ja: 2026/09/01 12:34, en: Sep 1, 2026, 12:34 PM).
+// Times are always rendered in Asia/Tokyo (business time zone) so SSR and
+// CSR output match and "today" means the merchant's today.
 
 export function formatDateTime(date: Date | string, lang: Lang): string {
   const d = typeof date === "string" ? new Date(date) : date;
   if (lang === "en") {
     return new Intl.DateTimeFormat("en-US", {
+      timeZone: BUSINESS_TZ,
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -84,6 +105,7 @@ export function formatDateTime(date: Date | string, lang: Lang): string {
     }).format(d);
   }
   return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: BUSINESS_TZ,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

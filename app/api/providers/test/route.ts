@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
+import { ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { runConnectionTest } from "@/lib/providers/connection";
-import { langFromRequest, translate } from "@/lib/i18n";
+import { langFromRequest } from "@/lib/i18n";
 
 const Schema = z.object({
   providerKey: z.string(),
@@ -9,21 +9,10 @@ const Schema = z.object({
   testMode: z.boolean().default(true),
 });
 
-export async function POST(req: Request) {
+/** Ephemeral connection test against unsaved form values. */
+export const POST = withApiHandler(async (req) => {
   const lang = langFromRequest(req);
-  const body = await req.json().catch(() => null);
-  const parsed = Schema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { ok: false, message: translate(lang, "errors.checkInput") },
-      { status: 400 },
-    );
-  }
-  const result = runConnectionTest(
-    parsed.data.providerKey,
-    parsed.data.credentials,
-    parsed.data.testMode,
-    lang,
-  );
-  return NextResponse.json(result);
-}
+  const body = Schema.parse(await readJson(req));
+  const result = runConnectionTest(body.providerKey, body.credentials, body.testMode, lang);
+  return ok(result);
+});
