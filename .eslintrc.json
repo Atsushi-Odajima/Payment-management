@@ -1,0 +1,23 @@
+{
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "rules": {
+    "react/no-danger": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "@/lib/crypto",
+            "message": "Go through lib/providers/credentials.ts — it is the only module allowed to encrypt/decrypt credentials."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["lib/providers/credentials.ts", "lib/api/handler.ts", "lib/crypto.test.ts", "tests/**/*.ts"],
+      "rules": { "no-restricted-imports": "off" }
+    }
+  ]
+}

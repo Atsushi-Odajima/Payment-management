@@ -1,7 +1,17 @@
 {
   "name": "payment-management",
   "version": "0.1.0",
+  "description": "Wire Pay — payment-operations dashboard for Japanese PSPs (Next.js 14, Prisma, AES-GCM, JA/EN)",
+  "license": "MIT",
   "private": true,
+  "homepage": "https://payment-management-green.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Atsushi-Odajima/Payment-management.git"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -10,7 +20,16 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "icons:build": "tsx scripts/build-icons.mts",
+    "verify": "npm run lint && npm run typecheck && npm run check:i18n && npm test && npm run build"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -28,10 +47,12 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
     "eslint-config-next": "14.2.35",
+    "playwright": "^1.62.1",
     "postcss": "^8.4.49",
     "prisma": "^5.22.0",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
   }
 }
