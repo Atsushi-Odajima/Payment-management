@@ -226,6 +226,8 @@ export const PROVIDERS: ProviderDefinition[] = [
         required: true,
       },
       {
+        // PayPay's API key is a public identifier paired with api_secret;
+        // only the secret is encrypted.
         key: "api_key",
         label: { ja: "API Key", en: "API key" },
         type: "text",
@@ -274,6 +276,7 @@ export const PROVIDERS: ProviderDefinition[] = [
         required: true,
       },
       {
+        // Identifier-style key (paired with api_secret); stored in plaintext by design.
         key: "api_key",
         label: { ja: "APIキー", en: "API key" },
         type: "text",
