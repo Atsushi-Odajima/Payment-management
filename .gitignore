@@ -22,6 +22,10 @@ dist
 # database
 prisma/dev.db
 prisma/dev.db-journal
+prisma/test.db
+prisma/test.db-journal
+prisma/ci.db
+prisma/ci.db-journal
 *.sqlite
 *.sqlite-journal
 

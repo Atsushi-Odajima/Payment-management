@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.github
+.env
+.env.*
+!.env.example
+prisma/*.db
+prisma/*.db-journal
+*.sqlite
+*.sqlite-journal
+*.tsbuildinfo
+docs
+tests
+coverage
+*.md
+!README.md
