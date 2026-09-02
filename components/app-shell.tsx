@@ -9,7 +9,9 @@ import { useState } from "react";
 import { NavLink } from "./nav-link";
 import { WirePayIcon } from "./wire-pay-icon";
 import { LanguageToggle } from "./language-toggle";
+import { RoleToggle } from "./role-toggle";
 import { ConfirmProvider } from "./confirm-dialog";
+import { ToastProvider } from "./toast";
 import { useApiJson, useT } from "./language-provider";
 
 export interface AppShellProps {
@@ -24,6 +26,7 @@ export function AppShell({ children, authConfigured, authenticated }: AppShellPr
   const t = useT();
   return (
     <ConfirmProvider>
+      <ToastProvider>
       <div className="flex min-h-screen flex-col">
         <header className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur md:px-6">
           <Link href="/" className="flex items-center gap-2 md:invisible" aria-label="Wire Pay">
@@ -32,6 +35,7 @@ export function AppShell({ children, authConfigured, authenticated }: AppShellPr
           </Link>
           <div className="flex items-center gap-2">
             <AuthControl configured={authConfigured} authenticated={authenticated} />
+            <RoleToggle />
             <LanguageToggle />
           </div>
         </header>
@@ -54,6 +58,9 @@ export function AppShell({ children, authConfigured, authenticated }: AppShellPr
               </NavLink>
               <NavLink href="/providers/new">
                 <span>{t("nav.newProvider")}</span>
+              </NavLink>
+              <NavLink href="/merchants">
+                <span>{t("nav.merchants")}</span>
               </NavLink>
               <NavLink href="/payments">
                 <span>{t("nav.payments")}</span>
@@ -86,14 +93,16 @@ export function AppShell({ children, authConfigured, authenticated }: AppShellPr
 
         <nav
           aria-label={t("nav.main")}
-          className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden"
+          className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden"
         >
           <TabLink href="/" exact label={t("nav.tabDashboard")} icon="home" />
           <TabLink href="/providers" label={t("nav.tabProviders")} icon="plug" />
+          <TabLink href="/merchants" label={t("nav.tabMerchants")} icon="store" />
           <TabLink href="/payments" label={t("nav.tabPayments")} icon="list" />
           <TabLink href="/payments/new" label={t("nav.tabCreate")} icon="plus" />
         </nav>
       </div>
+      </ToastProvider>
     </ConfirmProvider>
   );
 }
@@ -137,7 +146,7 @@ function TabLink({
   href: string;
   exact?: boolean;
   label: string;
-  icon: "home" | "plug" | "list" | "plus";
+  icon: "home" | "plug" | "store" | "list" | "plus";
 }) {
   return (
     <NavLink
@@ -153,7 +162,7 @@ function TabLink({
   );
 }
 
-function TabIcon({ name }: { name: "home" | "plug" | "list" | "plus" }) {
+function TabIcon({ name }: { name: "home" | "plug" | "store" | "list" | "plus" }) {
   const props = {
     viewBox: "0 0 24 24",
     className: "h-5 w-5",
@@ -175,6 +184,12 @@ function TabIcon({ name }: { name: "home" | "plug" | "list" | "plus" }) {
       return (
         <svg {...props}>
           <path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 01-12 0V8zM12 17v4" />
+        </svg>
+      );
+    case "store":
+      return (
+        <svg {...props}>
+          <path d="M3 8l1.5-4h15L21 8M3 8v11h18V8M3 8h18M9 12h6" />
         </svg>
       );
     case "list":

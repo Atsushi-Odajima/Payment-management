@@ -5,6 +5,8 @@ import { LanguageProvider } from "@/components/language-provider";
 import { AppShell } from "@/components/app-shell";
 import { LANG_COOKIE, resolveInitialLang, translate, type Lang } from "@/lib/i18n";
 import { SESSION_COOKIE, isAuthConfigured, verifySessionToken } from "@/lib/auth";
+import { RoleProvider } from "@/components/role-provider";
+import { ROLE_COOKIE, resolveRole } from "@/lib/role";
 
 function requestLang(): Lang {
   return resolveInitialLang(cookies().get(LANG_COOKIE)?.value, headers().get("accept-language"));
@@ -36,13 +38,16 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const lang = requestLang();
   const authenticated = await verifySessionToken(cookies().get(SESSION_COOKIE)?.value);
+  const role = resolveRole(cookies().get(ROLE_COOKIE)?.value);
   return (
     <html lang={lang}>
       <body>
         <LanguageProvider initialLang={lang}>
-          <AppShell authConfigured={isAuthConfigured()} authenticated={authenticated}>
-            {children}
-          </AppShell>
+          <RoleProvider initialRole={role}>
+            <AppShell authConfigured={isAuthConfigured()} authenticated={authenticated}>
+              {children}
+            </AppShell>
+          </RoleProvider>
         </LanguageProvider>
       </body>
     </html>
