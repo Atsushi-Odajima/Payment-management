@@ -21,6 +21,7 @@ export const en: MessageShape<typeof ja> = {
     newProvider: "+ Connect Provider",
     payments: "Sales / Payments",
     newPayment: "+ Create Payment",
+    merchants: "Merchants",
     demoMode: "Demo Mode",
     demoModeNote: "No external APIs are called — payments are simulated with dummy data.",
     language: "Language",
@@ -32,6 +33,7 @@ export const en: MessageShape<typeof ja> = {
       "Login protection is not configured. Set ADMIN_PASSWORD to require a login for payment operations.",
     tabDashboard: "Home",
     tabProviders: "Providers",
+    tabMerchants: "Merchants",
     tabPayments: "Payments",
     tabCreate: "Create",
   },
@@ -259,6 +261,43 @@ export const en: MessageShape<typeof ja> = {
     undecryptable:
       "This value cannot be decrypted with the current encryption key (the key may have changed). Please re-enter it.",
   },
+  merchants: {
+    title: "Merchants",
+    description: "Issue and manage the merchant (EC site) accounts you serve as a PSP. Click a row to open the details.",
+    add: "+ Add Merchant",
+    empty: "No merchants yet",
+    emptySub: "Use “Add Merchant” to issue the first account.",
+    thCode: "Merchant ID",
+    thSiteName: "Site",
+    thCompany: "Company",
+    thContact: "Contact",
+    thEmailNotification: "Email notifications",
+    thCreatedAt: "Registered",
+    thActions: "Actions",
+    open: "Details →",
+  },
+  merchantEnums: {
+    emailNotification: {
+      per_payment: "Every payment",
+      daily: "Daily digest",
+      none: "No email",
+    },
+    notifyFormat: {
+      json_post: "JSON (POST)",
+      form_post: "form-urlencoded (POST)",
+      query_get: "Query parameters (GET)",
+    },
+    notifyParamSet: {
+      minimal: "Minimal (amount / paid at / unique payment ID)",
+      standard: "Standard (minimal + method / user ID / product ID)",
+      full: "Full (standard + domain / transaction ID)",
+    },
+    notifyIdFormat: {
+      payment_id: "Unique payment ID only",
+      transaction_id: "Transaction ID only",
+      both: "Both",
+    },
+  },
   auth: {
     title: "Log in",
     description:
@@ -299,6 +338,7 @@ export const en: MessageShape<typeof ja> = {
     demoReadonly: "Deleting and changing settings is disabled in this demo",
     demoLimit: "The demo limit ({limit} records) has been reached",
     invalidCredentials: "Incorrect password",
+    masterRequired: "This action requires the master role",
     authNotConfigured: "Authentication is not configured",
     invalidSignature: "Invalid webhook signature",
     webhookNotConfigured: "This provider has no webhook secret configured",
