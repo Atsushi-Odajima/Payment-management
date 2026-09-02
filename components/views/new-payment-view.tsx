@@ -15,6 +15,7 @@ export function NewPaymentView({ providers }: { providers: ProviderOption[] }) {
       <PageHeader
         title={t("newPayment.title")}
         description={t("newPayment.description")}
+        helpHref="/manual/payments"
         breadcrumbs={[
           { label: t("newPayment.breadcrumbPayments"), href: "/payments" },
           { label: t("newPayment.title") },

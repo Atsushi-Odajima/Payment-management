@@ -2,10 +2,12 @@ import { prisma } from "@/lib/db";
 import { PaymentsView, type PaymentListItem } from "@/components/views/payments-view";
 import { isPaymentStatus, toPaymentStatus } from "@/lib/payments/transitions";
 import { toModeFilter } from "@/lib/utils";
+import { startOfDayInTz } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
 const SALES_STATUSES = ["captured", "partially_refunded", "refunded"];
+const PAGE_SIZE = 100;
 
 export default async function PaymentsPage({
   searchParams,
@@ -17,11 +19,11 @@ export default async function PaymentsPage({
   const modeWhere = mode === "all" ? {} : { livemode: mode === "live" };
   const where = { ...modeWhere, ...(status !== "all" ? { status } : {}) };
 
-  const [payments, aggregate] = await Promise.all([
+  const [payments, totalCount, salesAggregate, todayAggregate] = await Promise.all([
     prisma.payment.findMany({
       where,
       orderBy: { createdAt: "desc" },
-      take: 100,
+      take: PAGE_SIZE,
       select: {
         id: true,
         orderNumber: true,
@@ -36,10 +38,16 @@ export default async function PaymentsPage({
         provider: { select: { providerKey: true, displayName: true } },
       },
     }),
+    prisma.payment.count({ where }),
     // Realized sales for the current mode (independent of the status filter).
     prisma.payment.aggregate({
       where: { ...modeWhere, status: { in: SALES_STATUSES } },
       _sum: { amount: true, amountRefunded: true },
+      _count: true,
+    }),
+    prisma.payment.aggregate({
+      where: { ...modeWhere, status: { in: SALES_STATUSES }, capturedAt: { gte: startOfDayInTz(new Date()) } },
+      _sum: { amount: true },
       _count: true,
     }),
   ]);
@@ -64,8 +72,13 @@ export default async function PaymentsPage({
       status={status === "all" ? "all" : toPaymentStatus(status)}
       mode={mode}
       payments={items}
-      capturedAmount={(aggregate._sum.amount ?? 0) - (aggregate._sum.amountRefunded ?? 0)}
-      capturedCount={aggregate._count}
+      totalCount={totalCount}
+      pageSize={PAGE_SIZE}
+      grossSales={salesAggregate._sum.amount ?? 0}
+      refundsTotal={salesAggregate._sum.amountRefunded ?? 0}
+      salesCount={salesAggregate._count}
+      todaySalesAmount={todayAggregate._sum.amount ?? 0}
+      todaySalesCount={todayAggregate._count}
     />
   );
 }

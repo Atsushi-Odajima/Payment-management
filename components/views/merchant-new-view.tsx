@@ -6,8 +6,9 @@ import { MerchantForm } from "@/components/merchant-form";
 import { useT } from "@/components/language-provider";
 import { useToast } from "@/components/toast";
 import { EMPTY_MERCHANT_INPUT } from "@/lib/merchants/schema";
+import type { AgentOption } from "@/lib/merchants/types";
 
-export function MerchantNewView({ nextCode }: { nextCode: string }) {
+export function MerchantNewView({ nextCode, agents }: { nextCode: string; agents: AgentOption[] }) {
   const t = useT();
   const router = useRouter();
   const toast = useToast();
@@ -17,12 +18,14 @@ export function MerchantNewView({ nextCode }: { nextCode: string }) {
       <PageHeader
         title={t("merchantForm.titleCreate")}
         description={t("merchantForm.descriptionCreate")}
+        helpHref="/manual/merchants"
         breadcrumbs={[{ label: t("merchants.title"), href: "/merchants" }, { label: t("merchantForm.titleCreate") }]}
       />
       <MerchantForm
         mode="create"
         merchantCode={nextCode}
         initial={EMPTY_MERCHANT_INPUT}
+        agents={agents}
         onSaved={(m) => {
           toast.show(t("merchantForm.toastCreated", { code: m.merchantCode }));
           router.push(`/merchants/${m.id}`);

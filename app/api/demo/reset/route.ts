@@ -18,7 +18,7 @@ async function handle(req: Request) {
     throw new ApiError(401, "unauthorized", "errors.unauthorized");
   }
   await truncateAll(prisma);
-  await seed(prisma, { force: true });
+  await seed(prisma);
   return ok({ reset: true });
 }
 

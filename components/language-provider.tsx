@@ -5,8 +5,10 @@
 // Resolution order: `wirepay.lang` cookie (read server-side in app/layout.tsx
 // and passed as initialLang, so SSR already renders the right language) →
 // localStorage → navigator.language. Switching writes both the cookie and
-// localStorage and updates <html lang>.
+// localStorage, updates <html lang>, and refreshes the Server Components so
+// server-rendered content (e.g. the manual body) follows the new language.
 
+import { useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -57,6 +59,7 @@ export function LanguageProvider({
   initialLang?: Lang;
 }) {
   const [lang, setLangState] = useState<Lang>(initialLang ?? DEFAULT_LANG);
+  const router = useRouter();
 
   // Fallback for first visits without a cookie: honor an older localStorage
   // choice, else the browser language. Also re-establish the cookie so the
@@ -84,10 +87,15 @@ export function LanguageProvider({
     document.documentElement.lang = lang;
   }, [lang]);
 
-  const setLang = useCallback((next: Lang) => {
-    setLangState(next);
-    persist(next);
-  }, []);
+  const setLang = useCallback(
+    (next: Lang) => {
+      setLangState(next);
+      persist(next);
+      // Server Components read the cookie; re-render them with the new value.
+      router.refresh();
+    },
+    [router],
+  );
 
   const value = useMemo(() => ({ lang, setLang }), [lang, setLang]);
 

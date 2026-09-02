@@ -88,6 +88,7 @@ export function ProviderCatalogView({
       <PageHeader
         title={t("providerNew.title")}
         description={t("providerNew.description")}
+        helpHref="/manual/dashboard"
         breadcrumbs={[
           { label: t("providerNew.breadcrumbProviders"), href: "/providers" },
           { label: t("providerNew.breadcrumbNew") },
