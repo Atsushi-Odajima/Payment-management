@@ -7,7 +7,7 @@ The home page shows six cards, one per management area. Each card displays a **k
 | Merchants | Number of merchants | Merchant list |
 | Agents | Number of agents | Agent list |
 | Payments | Today's payment count and amount (captured sales) | Payment list |
-| Payment Applications | Pending count (highlighted with a badge when > 0) | Applications |
+| Payment Applications | Open transactions (applied / awaiting transfer / authorized); overdue transfers are highlighted with a badge | Applications |
 | IP Restrictions | Enabled rules | IP restrictions |
 | Admin Manual | Number of chapters | This manual |
 

@@ -10,25 +10,28 @@
 import type { PrismaClient } from "@prisma/client";
 import { buildCredentialStore } from "../lib/providers/credentials";
 import { encryptMerchantPassword } from "../lib/merchants/secrets";
+import { transferDueDate } from "../lib/payments/transfer";
 
 export const SEED_IDS = {
   stripeProvider: "prov_stripe_demo",
   paypayProvider: "prov_paypay_demo",
+  bankProvider: "prov_bank_demo",
   payment1: "pay_demo_001",
   payment2: "pay_demo_002",
   payment3: "pay_demo_003",
+  payment4: "pay_demo_004",
+  payment5: "pay_demo_005",
+  payment6: "pay_demo_006",
+  payment7: "pay_demo_007",
   merchant1: "mer_demo_001",
   merchant2: "mer_demo_002",
   merchant3: "mer_demo_003",
   agent1: "agt_demo_001",
   agent2: "agt_demo_002",
-  application1: "app_demo_001",
-  application2: "app_demo_002",
-  application3: "app_demo_003",
-  application4: "app_demo_004",
   ip1: "ip_demo_001",
   ip2: "ip_demo_002",
   ip3: "ip_demo_003",
+  ip4: "ip_demo_004",
 } as const;
 
 /** Demo merchant passwords (fixed so the master-role reveal is reproducible). */
@@ -36,6 +39,13 @@ export const SEED_MERCHANT_PASSWORDS = {
   [SEED_IDS.merchant1]: "Kotori2026Demo",
   [SEED_IDS.merchant2]: "Sakura2026Demo",
   [SEED_IDS.merchant3]: "Tsukiji2026Demo",
+} as const;
+
+/** Fixed bank-transfer ids of the seeded transfers (used by tests and the manual). */
+export const SEED_TRANSFER_IDS = {
+  [SEED_IDS.payment4]: "48213907", // merchant2 issues 8-digit ids
+  [SEED_IDS.payment5]: "7301256", // merchant3 issues 7-digit ids
+  [SEED_IDS.payment7]: "5120983",
 } as const;
 
 export interface SeedOptions {
@@ -48,9 +58,10 @@ export interface SeedSummary {
   payments: number;
   merchants: number;
   agents: number;
-  applications: number;
   ipRestrictions: number;
 }
+
+type EventSeed = { type: string; fromStatus: string | null; toStatus: string; amount: number; actor: string; createdAt: Date };
 
 export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promise<SeedSummary> {
   const now = opts.now ?? new Date();
@@ -95,64 +106,25 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       ),
     },
   });
-
-  // ── Payments ──────────────────────────────────────────────────────────
-  const payments = [
-    {
-      id: SEED_IDS.payment1,
-      providerId: stripe.id,
-      orderNumber: "ORD-DEMO-001",
-      amount: 4980,
-      status: "captured",
-      externalId: "stripe_demo_001",
-      customerName: "山田 太郎",
-      customerEmail: "taro@example.com",
-      description: "春物ジャケット",
-      createdAt: hoursAgo(6),
-      capturedAt: hoursAgo(6),
+  const bank = await prisma.paymentProvider.upsert({
+    where: { id: SEED_IDS.bankProvider },
+    update: {},
+    create: {
+      id: SEED_IDS.bankProvider,
+      providerKey: "virtual_account",
+      category: "bank",
+      displayName: "本店 (バーチャル口座)",
+      testMode: true,
+      credentials: JSON.stringify(
+        buildCredentialStore("virtual_account", {
+          bank_partner: "gmo_aozora",
+          api_user: "wirepay_demo",
+          api_password: "VA_SEED_PASSWORD",
+          branch_code: "101",
+        }),
+      ),
     },
-    {
-      id: SEED_IDS.payment2,
-      providerId: paypay.id,
-      orderNumber: "ORD-DEMO-002",
-      amount: 1280,
-      status: "captured",
-      externalId: "paypay_demo_002",
-      customerName: "鈴木 花子",
-      description: "ロゴTシャツ",
-      createdAt: hoursAgo(3),
-      capturedAt: hoursAgo(3),
-    },
-    {
-      id: SEED_IDS.payment3,
-      providerId: stripe.id,
-      orderNumber: "ORD-DEMO-003",
-      amount: 9800,
-      status: "authorized",
-      externalId: "stripe_demo_003",
-      customerName: "佐藤 次郎",
-      description: "ハンドメイドバッグ",
-      createdAt: hoursAgo(1),
-    },
-  ];
-  for (const p of payments) {
-    await prisma.payment.upsert({
-      where: { id: p.id },
-      update: {},
-      create: {
-        ...p,
-        livemode: false,
-        events: {
-          create: [
-            { type: "created", fromStatus: null, toStatus: "authorized", amount: p.amount, actor: "seed", createdAt: p.createdAt },
-            ...(p.status === "captured"
-              ? [{ type: "capture", fromStatus: "authorized", toStatus: "captured", amount: p.amount, actor: "seed", createdAt: p.capturedAt ?? p.createdAt }]
-              : []),
-          ],
-        },
-      },
-    });
-  }
+  });
 
   // ── Agents ────────────────────────────────────────────────────────────
   const agents = [
@@ -203,6 +175,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       emailNotification: "per_payment",
       agentId: SEED_IDS.agent1,
       enabledMethods: JSON.stringify(["credit", "qr"]),
+      transferIdDigits: 7,
       createdAt: daysAgo(40),
     },
     {
@@ -220,7 +193,8 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       notifyIdFormat: "both",
       emailNotification: "daily",
       agentId: SEED_IDS.agent2,
-      enabledMethods: JSON.stringify(["credit"]),
+      enabledMethods: JSON.stringify(["credit", "bank"]),
+      transferIdDigits: 8,
       createdAt: daysAgo(12),
     },
     {
@@ -238,8 +212,9 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       notifyIdFormat: "transaction_id",
       emailNotification: "none",
       agentId: null,
-      enabledMethods: JSON.stringify([]),
-      createdAt: daysAgo(2),
+      enabledMethods: JSON.stringify(["bank", "convenience"]),
+      transferIdDigits: 7,
+      createdAt: daysAgo(20),
     },
   ] as const;
   for (const m of merchants) {
@@ -250,73 +225,169 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     });
   }
 
-  // ── Payment applications ──────────────────────────────────────────────
-  const applications = [
+  // ── Transactions (決済申請 / 決済) ─────────────────────────────────────
+  // 3 completed, 1 authorized, 2 awaiting transfer (one overdue), 1 failed.
+  const ev = (type: string, from: string | null, to: string, amount: number, actor: string, at: Date): EventSeed => ({
+    type,
+    fromStatus: from,
+    toStatus: to,
+    amount,
+    actor,
+    createdAt: at,
+  });
+  const payments = [
     {
-      id: SEED_IDS.application1,
-      applicationCode: "APP-00001",
-      merchantId: SEED_IDS.merchant3,
-      type: "new_use",
-      method: "credit",
-      note: "新規出店に伴いクレジットカード決済を利用開始したい。想定月商 150 万円。",
-      status: "pending",
-      appliedAt: daysAgo(1),
-    },
-    {
-      id: SEED_IDS.application2,
-      applicationCode: "APP-00002",
-      merchantId: SEED_IDS.merchant2,
-      type: "add_method",
-      method: "convenience",
-      note: "ギフト需要に対応するためコンビニ決済を追加したい。",
-      status: "pending",
-      appliedAt: hoursAgo(5),
-    },
-    {
-      id: SEED_IDS.application3,
-      applicationCode: "APP-00003",
+      id: SEED_IDS.payment1,
+      providerId: stripe.id,
       merchantId: SEED_IDS.merchant1,
-      type: "add_method",
-      method: "qr",
-      note: "PayPay 対応の要望が多いため QR 決済を追加。",
-      status: "approved",
-      appliedAt: daysAgo(20),
-      reviewedAt: daysAgo(18),
-      reviewerNote: "審査基準を満たしているため承認。",
+      method: "credit",
+      orderNumber: "ORD-DEMO-001",
+      productName: "春物ジャケット",
+      amount: 4980,
+      status: "captured",
+      externalId: "stripe_demo_001",
+      customerName: "山田 太郎",
+      customerId: "u_10021",
+      customerEmail: "taro@example.com",
+      description: "春物ジャケット x 1",
+      createdAt: hoursAgo(6),
+      capturedAt: hoursAgo(6),
+      events: [ev("created", null, "authorized", 4980, "seed", hoursAgo(6)), ev("capture", "authorized", "captured", 4980, "seed", hoursAgo(6))],
     },
     {
-      id: SEED_IDS.application4,
-      applicationCode: "APP-00004",
+      id: SEED_IDS.payment2,
+      providerId: paypay.id,
+      merchantId: SEED_IDS.merchant1,
+      method: "qr",
+      orderNumber: "ORD-DEMO-002",
+      productName: "ロゴTシャツ",
+      amount: 1280,
+      status: "captured",
+      externalId: "paypay_demo_002",
+      customerName: "鈴木 花子",
+      customerId: "u_10388",
+      description: "ロゴTシャツ x 1",
+      createdAt: hoursAgo(3),
+      capturedAt: hoursAgo(3),
+      events: [ev("created", null, "authorized", 1280, "seed", hoursAgo(3)), ev("capture", "authorized", "captured", 1280, "seed", hoursAgo(3))],
+    },
+    {
+      id: SEED_IDS.payment3,
+      providerId: stripe.id,
       merchantId: SEED_IDS.merchant2,
-      type: "limit_change",
       method: "credit",
-      note: "月間限度額を 300 万円から 1,000 万円へ引き上げたい。",
-      status: "rejected",
-      appliedAt: daysAgo(8),
-      reviewedAt: daysAgo(6),
-      reviewerNote: "直近 3 か月の取引実績が基準に達していないため否認。実績確認後に再申請してください。",
+      orderNumber: "ORD-DEMO-003",
+      productName: "ハンドメイドバッグ",
+      amount: 9800,
+      status: "authorized",
+      externalId: "stripe_demo_003",
+      customerName: "佐藤 次郎",
+      customerId: "u_20417",
+      description: "ハンドメイドバッグ x 1",
+      createdAt: hoursAgo(1),
+      events: [ev("created", null, "authorized", 9800, "seed", hoursAgo(1))],
+    },
+    {
+      id: SEED_IDS.payment4,
+      providerId: bank.id,
+      merchantId: SEED_IDS.merchant2,
+      method: "bank",
+      orderNumber: "ORD-DEMO-004",
+      productName: "抹茶ギフトセット",
+      amount: 24800,
+      status: "awaiting_transfer",
+      externalId: "va_demo_004",
+      customerName: "高橋 由美",
+      customerId: "u_20533",
+      description: "抹茶ギフトセット x 2",
+      transferId: SEED_TRANSFER_IDS[SEED_IDS.payment4],
+      transferDueAt: transferDueDate(daysAgo(4)),
+      createdAt: daysAgo(4),
+      events: [ev("created", null, "awaiting_transfer", 24800, "seed", daysAgo(4))],
+    },
+    {
+      id: SEED_IDS.payment5,
+      providerId: bank.id,
+      merchantId: SEED_IDS.merchant3,
+      method: "bank",
+      orderNumber: "ORD-DEMO-005",
+      productName: "本まぐろ中トロ 500g",
+      amount: 6600,
+      status: "awaiting_transfer",
+      externalId: "va_demo_005",
+      customerName: "渡辺 健",
+      customerId: "u_30102",
+      description: "本まぐろ中トロ 500g x 1",
+      transferId: SEED_TRANSFER_IDS[SEED_IDS.payment5],
+      transferDueAt: transferDueDate(daysAgo(9)), // overdue by 2 days
+      createdAt: daysAgo(9),
+      events: [ev("created", null, "awaiting_transfer", 6600, "seed", daysAgo(9))],
+    },
+    {
+      id: SEED_IDS.payment6,
+      providerId: stripe.id,
+      merchantId: SEED_IDS.merchant2,
+      method: "credit",
+      orderNumber: "ORD-DEMO-006",
+      productName: "茶器セット",
+      amount: 15800,
+      status: "failed",
+      externalId: "stripe_demo_006",
+      customerName: "田中 一郎",
+      customerId: "u_20690",
+      description: "茶器セット x 1",
+      createdAt: daysAgo(2),
+      events: [ev("created", null, "pending", 15800, "seed", daysAgo(2)), ev("fail", "pending", "failed", 15800, "webhook", daysAgo(2))],
+    },
+    {
+      id: SEED_IDS.payment7,
+      providerId: bank.id,
+      merchantId: SEED_IDS.merchant3,
+      method: "bank",
+      orderNumber: "ORD-DEMO-007",
+      productName: "本まぐろ赤身 1kg",
+      amount: 12000,
+      status: "captured",
+      externalId: "va_demo_007",
+      customerName: "伊藤 美咲",
+      customerId: "u_30077",
+      description: "本まぐろ赤身 1kg x 1",
+      transferId: SEED_TRANSFER_IDS[SEED_IDS.payment7],
+      transferDueAt: transferDueDate(daysAgo(5)),
+      depositAmount: 12000,
+      createdAt: daysAgo(5),
+      capturedAt: daysAgo(1),
+      events: [ev("created", null, "awaiting_transfer", 12000, "seed", daysAgo(5)), ev("deposit", "awaiting_transfer", "captured", 12000, "bank", daysAgo(1))],
     },
   ];
-  for (const a of applications) {
-    await prisma.paymentApplication.upsert({ where: { id: a.id }, update: {}, create: a });
+  for (const { events, ...p } of payments) {
+    await prisma.payment.upsert({
+      where: { id: p.id },
+      update: {},
+      create: { ...p, livemode: false, events: { create: events } },
+    });
   }
 
   // ── IP restrictions ───────────────────────────────────────────────────
   const ips = [
-    { id: SEED_IDS.ip1, target: "admin", merchantId: null, cidr: "203.0.113.10", label: "本社オフィス (固定IP)", enabled: true, createdAt: daysAgo(50) },
-    { id: SEED_IDS.ip2, target: "admin", merchantId: null, cidr: "198.51.100.0/24", label: "運用センター VPN", enabled: true, createdAt: daysAgo(45) },
-    { id: SEED_IDS.ip3, target: "merchant_api", merchantId: SEED_IDS.merchant1, cidr: "192.0.2.0/28", label: "コトリ 本番サーバー", enabled: false, createdAt: daysAgo(10) },
+    { id: SEED_IDS.ip1, target: "admin", merchantId: null, cidr: "203.0.113.10", label: "本社オフィス (固定IP)", mode: "allow", enabled: true, createdAt: daysAgo(50) },
+    { id: SEED_IDS.ip2, target: "admin", merchantId: null, cidr: "198.51.100.0/24", label: "運用センター VPN", mode: "allow", enabled: true, createdAt: daysAgo(45) },
+    { id: SEED_IDS.ip3, target: "merchant_api", merchantId: SEED_IDS.merchant1, cidr: "192.0.2.0/28", label: "コトリ 本番サーバー", mode: "allow", enabled: false, createdAt: daysAgo(10) },
+    { id: SEED_IDS.ip4, target: "admin", merchantId: null, cidr: "203.0.113.200", label: "不審なアクセス元 (ブロック)", mode: "deny", enabled: true, createdAt: daysAgo(3) },
   ];
   for (const r of ips) {
     await prisma.ipRestriction.upsert({ where: { id: r.id }, update: {}, create: r });
   }
 
+  // Deprecated table (see prisma/schema.prisma): keep it empty so the next
+  // release can drop it with a plain `prisma db push`.
+  await prisma.paymentApplication.deleteMany();
+
   return {
-    providers: 2,
+    providers: 3,
     payments: payments.length,
     merchants: merchants.length,
     agents: agents.length,
-    applications: applications.length,
     ipRestrictions: ips.length,
   };
 }
@@ -325,11 +396,11 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
 export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.ipRestriction.deleteMany();
   await prisma.paymentApplication.deleteMany();
-  await prisma.merchant.deleteMany();
-  await prisma.agent.deleteMany();
   await prisma.webhookEvent.deleteMany();
   await prisma.paymentEvent.deleteMany();
   await prisma.refund.deleteMany();
   await prisma.payment.deleteMany();
+  await prisma.merchant.deleteMany();
+  await prisma.agent.deleteMany();
   await prisma.paymentProvider.deleteMany();
 }

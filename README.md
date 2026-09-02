@@ -25,8 +25,8 @@
   <img src="docs/screenshots/merchant-detail-en.png" alt="加盟店詳細: マスター権限でのパスワード表示・再発行" width="49%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/application-detail-en.png" alt="決済申請詳細: マスター権限での承認・否認・差戻し" width="49%">
-  <img src="docs/screenshots/ip-restrictions-en.png" alt="IP制限管理: 現在の接続元IPと許可リストの判定" width="49%">
+  <img src="docs/screenshots/application-detail-en.png" alt="決済申請詳細: 振込ID・入金消込・ステータス変更履歴" width="49%">
+  <img src="docs/screenshots/ip-restrictions-en.png" alt="IP制限管理: ブロック / 許可ルールと現在の接続元IPの判定" width="49%">
 </p>
 <p align="center">
   <img src="docs/screenshots/manual-ja.png" alt="管理画面マニュアル（日本語）" width="49%">
@@ -37,7 +37,7 @@
 
 - **決済プロバイダ接続フロー** — カテゴリ → サービス → 認証情報の3ステップ。対応: Stripe / Square / GMO PG / PayPay / au PAY / 楽天ペイ / d払い / ビットキャッシュ / スマートピット / Webコンビニ / ペイジー / バーチャル口座 / カスタムWebhook（[`lib/providers/registry.ts`](./lib/providers/registry.ts) にデータとして定義。フォーム・必須チェック・暗号化対象・マスク表示が全て定義から派生）
 - **認証情報の暗号化保存** — シークレットはフィールド単位で AES-256-GCM 暗号化。管理画面では末尾4文字のみ表示。鍵は本番で未設定なら起動しない（fail-closed）。鍵を変更しても 500 にならず「再入力が必要」と案内
-- **決済ライフサイクル** — 与信 (Authorized) → 売上確定 (Capture) → 取消 (Void) / 返金 (Refund)。**一部返金**対応、状態遷移は1つの遷移表に集約し、更新は status 条件付きの `updateMany` で**アトミック**（二重返金が構造的に通らない）
+- **取引のライフサイクル** — 加盟店サイトで決済方法が選ばれた時点の取引（決済申請）を 申請中 / 振込待ち / 与信済 → 完了 → 返金済 で管理。**決済申請一覧**（未完了）と **決済一覧**（完了・返金済）は同じテーブルのフィルタ違い。**一部返金**対応、状態遷移は1つの遷移表に集約し、更新は status 条件付きの `updateMany` で**アトミック**（二重返金・二重消込が構造的に通らない）
 - **冪等キー** — 決済作成 API は `Idempotency-Key` ヘッダを受け、同じキーの再送には同じ結果を返す
 - **監査ログ（PaymentEvent）** — 誰が（ダッシュボード / Webhook）いつ何をしたかを追記専用で記録し、詳細画面にタイムライン表示
 - **Webhook 受信** — Stripe 互換の HMAC-SHA256 署名検証（timestamp tolerance 付き）と、イベントIDによる重複排除。詳細画面から署名付き Webhook を自サーバーに送って挙動を確認できる
@@ -46,10 +46,10 @@
 - **テスト / 本番モード** — プロバイダのモードを決済に `livemode` としてスナップショット。ダッシュボードと一覧で切替表示
 - **モバイル対応** — 下部タブバー、横スクロールするテーブル、`<dialog>` ベースの確認ダイアログ、loading / error / not-found の各ページ
 - **加盟店管理（PSP 視点）** — 加盟店アカウントの発行（`MER-00001` 自動採番・パスワード自動生成/暗号化保存）、サイト名ふりがな（カタカナ）/ メール / https の検証、通知設定（型 × パラメータセット × 識別子）に応じて **実際に送信されるリクエストをリアルタイムでプレビュー**、閲覧 → 編集 → 更新のモード切替、マスター権限のみパスワード表示・再発行（権限は cookie を API 側で検査）、担当代理店の紐付け
-- **ダッシュボード（6 カード）** — 加盟店 / 代理店 / 決済一覧（本日の件数・金額）/ 決済申請（審査中件数をバッジ表示）/ IP制限（有効ルール数）/ マニュアル。サイドバーも同じ 6 項目
+- **ダッシュボード（6 カード）** — 加盟店 / 代理店 / 決済一覧（本日の件数・金額）/ 決済申請（未完了件数・振込期限超過をバッジ表示）/ IP制限（有効ルール数）/ マニュアル。サイドバーも同じ 6 項目
 - **代理店管理** — `AGT-00001` 自動採番、手数料率（% 小数2桁）、有効/無効、詳細画面に担当加盟店の一覧
-- **決済申請一覧** — 加盟店からの決済手段利用申請（新規利用 / 決済手段追加 / 限度額変更 × クレジット / QR / コンビニ / 銀行振込）を状態・加盟店で絞り込み、審査中を先頭に表示。承認 / 否認 / 差戻しはマスター権限のみで、否認・差戻しは理由必須。承認すると同一トランザクションで加盟店の利用可能手段に追加され、審査済みの申請は 409 で二重審査を防ぐ
-- **IP制限管理** — 管理画面 / 加盟店API 向けの許可リスト（IPv4 単体または CIDR）。ホストビットを落として正規化、現在の接続元 IP と有効ルールに対する判定（許可 / 拒否 / ルールなし）を表示。実際の遮断は本番導入時に middleware に組み込む前提
+- **決済申請一覧（未完了取引の追跡・消込）** — 決済種別 / ステータス / 加盟店 / 期間で絞り込み、振込待ちは振込期限が近い順・期限超過は赤で強調。銀行振込は加盟店ごとに 7 桁 / 8 桁の **振込ID** と振込期限を発行し、**入金消込**（一致 → 完了、不足 → 振込待ちのまま不足フラグ、超過 → 完了 + 超過フラグ）を詳細画面（マスター権限）と、銀行からの入金通知を模した `POST /api/demo/deposit-notify` の両方から実行できる。完了・失敗・キャンセル・期限切れの手動遷移と、ステータス変更履歴（いつ・誰が・何から何へ）
+- **IP制限管理（実際に遮断）** — 管理画面 / 加盟店API 向けの IP / CIDR ルール。**ブロック** ルールに一致する接続元は `app/layout.tsx`（画面）と `withApiHandler`（API）で実際に 403 になり、自分の IP をブロックするルールは保存できない（ロックアウト防止）。許可ルールは判定表示用。現在の接続元 IP と判定を表示
 - **管理画面マニュアル** — 左に目次・右に本文の 8 章構成。`content/manual/{ja,en}/*.md` を自前の Markdown レンダラで描画し、表示言語に連動。各画面ヘッダーの「?」から該当章へ
 
 ## アーキテクチャ
@@ -70,15 +70,21 @@ flowchart LR
 
 ```mermaid
 stateDiagram-v2
-  [*] --> pending: コンビニ / 銀行振込
-  [*] --> authorized: カード / QR
-  [*] --> captured: カード / QR（即時確定）
+  [*] --> pending: コンビニ（申請中）
+  [*] --> awaiting_transfer: 銀行振込（振込ID発行・振込待ち）
+  [*] --> authorized: カード / QR（与信済）
+  [*] --> captured: カード / QR（即時完了）
   pending --> captured: capture · webhook
   pending --> cancelled: cancel
-  pending --> failed: webhook
+  pending --> failed: fail · webhook
+  pending --> expired: expire
+  awaiting_transfer --> captured: deposit（入金一致 / 超過）
+  awaiting_transfer --> awaiting_transfer: deposit（不足）
+  awaiting_transfer --> cancelled: cancel
+  awaiting_transfer --> expired: expire（期限超過）
   authorized --> captured: capture
   authorized --> cancelled: cancel
-  authorized --> failed: webhook
+  authorized --> failed: fail · webhook
   captured --> partially_refunded: refund（一部）
   captured --> refunded: refund（全額）
   partially_refunded --> partially_refunded: refund（一部）
@@ -150,7 +156,7 @@ app/
   payments/                  決済一覧（純売上・本日の売上・テスト/本番切替）/ 作成 / 詳細（イベント履歴・返金・Webhookシミュレート）
   merchants/                 加盟店一覧 / 追加 / 詳細・編集（通知サンプルのプレビュー・担当代理店）
   agents/                    代理店一覧 / 追加 / 詳細・編集（担当加盟店）
-  applications/              決済申請一覧（状態・加盟店で絞り込み）/ 詳細（承認・否認・差戻し）
+  applications/              決済申請一覧（未完了の取引。種別・状態・加盟店・期間で絞り込み）/ 詳細（入金消込・完了・失敗・キャンセル・期限切れ）
   ip-restrictions/           IP制限一覧（現在IPの判定）/ 追加 / 編集
   manual/[chapter]/          管理画面マニュアル（content/manual/{ja,en}/*.md）
   providers/                 プロバイダ一覧 / 新規接続（カテゴリ→サービス→フォーム）/ 編集
@@ -162,10 +168,10 @@ app/
     webhooks/[providerId]/   HMAC 署名検証 + 重複排除 → 状態遷移
     merchants/               加盟店 CRUD + パスワード表示/再発行（マスター権限のみ）
     agents/                  代理店 CRUD
-    applications/            一覧 + [id]/review（approve|reject|return、マスター権限のみ）
-    ip-restrictions/         許可ルール CRUD
+    payments/[id]/[action]   capture|cancel|refund|fail|expire|deposit（refund 以外はマスター権限）
+    ip-restrictions/         ブロック / 許可ルール CRUD（自己ロックアウト防止）
     auth/                    login / logout（署名付き Cookie）
-    demo/reset/              CRON_SECRET で保護されたデモ初期化
+    demo/reset/ demo/deposit-notify/  CRON_SECRET で保護されたデモ初期化 / 銀行の入金通知を模した消込 API（DEPOSIT_NOTIFY_SECRET）
 middleware.ts                rate limit · CSRF · DEMO_READONLY · セッション
 components/
   views/                     各画面の表示（client, i18n）
@@ -173,10 +179,10 @@ components/
   confirm-dialog.tsx         <dialog> ベースの確認ダイアログ（useConfirm）
   language-provider.tsx      言語 Context・useT・useApiJson
 lib/
-  payments/                  transitions.ts（状態遷移表）, actions.ts（アトミック適用 + 監査ログ）
+  payments/                  transitions.ts（状態遷移表・申請/決済のステータス集合）, actions.ts（アトミック適用 + 履歴）, transfer.ts（振込ID・入金消込）, list.ts / detail.ts（両画面共通のローダ）
   merchants/                 types / schema（Zod）/ ids（採番）/ secrets（PW）/ notification（通知サンプル）
-  agents/ applications/      代理店の語彙・Zod・採番 / 申請の語彙と review.ts（条件付き updateMany）
-  ip-restrictions/ ip.ts     ルールの Zod / IPv4・CIDR の純関数（parseCidr, ipInCidr, evaluateAllowList）
+  agents/                    代理店の語彙・Zod・採番
+  ip-restrictions/ ip.ts     ルールの Zod / enforce.ts（ブロック判定）/ IPv4・CIDR の純関数（parseCidr, ipInCidr, evaluateRules）
   manual/                    chapters.ts（章の定義）, markdown.tsx（自前レンダラ）, load.ts
   api/role-guard.ts          requireMaster（マスター限定 API の唯一の検査点）
   providers/                 registry（定義）, credentials（暗号化 I/O）, validation（Zod 生成）, connection
@@ -243,7 +249,7 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 
 - **PSP connection flow** — category → service → credentials in three steps. Providers: Stripe, Square, GMO PG, PayPay, au PAY, Rakuten Pay, d Payment, BitCash, Smart Pit, multi-konbini, Pay-easy, virtual accounts, custom webhook. Everything (form, required checks, which fields are encrypted, masking) derives from the data in [`lib/providers/registry.ts`](./lib/providers/registry.ts).
 - **Encrypted credentials** — field-level AES-256-GCM; the UI shows only the last 4 characters. The key is fail-closed in production, and a rotated key surfaces as "please re-enter" instead of a 500.
-- **Payment lifecycle** — Authorized → Captured → Voided / Refunded with **partial refunds**. A single transition table drives the UI, the API and webhooks; updates are **atomic** (`updateMany` conditioned on the current status), so a double refund cannot slip through.
+- **Transaction lifecycle** — a transaction (payment application) is created the moment a customer picks a payment method at checkout and moves Applied / Awaiting transfer / Authorized → Completed → Refunded. **Payment Applications** (open) and **Payments** (completed / refunded) are the same table with different status filters. **Partial refunds**; a single transition table drives the UI, the API and webhooks; updates are **atomic** (`updateMany` conditioned on the current status), so a double refund or double reconciliation cannot slip through.
 - **Idempotency** — `POST /api/payments` honors an `Idempotency-Key` header and replays the original result.
 - **Audit trail (PaymentEvent)** — append-only record of who did what and when (dashboard vs. webhook), rendered as a timeline.
 - **Webhook ingestion** — Stripe-compatible HMAC-SHA256 signatures with a timestamp tolerance, plus deduplication on event id. The payment page can send itself a signed webhook to demonstrate the path end to end.
@@ -252,10 +258,10 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 - **Test / live mode** — each payment snapshots the provider's mode as `livemode`; dashboard and list can filter on it.
 - **Mobile** — bottom tab bar, horizontally scrolling tables, `<dialog>`-based confirmations, loading / error / not-found routes.
 - **Merchant management (PSP side)** — issue merchant accounts (auto-numbered `MER-00001`, generated + encrypted password), katakana / email / https validation, and notification settings (format × parameter set × identifier) with a **live preview of the exact request the merchant will receive**; read → edit → update mode switch; only the master role can reveal or regenerate the password (the role is enforced server-side from a cookie); optional referring agent.
-- **Dashboard (6 cards)** — Merchants / Agents / Payments (today's count and amount) / Payment Applications (pending count as a badge) / IP Restrictions (active rules) / Manual. The sidebar mirrors the same six items.
+- **Dashboard (6 cards)** — Merchants / Agents / Payments (today's count and amount) / Payment Applications (open count, overdue transfers as a badge) / IP Restrictions (active rules) / Manual. The sidebar mirrors the same six items.
 - **Agent management** — auto-numbered `AGT-00001`, fee rate (%, two decimals), active / inactive, and the merchants each agent refers on the detail page.
-- **Payment applications** — merchants' requests to use a payment method (new use / add method / limit change × credit / QR / konbini / bank transfer), filtered by status and merchant with pending first. Approve / reject / return are master-only; reject and return require a reason. Approval appends the method to the merchant's enabled methods in the same transaction, and an already-reviewed application answers 409.
-- **IP restrictions** — allow lists for the admin UI and the merchant API (single IPv4 or CIDR), normalized on save, with the caller's current IP evaluated against the active rules (allowed / denied / no rules). Enforcement is left to the middleware for a real deployment.
+- **Payment applications (open transactions)** — filter by method / status / merchant / period; awaiting transfers are listed by deadline with overdue rows in red. Bank transfers get a per-merchant 7- or 8-digit **transfer ID** and a deadline; **deposit reconciliation** (exact → completed, short → still awaiting with a short flag, excess → completed with an excess flag) runs from the detail screen (master role) and from `POST /api/demo/deposit-notify`, which mimics the bank's deposit notification. Manual complete / fail / cancel / expire, and a status history (when / who / from → to).
+- **IP restrictions (enforced)** — IP / CIDR rules for the admin UI and the merchant API. Callers matching a **Block** rule are refused by `app/layout.tsx` (pages) and `withApiHandler` (API) with a 403; a rule that would block your own IP cannot be saved (lock-out protection). Allow rules are informational; the current IP and its verdict are shown.
 - **In-app manual** — eight chapters, table of contents on the left and the chapter on the right, rendered from `content/manual/{ja,en}/*.md` by a small in-house Markdown renderer and linked to the UI language. Every page header has a "?" that opens its chapter.
 
 ## Architecture

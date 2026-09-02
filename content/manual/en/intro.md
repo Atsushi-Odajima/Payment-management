@@ -1,6 +1,6 @@
 # Introduction
 
-Wire Pay is a dashboard for payment service provider (PSP) operators to manage **merchants, agents, payments, applications and access restrictions** in one place. This manual explains each screen and documents the notification a merchant receives.
+Wire Pay is a dashboard for payment service provider (PSP) operators to manage **merchants, agents, payment applications (transactions), payments and access restrictions** in one place. This manual explains each screen and documents the notification a merchant receives.
 
 ## About demo mode
 
@@ -21,9 +21,10 @@ The **role toggle** in the header switches the demo role.
 | Browse every screen | ✓ | ✓ |
 | Add / edit merchants, agents and IP rules | ✓ | ✓ |
 | Reveal or regenerate a merchant password | ✓ | ✗ |
-| Approve / reject / return a payment application | ✓ | ✗ |
+| Complete / fail / cancel / expire a transaction, reconcile deposits | ✓ | ✗ |
+| Refund | ✓ | ✓ |
 
-Roles are enforced on the server (API). Switching the toggle in the UI alone never grants access to passwords or reviews. In production the toggle is replaced by the signed-in user's role.
+Roles are enforced on the server (API). Switching the toggle in the UI alone never grants access to passwords or transaction changes. In production the toggle is replaced by the signed-in user's role.
 
 ## Login
 

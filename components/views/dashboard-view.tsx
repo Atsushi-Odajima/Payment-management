@@ -12,7 +12,10 @@ export interface DashboardViewProps {
   agentCount: number;
   todayPaymentCount: number;
   todayPaymentAmount: number;
-  pendingApplicationCount: number;
+  /** Transactions still expecting an outcome (pending / awaiting transfer / authorized). */
+  openTransactionCount: number;
+  /** Bank transfers past their deadline. */
+  overdueTransferCount: number;
   activeIpRuleCount: number;
 }
 
@@ -63,11 +66,8 @@ export function DashboardView(props: DashboardViewProps) {
       icon: "inbox",
       title: t("dashboard.cards.applications.title"),
       description: t("dashboard.cards.applications.description"),
-      value: t("dashboard.valueCount", { count: props.pendingApplicationCount }),
-      badge:
-        props.pendingApplicationCount > 0
-          ? t("dashboard.pendingBadge", { count: props.pendingApplicationCount })
-          : undefined,
+      value: t("dashboard.valueOpen", { count: props.openTransactionCount }),
+      badge: props.overdueTransferCount > 0 ? t("dashboard.overdueBadge", { count: props.overdueTransferCount }) : undefined,
     },
     {
       key: "ip",
@@ -121,7 +121,7 @@ export function DashboardView(props: DashboardViewProps) {
                     {c.title}
                   </span>
                   {c.badge && (
-                    <span className="badge bg-amber-100 text-amber-800 ring-amber-200">{c.badge}</span>
+                    <span className="badge bg-rose-100 text-rose-800 ring-rose-200">{c.badge}</span>
                   )}
                 </span>
                 <span className="mt-0.5 block text-xs text-slate-500">{c.description}</span>

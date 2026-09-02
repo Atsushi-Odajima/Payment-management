@@ -1,52 +1,31 @@
-import { prisma } from "@/lib/db";
-import { ApplicationsView } from "@/components/views/applications-view";
+import { TransactionsView } from "@/components/views/transactions-view";
 import { DEFAULT_PAGE_SIZE, parsePage } from "@/lib/pagination";
-import { APPLICATION_SELECT } from "@/app/api/applications/select";
-import { toApplicationView } from "@/lib/applications/serialize";
-import { isApplicationStatus } from "@/lib/applications/types";
+import { loadTransactions, parseTransactionFilters } from "@/lib/payments/list";
+import { APPLICATION_STATUSES } from "@/lib/payments/transitions";
 
 export const dynamic = "force-dynamic";
 
-export default async function ApplicationsPage({
-  searchParams,
-}: {
-  searchParams?: { status?: string; merchant?: string; page?: string };
-}) {
-  const status = isApplicationStatus(searchParams?.status) ? searchParams!.status! : "";
-  const merchantId = searchParams?.merchant ?? "";
+/** 決済申請一覧 — transactions that have not completed yet, transfers due soonest first. */
+export default async function ApplicationsPage({ searchParams }: { searchParams?: Record<string, string | undefined> }) {
   const page = parsePage(searchParams?.page);
-  const where = {
-    ...(status ? { status } : {}),
-    ...(merchantId ? { merchantId } : {}),
-  };
-
-  const [rows, total, merchants] = await Promise.all([
-    // Pending first, then newest. SQLite/Postgres both sort strings, so use a
-    // two-step order: fetch the page ordered by (status != pending, appliedAt desc)
-    // via raw ordering isn't portable — sort in JS on the page window instead.
-    prisma.paymentApplication.findMany({
-      where,
-      orderBy: [{ appliedAt: "desc" }],
-      select: APPLICATION_SELECT,
-    }),
-    prisma.paymentApplication.count({ where }),
-    prisma.merchant.findMany({ orderBy: { merchantCode: "asc" }, select: { id: true, merchantCode: true, siteName: true } }),
-  ]);
-
-  const sorted = rows
-    .map(toApplicationView)
-    .sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending"));
-  const pageRows = sorted.slice((page - 1) * DEFAULT_PAGE_SIZE, page * DEFAULT_PAGE_SIZE);
-
+  const filters = parseTransactionFilters(searchParams, APPLICATION_STATUSES);
+  const result = await loadTransactions({
+    allowedStatuses: APPLICATION_STATUSES,
+    filters,
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+    order: "applications",
+  });
   return (
-    <ApplicationsView
-      applications={pageRows}
-      merchants={merchants}
-      status={status}
-      merchantId={merchantId}
+    <TransactionsView
+      kind="applications"
+      items={result.items}
+      total={result.total}
       page={page}
       pageSize={DEFAULT_PAGE_SIZE}
-      total={total}
+      filters={result.filters}
+      merchants={result.merchants}
+      statuses={APPLICATION_STATUSES}
     />
   );
 }

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateIpRestrictionInput } from "@/lib/ip-restrictions/schema";
+import { assertNotSelfBlock } from "@/lib/ip-restrictions/self-block";
 import { normalizeCidr } from "@/lib/ip";
 import { IP_RESTRICTION_SELECT } from "../select";
 
@@ -19,6 +20,7 @@ export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
     const m = await prisma.merchant.findUnique({ where: { id: v.data.merchantId }, select: { id: true } });
     if (!m) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: { merchantId: "invalid" } });
   }
+  assertNotSelfBlock(req, v.data);
   const exists = await prisma.ipRestriction.findUnique({ where: { id: params.id }, select: { id: true } });
   if (!exists) throw new ApiError(404, "not_found", "errors.notFound");
   const updated = await prisma.ipRestriction.update({

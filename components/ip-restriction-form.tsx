@@ -5,7 +5,7 @@ import { useApiJson, useT } from "./language-provider";
 import { FormField } from "./ui/form-field";
 import { SegmentedControl } from "./ui/segmented-control";
 import { validateIpRestrictionInput, type IpErrorCode, type IpFieldKey } from "@/lib/ip-restrictions/schema";
-import type { IpRestrictionInput, IpRestrictionView, IpTarget } from "@/lib/ip-restrictions/types";
+import type { IpMode, IpRestrictionInput, IpRestrictionView, IpTarget } from "@/lib/ip-restrictions/types";
 import { isValidCidr, normalizeCidr } from "@/lib/ip";
 import { cn } from "@/lib/utils";
 
@@ -92,6 +92,17 @@ export function IpRestrictionForm({
         ]}
       />
       <p className="-mt-4 text-xs text-slate-500">{t("ipForm.targetHelp")}</p>
+
+      <SegmentedControl<IpMode>
+        label={t("ipForm.mode")}
+        value={values.mode}
+        onChange={(v) => set("mode", v)}
+        options={[
+          { value: "deny", label: t("ipEnums.mode.deny"), activeClass: "bg-rose-50 text-rose-900 ring-rose-400" },
+          { value: "allow", label: t("ipEnums.mode.allow"), activeClass: "bg-emerald-50 text-emerald-900 ring-emerald-400" },
+        ]}
+      />
+      <p className="-mt-4 text-xs text-slate-500">{values.mode === "deny" ? t("ipForm.modeDenyHelp") : t("ipForm.modeAllowHelp")}</p>
 
       {values.target === "merchant_api" && (
         <FormField id={id("merchantId")} label={t("ipForm.merchant")} required error={err("merchantId")}>
