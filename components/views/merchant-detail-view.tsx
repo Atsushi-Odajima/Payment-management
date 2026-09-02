@@ -11,12 +11,16 @@ import { MerchantForm } from "@/components/merchant-form";
 import { MerchantPasswordField } from "@/components/merchant-password-field";
 import { NotificationPreview } from "@/components/notification-preview";
 import { DetailRow } from "@/components/ui/detail-row";
-import { useFormatDateTime, useT } from "@/components/language-provider";
+import { useFormatDateTime, useLang, useT } from "@/components/language-provider";
 import { useToast } from "@/components/toast";
-import type { MerchantView } from "@/lib/merchants/types";
+import Link from "next/link";
+import type { AgentOption, MerchantView } from "@/lib/merchants/types";
+import { CATEGORIES } from "@/lib/providers/registry";
+import { pickText } from "@/lib/i18n";
 
-export function MerchantDetailView({ merchant: initial }: { merchant: MerchantView }) {
+export function MerchantDetailView({ merchant: initial, agents }: { merchant: MerchantView; agents: AgentOption[] }) {
   const t = useT();
+  const { lang } = useLang();
   const router = useRouter();
   const toast = useToast();
   const formatDate = useFormatDateTime();
@@ -34,6 +38,7 @@ export function MerchantDetailView({ merchant: initial }: { merchant: MerchantVi
       <PageHeader
         title={merchant.siteName}
         description={`${merchant.merchantCode} · ${merchant.companyName}`}
+        helpHref="/manual/merchants"
         breadcrumbs={[{ label: t("merchants.title"), href: "/merchants" }, { label: merchant.merchantCode }]}
         actions={
           editing ? (
@@ -52,6 +57,7 @@ export function MerchantDetailView({ merchant: initial }: { merchant: MerchantVi
           merchantId={merchant.id}
           merchantCode={merchant.merchantCode}
           initial={merchant}
+          agents={agents}
           passwordSlot={passwordSlot}
           onCancel={() => setEditing(false)}
           onSaved={(saved) => {
@@ -88,6 +94,31 @@ export function MerchantDetailView({ merchant: initial }: { merchant: MerchantVi
             <DetailRow label={t("merchantForm.siteNameKana")}>{merchant.siteNameKana}</DetailRow>
             <DetailRow label={t("merchantForm.companyName")}>{merchant.companyName}</DetailRow>
             <DetailRow label={t("merchantForm.contactName")}>{merchant.contactName}</DetailRow>
+            <DetailRow label={t("merchantForm.agent")}>
+              {merchant.agent ? (
+                <Link href={`/agents/${merchant.agent.id}`} className="text-brand-700 hover:underline">
+                  {merchant.agent.agentCode} — {merchant.agent.name}
+                </Link>
+              ) : (
+                <span className="text-slate-500">{t("merchantForm.agentNone")}</span>
+              )}
+            </DetailRow>
+            <DetailRow label={t("merchantDetail.enabledMethods")}>
+              {merchant.enabledMethods.length === 0 ? (
+                <span className="text-slate-500">{t("merchantDetail.noEnabledMethods")}</span>
+              ) : (
+                <span className="flex flex-wrap justify-end gap-1">
+                  {merchant.enabledMethods.map((m) => {
+                    const c = CATEGORIES.find((x) => x.key === m);
+                    return (
+                      <span key={m} className="badge bg-emerald-100 text-emerald-800 ring-emerald-200">
+                        {c ? pickText(c.label, lang) : m}
+                      </span>
+                    );
+                  })}
+                </span>
+              )}
+            </DetailRow>
           </section>
 
           <section className="card divide-y divide-slate-100" aria-labelledby="sec-contact">

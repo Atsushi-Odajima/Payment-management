@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { useFormatDateTime, useT } from "@/components/language-provider";
+import { Pagination } from "@/components/pagination";
 import type { EmailNotification } from "@/lib/merchants/types";
 
 export interface MerchantListItem {
@@ -13,10 +14,11 @@ export interface MerchantListItem {
   companyName: string;
   contactName: string;
   emailNotification: EmailNotification;
+  agentName: string | null;
   createdAt: Date;
 }
 
-export function MerchantsView({ merchants }: { merchants: MerchantListItem[] }) {
+export function MerchantsView({ merchants, page, pageSize, total }: { merchants: MerchantListItem[]; page: number; pageSize: number; total: number }) {
   const t = useT();
   const router = useRouter();
   const formatDate = useFormatDateTime();
@@ -26,6 +28,7 @@ export function MerchantsView({ merchants }: { merchants: MerchantListItem[] }) 
       <PageHeader
         title={t("merchants.title")}
         description={t("merchants.description")}
+        helpHref="/manual/merchants"
         actions={
           <Link href="/merchants/new" className="btn-primary">
             {t("merchants.add")}
@@ -33,7 +36,7 @@ export function MerchantsView({ merchants }: { merchants: MerchantListItem[] }) 
         }
       />
 
-      {merchants.length === 0 ? (
+      {total === 0 ? (
         <div className="card flex flex-col items-center justify-center px-6 py-16 text-center">
           <p className="text-base font-medium text-slate-800">{t("merchants.empty")}</p>
           <p className="mt-1 text-sm text-slate-500">{t("merchants.emptySub")}</p>
@@ -51,6 +54,7 @@ export function MerchantsView({ merchants }: { merchants: MerchantListItem[] }) 
                   <th scope="col" className="px-5 py-3">{t("merchants.thSiteName")}</th>
                   <th scope="col" className="px-5 py-3">{t("merchants.thCompany")}</th>
                   <th scope="col" className="px-5 py-3">{t("merchants.thContact")}</th>
+                  <th scope="col" className="px-5 py-3">{t("merchants.thAgent")}</th>
                   <th scope="col" className="px-5 py-3">{t("merchants.thEmailNotification")}</th>
                   <th scope="col" className="px-5 py-3">{t("merchants.thCreatedAt")}</th>
                   <th scope="col" className="px-5 py-3">
@@ -77,6 +81,7 @@ export function MerchantsView({ merchants }: { merchants: MerchantListItem[] }) 
                     <td className="px-5 py-3 font-medium text-slate-900">{m.siteName}</td>
                     <td className="px-5 py-3 text-slate-700">{m.companyName}</td>
                     <td className="px-5 py-3 text-slate-700">{m.contactName}</td>
+                    <td className="px-5 py-3 text-slate-700">{m.agentName ?? "—"}</td>
                     <td className="px-5 py-3 text-slate-700">
                       {t(`merchantEnums.emailNotification.${m.emailNotification}`)}
                     </td>
@@ -95,6 +100,7 @@ export function MerchantsView({ merchants }: { merchants: MerchantListItem[] }) 
               </tbody>
             </table>
           </div>
+          <Pagination basePath="/merchants" page={page} pageSize={pageSize} total={total} />
         </div>
       )}
     </div>
