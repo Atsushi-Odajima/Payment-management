@@ -4,7 +4,7 @@ Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Ve
 
 | 経路 | DB | スキーマ適用 | 用途 |
 |------|----|-------------|------|
-| **Vercel + Neon** (本番デモ) | Postgres | `prisma db push`（非破壊。破壊的変更はビルド失敗で止まる） | 公開デモ |
+| **Vercel + Neon** (本番デモ) | Postgres | `prisma db push --accept-data-loss`（デモ DB は毎日リセットされる使い捨てデータのため、警告で止めない） | 公開デモ |
 | **Docker** (Railway / Render / Fly) | SQLite on volume | `prisma migrate deploy`（`prisma/migrations`） | 自前ホスト・検証 |
 
 > **経路が2つある理由**: `prisma/schema.prisma` は SQLite 用で、`scripts/prepare-prisma.mjs` がビルド時に `DATABASE_URL` を見て provider を `postgresql` に書き換えます。Prisma 5 は 1 スキーマで複数 provider を扱えないため、Postgres 側は migration 履歴を持たず `db push` で同期しています。Postgres 専用の migration 履歴に一本化するのは [README の Roadmap](./README.md#roadmap) 参照。
@@ -38,8 +38,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 2. <https://vercel.com/new> → GitHub からこのリポジトリをインポート（`main` ブランチ）
 3. Environment Variables に上表の値を設定（最低 `DATABASE_URL`, `ENCRYPTION_KEY`。公開デモなら `ADMIN_PASSWORD`, `DEMO_LOGIN_HINT`, `DEMO_READONLY=1`, `CRON_SECRET` も）
 4. Deploy。`vercel.json` の buildCommand が以下を順に実行します:
-   `prepare-prisma → prisma generate → prisma db push → next build → seed（テーブル単位の upsert。既存 DB でも新テーブルのサンプルだけが追加され、何度実行しても件数は増えない）`
-   `db push` は非空テーブルの削除を拒否するため、テーブルを廃止するときは **二段階** で行う: ① モデルは残したまま seed で空にするリリース → ② モデルを削除するリリース（空テーブルの drop は通る）。`PaymentApplication` は現在①の状態。
+   `prepare-prisma → prisma generate → prisma db push --accept-data-loss → next build → seed（テーブル単位の upsert。既存 DB でも新テーブルのサンプルだけが追加され、何度実行しても件数は増えない）`
+   **`--accept-data-loss` を付ける理由**: `db push` は非対話環境では「一意制約の追加」「テーブル削除」などの *警告* があるだけでエラー終了する。デモ DB はダミーデータで毎日リセットされるため受け入れている。実データを持つ本番 DB に使う場合はこのフラグを外し、`prisma migrate deploy`（migration 履歴）に切り替えること。
    入金通知 API（`/api/demo/deposit-notify`）を本番で使う場合は `DEPOSIT_NOTIFY_SECRET` を設定する（未設定なら本番では 404）。
 5. **Preview デプロイ用に Neon の Branch を別 DB として割り当てる**ことを推奨（Preview と Production が同じ DB を共有しないように）
 

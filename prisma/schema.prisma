@@ -171,7 +171,6 @@ model Merchant {
   updatedAt         DateTime @updatedAt
 
   payments       Payment[]
-  applications   PaymentApplication[]
   ipRestrictions IpRestriction[]
 
   @@index([createdAt])
@@ -197,35 +196,6 @@ model Agent {
   merchants Merchant[]
 
   @@index([createdAt])
-}
-
-// DEPRECATED — no longer used by the application. "Payment applications" are
-// now transactions on the Payment table (see lib/payments/transitions.ts).
-// The model is kept for one release so `prisma db push` on the production
-// database does not have to drop a non-empty table (which it refuses without
-// --accept-data-loss); the seed empties it. Remove this model, the Merchant
-// relation and the two deleteMany calls in prisma/seed-data.ts in the next
-// release, after this one has been deployed.
-model PaymentApplication {
-  id              String    @id @default(cuid())
-  applicationCode String    @unique
-  merchantId      String
-  merchant        Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  // new_use | add_method | limit_change
-  type            String
-  // credit | qr | convenience | bank
-  method          String
-  note            String    @default("")
-  // pending | approved | rejected | returned
-  status          String    @default("pending")
-  appliedAt       DateTime  @default(now())
-  reviewedAt      DateTime?
-  reviewerNote    String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  @@index([status, appliedAt])
-  @@index([merchantId])
 }
 
 // IP rules for the admin UI and the merchant API. "deny" rules block matching
