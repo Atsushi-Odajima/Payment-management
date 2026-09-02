@@ -1,5 +1,6 @@
 import { pickText, translate, type Lang } from "@/lib/i18n";
 import { getProviderDefinition } from "./registry";
+import { missingRequiredFields } from "./validation";
 
 export interface ConnectionTestResult {
   ok: boolean;
@@ -23,17 +24,12 @@ export function runConnectionTest(
   if (!def) {
     return { ok: false, message: translate(lang, "errors.unsupportedProvider") };
   }
-  const missing: string[] = [];
-  for (const field of def.fields) {
-    if (field.required && !credentials[field.key]) {
-      missing.push(pickText(field.label, lang));
-    }
-  }
+  const missing = missingRequiredFields(def, credentials);
   if (missing.length > 0) {
     return {
       ok: false,
       message: translate(lang, "errors.missingRequired", {
-        fields: missing.join(", "),
+        fields: missing.map((f) => pickText(f.label, lang)).join(", "),
       }),
     };
   }

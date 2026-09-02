@@ -1,5 +1,9 @@
-import { decrypt, encrypt, maskSecret } from "@/lib/crypto";
+import { DecryptionError, decrypt, encrypt, maskSecret } from "@/lib/crypto";
 import { getProviderDefinition } from "./registry";
+
+// This module is the ONLY place that touches lib/crypto for provider
+// credentials (enforced by ESLint no-restricted-imports). Everything else
+// goes through build / merge / read helpers below.
 
 export interface CredentialStore {
   // map of fieldKey -> stored value. Secret fields hold AES ciphertext,
@@ -7,6 +11,7 @@ export interface CredentialStore {
   [fieldKey: string]: string;
 }
 
+/** Build a fresh store from user input (create flow). Empty values are skipped. */
 export function buildCredentialStore(
   providerKey: string,
   input: Record<string, string | undefined>,
@@ -22,9 +27,42 @@ export function buildCredentialStore(
   return store;
 }
 
+/**
+ * Merge edits into an existing store (edit flow).
+ *  - undefined  → untouched
+ *  - ""         → secret: keep existing ciphertext / non-secret: remove
+ *  - value      → secret: re-encrypt / non-secret: replace
+ */
+export function mergeCredentialStore(
+  providerKey: string,
+  existingJson: string,
+  input: Record<string, string | undefined>,
+): CredentialStore {
+  const def = getProviderDefinition(providerKey);
+  if (!def) throw new Error(`Unknown provider: ${providerKey}`);
+  const merged: CredentialStore = { ...(safeParse<CredentialStore>(existingJson) ?? {}) };
+  for (const field of def.fields) {
+    const raw = input[field.key];
+    if (raw === undefined) continue;
+    if (raw === "") {
+      if (!field.secret) delete merged[field.key];
+      continue;
+    }
+    merged[field.key] = field.secret ? encrypt(raw) : raw;
+  }
+  return merged;
+}
+
+export interface DisplayField {
+  value: string;
+  masked: boolean;
+  /** true when the stored ciphertext cannot be decrypted with the current key */
+  undecryptable?: boolean;
+}
+
 export interface ProviderConfigView {
   // safe-to-display credential map: secret fields are masked.
-  fields: Record<string, { value: string; masked: boolean }>;
+  fields: Record<string, DisplayField>;
 }
 
 export function readCredentialsForDisplay(
@@ -43,8 +81,16 @@ export function readCredentialsForDisplay(
     }
     if (field.secret) {
       // decrypt only to compute the mask, then discard the plaintext.
-      const plain = decrypt(stored);
-      fields[field.key] = { value: maskSecret(plain), masked: true };
+      try {
+        const plain = decrypt(stored);
+        fields[field.key] = { value: maskSecret(plain), masked: true };
+      } catch (err) {
+        if (err instanceof DecryptionError) {
+          fields[field.key] = { value: "", masked: true, undecryptable: true };
+        } else {
+          throw err;
+        }
+      }
     } else {
       fields[field.key] = { value: stored, masked: false };
     }
@@ -52,6 +98,7 @@ export function readCredentialsForDisplay(
   return { fields };
 }
 
+/** Decrypt everything for actual use. Throws DecryptionError on key mismatch. */
 export function readCredentialsForUse(
   providerKey: string,
   storeJson: string,
@@ -68,9 +115,15 @@ export function readCredentialsForUse(
   return out;
 }
 
-function safeParse<T = unknown>(json: string): T | null {
+/** Plaintext keys present in a store (secrets remain encrypted) — for presence checks. */
+export function storedFieldKeys(storeJson: string): string[] {
+  return Object.keys(safeParse<CredentialStore>(storeJson) ?? {});
+}
+
+export function safeParse<T = unknown>(json: string): T | null {
   try {
-    return JSON.parse(json) as T;
+    const v = JSON.parse(json);
+    return v && typeof v === "object" ? (v as T) : null;
   } catch {
     return null;
   }

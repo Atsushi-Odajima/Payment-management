@@ -1,65 +1,94 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { getProviderDefinition } from "@/lib/providers/registry";
-import { langFromRequest, translate } from "@/lib/i18n";
+import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
+import { initialStatus } from "@/lib/payments/transitions";
+import { DEMO_LIMITS } from "@/lib/demo";
 
 const CreateSchema = z.object({
   providerId: z.string().min(1),
   orderNumber: z.string().min(1).max(64),
   amount: z.number().int().positive().max(99_999_999),
-  currency: z.string().length(3).default("JPY"),
+  // JPY only — the dashboard formats everything as yen.
+  currency: z.literal("JPY").default("JPY"),
   customerName: z.string().max(120).nullable().optional(),
   customerEmail: z.string().email().max(200).nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
   autoCapture: z.boolean().default(true),
+  idempotencyKey: z.string().min(8).max(128).optional(),
 });
 
-export async function POST(req: Request) {
-  const lang = langFromRequest(req);
-  const body = await req.json().catch(() => null);
-  const parsed = CreateSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: translate(lang, "errors.invalidInput"), details: parsed.error.flatten() },
-      { status: 400 },
-    );
+export const POST = withApiHandler(async (req) => {
+  const body = CreateSchema.parse(await readJson(req));
+  const idempotencyKey = req.headers.get("idempotency-key") ?? body.idempotencyKey;
+
+  // Idempotent replay: same key → same result, no second payment.
+  if (idempotencyKey) {
+    const existing = await prisma.payment.findUnique({
+      where: { idempotencyKey },
+      select: { id: true, externalId: true },
+    });
+    if (existing) return ok({ ...existing, replayed: true });
   }
+
   const provider = await prisma.paymentProvider.findUnique({
-    where: { id: parsed.data.providerId },
+    where: { id: body.providerId },
+    select: { id: true, providerKey: true, category: true, status: true, testMode: true },
   });
-  if (!provider) {
-    return NextResponse.json(
-      { error: translate(lang, "errors.providerNotFound") },
-      { status: 404 },
-    );
-  }
+  if (!provider) throw new ApiError(404, "provider_not_found", "errors.providerNotFound");
   if (provider.status !== "active") {
-    return NextResponse.json(
-      { error: translate(lang, "errors.providerDisabled") },
-      { status: 400 },
-    );
+    throw new ApiError(400, "provider_disabled", "errors.providerDisabled");
   }
-  const def = getProviderDefinition(provider.providerKey);
+
+  const count = await prisma.payment.count();
+  if (count >= DEMO_LIMITS.payments) {
+    throw new ApiError(403, "demo_limit", "errors.demoLimit", { limit: DEMO_LIMITS.payments });
+  }
+
+  const status = initialStatus(provider.category, body.autoCapture);
   const now = new Date();
-  const externalId = generateDemoExternalId(def?.key ?? provider.providerKey);
+  const externalId = generateDemoExternalId(provider.providerKey);
 
   const payment = await prisma.payment.create({
     data: {
       providerId: provider.id,
-      orderNumber: parsed.data.orderNumber,
-      amount: parsed.data.amount,
-      currency: parsed.data.currency,
-      customerName: parsed.data.customerName ?? null,
-      customerEmail: parsed.data.customerEmail ?? null,
-      description: parsed.data.description ?? null,
+      orderNumber: body.orderNumber,
+      amount: body.amount,
+      currency: body.currency,
+      customerName: body.customerName ?? null,
+      customerEmail: body.customerEmail ?? null,
+      description: body.description ?? null,
       externalId,
-      status: parsed.data.autoCapture ? "captured" : "authorized",
-      capturedAt: parsed.data.autoCapture ? now : null,
+      status,
+      livemode: !provider.testMode,
+      idempotencyKey: idempotencyKey ?? null,
+      capturedAt: status === "captured" ? now : null,
+      events: {
+        create: [
+          {
+            type: "created",
+            fromStatus: null,
+            toStatus: status === "captured" ? "authorized" : status,
+            amount: body.amount,
+            actor: "dashboard",
+          },
+          ...(status === "captured"
+            ? [
+                {
+                  type: "capture",
+                  fromStatus: "authorized",
+                  toStatus: "captured",
+                  amount: body.amount,
+                  actor: "dashboard" as const,
+                },
+              ]
+            : []),
+        ],
+      },
     },
+    select: { id: true, externalId: true },
   });
-  return NextResponse.json({ id: payment.id, externalId });
-}
+  return ok({ ...payment, replayed: false }, { status: 201 });
+});
 
 function generateDemoExternalId(prefixKey: string): string {
   const prefix = prefixKey.replace(/[^a-z0-9]/gi, "").slice(0, 6).toLowerCase();
