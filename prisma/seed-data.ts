@@ -379,10 +379,6 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     await prisma.ipRestriction.upsert({ where: { id: r.id }, update: {}, create: r });
   }
 
-  // Deprecated table (see prisma/schema.prisma): keep it empty so the next
-  // release can drop it with a plain `prisma db push`.
-  await prisma.paymentApplication.deleteMany();
-
   return {
     providers: 3,
     payments: payments.length,
@@ -395,7 +391,6 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
 /** Remove all demo data (used by the demo reset endpoint and tests). */
 export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.ipRestriction.deleteMany();
-  await prisma.paymentApplication.deleteMany();
   await prisma.webhookEvent.deleteMany();
   await prisma.paymentEvent.deleteMany();
   await prisma.refund.deleteMany();
