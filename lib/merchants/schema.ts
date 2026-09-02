@@ -36,7 +36,9 @@ export const merchantInputSchema = z.object({
   notifyParamSet: z.enum(NOTIFY_PARAM_SETS),
   notifyIdFormat: z.enum(NOTIFY_ID_FORMATS),
   emailNotification: z.enum(EMAIL_NOTIFICATIONS),
-}) satisfies z.ZodType<MerchantInput>;
+  // Optional on input (older clients omit it), always present on output.
+  agentId: z.string().trim().min(1).max(64).nullable().default(null),
+}) satisfies z.ZodType<MerchantInput, z.ZodTypeDef, unknown>;
 
 export type MerchantFieldKey = keyof MerchantInput;
 
@@ -74,6 +76,7 @@ export const EMPTY_MERCHANT_INPUT: MerchantInput = {
   notifyParamSet: "standard",
   notifyIdFormat: "payment_id",
   emailNotification: "per_payment",
+  agentId: null,
 };
 
 export const REQUIRED_MERCHANT_FIELDS: readonly MerchantFieldKey[] = [

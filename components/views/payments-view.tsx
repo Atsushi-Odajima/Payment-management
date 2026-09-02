@@ -29,8 +29,14 @@ export interface PaymentsViewProps {
   status: PaymentStatus | "all";
   mode: ModeFilter;
   payments: PaymentListItem[];
-  capturedAmount: number;
-  capturedCount: number;
+  /** Total rows matching the current filters (the list shows at most `pageSize`). */
+  totalCount: number;
+  pageSize: number;
+  grossSales: number;
+  refundsTotal: number;
+  salesCount: number;
+  todaySalesAmount: number;
+  todaySalesCount: number;
 }
 
 export function PaymentsView(props: PaymentsViewProps) {
@@ -38,18 +44,47 @@ export function PaymentsView(props: PaymentsViewProps) {
   const { lang } = useLang();
   const formatDate = useFormatDateTime();
   const modeParam = props.mode === "all" ? undefined : props.mode;
+  const net = props.grossSales - props.refundsTotal;
 
   return (
     <div>
       <PageHeader
         title={t("payments.title")}
         description={t("payments.description")}
+        helpHref="/manual/payments"
         actions={
-          <Link href="/payments/new" className="btn-primary">
-            {t("payments.createPayment")}
-          </Link>
+          <>
+            <Link href="/providers" className="btn-secondary">
+              {t("payments.manageProviders")}
+            </Link>
+            <Link href="/payments/new" className="btn-primary">
+              {t("payments.createPayment")}
+            </Link>
+          </>
         }
       />
+
+      <section className="mb-6 grid gap-4 sm:grid-cols-3" aria-label={t("payments.statsLabel")}>
+        <Stat
+          label={t("payments.statNetSales")}
+          value={formatYen(net)}
+          sub={t("payments.statNetSalesSub", {
+            gross: formatYen(props.grossSales),
+            refunds: formatYen(props.refundsTotal),
+            count: props.salesCount,
+          })}
+        />
+        <Stat
+          label={t("payments.statTodaySales")}
+          value={formatYen(props.todaySalesAmount)}
+          sub={t("payments.statTodaySalesSub", { count: props.todaySalesCount })}
+        />
+        <Stat
+          label={t("payments.statShown")}
+          value={t("payments.statShownValue", { shown: props.payments.length, total: props.totalCount })}
+          sub={t("payments.statShownSub", { max: props.pageSize })}
+        />
+      </section>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -58,11 +93,7 @@ export function PaymentsView(props: PaymentsViewProps) {
             aria-label={t("payments.thStatus")}
             className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1"
           >
-            <FilterLink
-              href={withQuery("/payments", { mode: modeParam })}
-              active={props.status === "all"}
-              label={t("payments.filterAll")}
-            />
+            <FilterLink href={withQuery("/payments", { mode: modeParam })} active={props.status === "all"} label={t("payments.filterAll")} />
             {PAYMENT_STATUSES.map((key) => (
               <FilterLink
                 key={key}
@@ -72,17 +103,8 @@ export function PaymentsView(props: PaymentsViewProps) {
               />
             ))}
           </div>
-          <ModeFilterChips
-            basePath="/payments"
-            current={props.mode}
-            params={{ status: props.status === "all" ? undefined : props.status }}
-          />
+          <ModeFilterChips basePath="/payments" current={props.mode} params={{ status: props.status === "all" ? undefined : props.status }} />
         </div>
-        <p className="text-xs text-slate-500">
-          {t("payments.capturedTotal")}{" "}
-          <span className="font-semibold text-slate-800 tabular-nums">{formatYen(props.capturedAmount)}</span>{" "}
-          {t("payments.capturedCount", { count: props.capturedCount })}
-        </p>
       </div>
 
       <div className="card overflow-hidden">
@@ -148,10 +170,7 @@ export function PaymentsView(props: PaymentsViewProps) {
                       </td>
                       <td className="px-5 py-3 text-xs text-slate-500">{formatDate(p.createdAt)}</td>
                       <td className="px-5 py-3 text-right">
-                        <Link
-                          href={`/payments/${p.id}`}
-                          className="text-xs font-medium text-brand-700 hover:underline"
-                        >
+                        <Link href={`/payments/${p.id}`} className="text-xs font-medium text-brand-700 hover:underline">
                           {t("payments.detail")}
                         </Link>
                       </td>
@@ -163,6 +182,16 @@ export function PaymentsView(props: PaymentsViewProps) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="card px-5 py-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 tabular-nums">{value}</p>
+      {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
     </div>
   );
 }

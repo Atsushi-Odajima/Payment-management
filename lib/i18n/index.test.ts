@@ -15,8 +15,8 @@ const JP = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u;
 
 describe("translate", () => {
   it("interpolates {placeholders}", () => {
-    expect(translate("ja", "dashboard.statProvidersValue", { count: 3 })).toBe("3 件");
-    expect(translate("en", "dashboard.statProvidersSub", { count: 2 })).toBe("2 enabled");
+    expect(translate("ja", "dashboard.valueCount", { count: 3 })).toBe("3 件");
+    expect(translate("en", "payments.statTodaySalesSub", { count: 2 })).toBe("2 payments");
   });
 
   it("returns the key for unknown paths", () => {

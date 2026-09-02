@@ -36,7 +36,7 @@ async function read(res: Response) {
 
 beforeEach(async () => {
   await truncateAll(prisma);
-  await seed(prisma, { force: true, now: new Date("2026-09-01T03:00:00Z") });
+  await seed(prisma, { now: new Date("2026-09-01T03:00:00Z") });
 });
 
 describe("merchants API", () => {

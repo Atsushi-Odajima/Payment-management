@@ -63,6 +63,7 @@ export function PaymentDetailView({ payment }: { payment: PaymentDetailData }) {
       <PageHeader
         title={t("paymentDetail.title", { orderNumber: payment.orderNumber })}
         description={`${providerName} · ${payment.provider.displayName}`}
+        helpHref="/manual/payments"
         breadcrumbs={[
           { label: t("paymentDetail.breadcrumbPayments"), href: "/payments" },
           { label: payment.orderNumber },

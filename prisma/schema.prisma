@@ -138,10 +138,83 @@ model Merchant {
   notifyIdFormat    String   @default("payment_id")
   // per_payment | daily | none
   emailNotification String   @default("per_payment")
+  // Referring agent (代理店); optional.
+  agentId           String?
+  agent             Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  // JSON array of approved payment categories, e.g. ["credit","qr"];
+  // written by PaymentApplication approvals.
+  enabledMethods    String   @default("[]")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  applications   PaymentApplication[]
+  ipRestrictions IpRestriction[]
+
   @@index([createdAt])
+  @@index([agentId])
+}
+
+// Agent (代理店) that refers / brokers merchants. Auto-numbered AGT-00001.
+model Agent {
+  id          String   @id @default(cuid())
+  agentCode   String   @unique
+  name        String
+  nameKana    String
+  companyName String
+  contactName String
+  email       String
+  // Commission rate in percent (e.g. 3.5).
+  feeRate     Float    @default(0)
+  // active | disabled
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  merchants Merchant[]
+
+  @@index([createdAt])
+}
+
+// A merchant's request to use a payment method, reviewed by the PSP.
+// Auto-numbered APP-00001.
+model PaymentApplication {
+  id              String    @id @default(cuid())
+  applicationCode String    @unique
+  merchantId      String
+  merchant        Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  // new_use | add_method | limit_change
+  type            String
+  // credit | qr | convenience | bank
+  method          String
+  note            String    @default("")
+  // pending | approved | rejected | returned
+  status          String    @default("pending")
+  appliedAt       DateTime  @default(now())
+  reviewedAt      DateTime?
+  reviewerNote    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status, appliedAt])
+  @@index([merchantId])
+}
+
+// Allow-list entries for the admin UI and the merchant API.
+model IpRestriction {
+  id         String    @id @default(cuid())
+  // admin | merchant_api
+  target     String
+  merchantId String?
+  merchant   Merchant? @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  // IPv4 address or CIDR, e.g. 203.0.113.10 or 203.0.113.0/24
+  cidr       String
+  label      String
+  enabled    Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([target, enabled])
+  @@index([merchantId])
 }
 
 // Inbound provider notifications, deduplicated on (provider, external event id).

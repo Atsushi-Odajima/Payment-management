@@ -5,14 +5,14 @@ import { validateMerchantInput } from "@/lib/merchants/schema";
 import { nextMerchantCode } from "@/lib/merchants/ids";
 import { encryptMerchantPassword, generateMerchantPassword } from "@/lib/merchants/secrets";
 import { DEMO_LIMITS } from "@/lib/demo";
-import { MERCHANT_SELECT } from "./select";
+import { MERCHANT_SELECT, serialize } from "./select";
 
 export const GET = withApiHandler(async () => {
   const merchants = await prisma.merchant.findMany({
     orderBy: { merchantCode: "asc" },
     select: MERCHANT_SELECT,
   });
-  return ok({ merchants });
+  return ok({ merchants: merchants.map(serialize) });
 });
 
 /**
@@ -25,6 +25,12 @@ export const POST = withApiHandler(async (req) => {
   const v = validateMerchantInput(await readJson(req));
   if (!v.ok) {
     throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: v.errors });
+  }
+  if (v.data.agentId) {
+    const agent = await prisma.agent.findUnique({ where: { id: v.data.agentId }, select: { id: true } });
+    if (!agent) {
+      throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: { agentId: "invalid" } });
+    }
   }
   const count = await prisma.merchant.count();
   if (count >= DEMO_LIMITS.merchants) {
@@ -44,7 +50,7 @@ export const POST = withApiHandler(async (req) => {
           select: MERCHANT_SELECT,
         });
       });
-      return ok(created, { status: 201 });
+      return ok(serialize(created), { status: 201 });
     } catch (err) {
       if (
         attempt === 0 &&
