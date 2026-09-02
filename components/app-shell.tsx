@@ -10,6 +10,7 @@ import { NavLink } from "./nav-link";
 import { WirePayIcon } from "./wire-pay-icon";
 import { LanguageToggle } from "./language-toggle";
 import { ConfirmProvider } from "./confirm-dialog";
+import { ToastProvider } from "./toast";
 import { useApiJson, useT } from "./language-provider";
 
 export interface AppShellProps {
@@ -24,6 +25,7 @@ export function AppShell({ children, authConfigured, authenticated }: AppShellPr
   const t = useT();
   return (
     <ConfirmProvider>
+      <ToastProvider>
       <div className="flex min-h-screen flex-col">
         <header className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur md:px-6">
           <Link href="/" className="flex items-center gap-2 md:invisible" aria-label="Wire Pay">
@@ -98,6 +100,7 @@ export function AppShell({ children, authConfigured, authenticated }: AppShellPr
           <TabLink href="/payments/new" label={t("nav.tabCreate")} icon="plus" />
         </nav>
       </div>
+      </ToastProvider>
     </ConfirmProvider>
   );
 }
