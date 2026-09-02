@@ -44,6 +44,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 5. **Preview デプロイ用に Neon の Branch を別 DB として割り当てる**ことを推奨（Preview と Production が同じ DB を共有しないように）
 6. **push してもデプロイが作られないとき**: Vercel の Settings → Git → **Require Verified Commits** が有効（チーム設定から継承）だと、署名のないコミット（手元や外部環境からの `git push`。GitHub 上で「Verified」バッジが付かないもの）は **エラーにならず静かにデプロイ対象から外れます**。この設定を「Not required」にするか、GitHub の Web UI / API 経由（自動署名される）でコミットするか、Settings → Git の **Deploy Hooks** で `main` を手動デプロイしてください。
 
+7. **Build Logs の末尾が `EncryptionKeyError: ENCRYPTION_KEY must be a base64-encoded 32-byte value` で終わるとき**: ビルドの最後に走る seed がデモ用の認証情報を暗号化するため、Vercel の `ENCRYPTION_KEY` が未設定・形式違い（hex、32 文字の文字列、引用符付きなど）だとここで止まります。Settings → Environment Variables で **Production と Preview** の `ENCRYPTION_KEY` を上のコマンドで生成した値（44 文字、末尾 `=`）に置き換えて **Redeploy** してください。鍵を変えると旧鍵で暗号化された行は復号できなくなりますが、デモ DB は `CRON_SECRET` 付きの `POST /api/demo/reset`（または毎日の Cron）で初期化されるので問題ありません。
+
 `ENCRYPTION_KEY` を変更すると既存の暗号化済み認証情報は復号できなくなり、編集画面で「再入力が必要」と表示されます（500 にはなりません）。
 
 ---
