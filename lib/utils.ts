@@ -1,5 +1,8 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { PaymentStatus } from "@/lib/payments/transitions";
+
+export { PAYMENT_STATUSES, isPaymentStatus, type PaymentStatus } from "@/lib/payments/transitions";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -15,27 +18,35 @@ export function formatYen(amount: number): string {
 }
 
 // Status labels live in the i18n catalogs (status.*); only the colors stay here.
-export const PAYMENT_STATUS_COLOR: Record<string, string> = {
+export const PAYMENT_STATUS_COLOR: Record<PaymentStatus, string> = {
   pending: "bg-amber-100 text-amber-800 ring-amber-200",
   authorized: "bg-blue-100 text-blue-800 ring-blue-200",
   captured: "bg-emerald-100 text-emerald-800 ring-emerald-200",
-  cancelled: "bg-slate-200 text-slate-700 ring-slate-300",
+  partially_refunded: "bg-violet-100 text-violet-800 ring-violet-200",
   refunded: "bg-purple-100 text-purple-800 ring-purple-200",
+  cancelled: "bg-slate-200 text-slate-700 ring-slate-300",
   failed: "bg-rose-100 text-rose-800 ring-rose-200",
 };
 
-/** Translate a payment status via the status.* catalog keys, falling back to the raw value. */
-export const PAYMENT_STATUSES = [
-  "pending",
-  "authorized",
-  "captured",
-  "cancelled",
-  "refunded",
-  "failed",
-] as const;
+export const PROVIDER_STATUSES = ["active", "disabled"] as const;
+export type ProviderStatus = (typeof PROVIDER_STATUSES)[number];
 
-export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+export function isProviderStatus(value: unknown): value is ProviderStatus {
+  return (
+    typeof value === "string" &&
+    (PROVIDER_STATUSES as readonly string[]).includes(value)
+  );
+}
 
-export function isPaymentStatus(value: string): value is PaymentStatus {
-  return (PAYMENT_STATUSES as readonly string[]).includes(value);
+export function toProviderStatus(value: string): ProviderStatus {
+  if (!isProviderStatus(value)) throw new Error(`Unknown provider status: ${value}`);
+  return value;
+}
+
+/** Test/live filter used by the dashboard and payment list. */
+export const MODE_FILTERS = ["all", "test", "live"] as const;
+export type ModeFilter = (typeof MODE_FILTERS)[number];
+
+export function toModeFilter(value: string | undefined): ModeFilter {
+  return value === "test" || value === "live" ? value : "all";
 }

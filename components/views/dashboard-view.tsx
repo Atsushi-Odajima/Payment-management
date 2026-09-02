@@ -2,14 +2,13 @@
 
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
-import {
-  useFormatDateTime,
-  useLang,
-  useT,
-} from "@/components/language-provider";
+import { ModeFilterChips } from "@/components/mode-filter";
+import { PaymentStatusBadge } from "@/components/payment-status-badge";
+import { useFormatDateTime, useLang, useT } from "@/components/language-provider";
 import { CATEGORIES, getProviderDefinition } from "@/lib/providers/registry";
 import { pickText } from "@/lib/i18n";
-import { PAYMENT_STATUS_COLOR, cn, formatYen, isPaymentStatus } from "@/lib/utils";
+import { formatYen, type ModeFilter } from "@/lib/utils";
+import type { PaymentStatus } from "@/lib/payments/transitions";
 import type { CategoryKey } from "@/lib/providers/types";
 
 export interface DashboardPaymentItem {
@@ -17,15 +16,18 @@ export interface DashboardPaymentItem {
   orderNumber: string;
   providerKey: string;
   amount: number;
-  status: string;
+  status: PaymentStatus;
+  livemode: boolean;
   createdAt: Date;
 }
 
 export interface DashboardViewProps {
+  mode: ModeFilter;
   providerCount: number;
   activeProviderCount: number;
-  totalSalesAmount: number;
-  totalSalesCount: number;
+  grossSales: number;
+  refundsTotal: number;
+  salesCount: number;
   todaySalesAmount: number;
   todaySalesCount: number;
   categoryCounts: Record<CategoryKey, number>;
@@ -36,6 +38,7 @@ export function DashboardView(props: DashboardViewProps) {
   const t = useT();
   const { lang } = useLang();
   const formatDate = useFormatDateTime();
+  const net = props.grossSales - props.refundsTotal;
 
   return (
     <div>
@@ -54,6 +57,10 @@ export function DashboardView(props: DashboardViewProps) {
         }
       />
 
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <ModeFilterChips basePath="/" current={props.mode} />
+      </div>
+
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           label={t("dashboard.statProviders")}
@@ -61,9 +68,13 @@ export function DashboardView(props: DashboardViewProps) {
           sub={t("dashboard.statProvidersSub", { count: props.activeProviderCount })}
         />
         <Stat
-          label={t("dashboard.statTotalSales")}
-          value={formatYen(props.totalSalesAmount)}
-          sub={t("dashboard.statTotalSalesSub", { count: props.totalSalesCount })}
+          label={t("dashboard.statNetSales")}
+          value={formatYen(net)}
+          sub={t("dashboard.statNetSalesSub", {
+            gross: formatYen(props.grossSales),
+            refunds: formatYen(props.refundsTotal),
+            count: props.salesCount,
+          })}
         />
         <Stat
           label={t("dashboard.statTodaySales")}
@@ -80,9 +91,7 @@ export function DashboardView(props: DashboardViewProps) {
       <section className="mt-8 grid gap-6 lg:grid-cols-3">
         <div className="card lg:col-span-2">
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-            <h2 className="text-sm font-semibold text-slate-900">
-              {t("dashboard.recentPayments")}
-            </h2>
+            <h2 className="text-sm font-semibold text-slate-900">{t("dashboard.recentPayments")}</h2>
             <Link href="/payments" className="text-xs text-brand-700 hover:underline">
               {t("dashboard.viewAll")}
             </Link>
@@ -108,23 +117,17 @@ export function DashboardView(props: DashboardViewProps) {
                         {p.orderNumber}
                       </Link>
                       <p className="mt-0.5 truncate text-xs text-slate-500">
-                        {def ? pickText(def.name, lang) : p.providerKey} ·{" "}
-                        {formatDate(p.createdAt)}
+                        {def ? pickText(def.name, lang) : p.providerKey} · {formatDate(p.createdAt)}
+                        {!p.livemode && (
+                          <span className="ml-1 whitespace-nowrap rounded bg-amber-50 px-1 text-[10px] text-amber-700">
+                            {t("common.test")}
+                          </span>
+                        )}
                       </p>
                     </div>
                     <div className="ml-4 flex items-center gap-3">
-                      <span className="text-sm font-semibold tabular-nums">
-                        {formatYen(p.amount)}
-                      </span>
-                      <span
-                        className={cn(
-                          "badge",
-                          PAYMENT_STATUS_COLOR[p.status] ??
-                            "bg-slate-100 text-slate-700 ring-slate-200",
-                        )}
-                      >
-                        {isPaymentStatus(p.status) ? t(`status.${p.status}`) : p.status}
-                      </span>
+                      <span className="text-sm font-semibold tabular-nums">{formatYen(p.amount)}</span>
+                      <PaymentStatusBadge status={p.status} />
                     </div>
                   </li>
                 );
@@ -135,20 +138,14 @@ export function DashboardView(props: DashboardViewProps) {
 
         <div className="card">
           <div className="border-b border-slate-100 px-5 py-4">
-            <h2 className="text-sm font-semibold text-slate-900">
-              {t("dashboard.categoryConnections")}
-            </h2>
+            <h2 className="text-sm font-semibold text-slate-900">{t("dashboard.categoryConnections")}</h2>
           </div>
           <ul className="divide-y divide-slate-100">
             {CATEGORIES.map((c) => (
               <li key={c.key} className="flex items-center justify-between px-5 py-3">
                 <div>
-                  <p className="text-sm font-medium text-slate-800">
-                    {pickText(c.label, lang)}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {pickText(c.description, lang)}
-                  </p>
+                  <p className="text-sm font-medium text-slate-800">{pickText(c.label, lang)}</p>
+                  <p className="text-xs text-slate-500">{pickText(c.description, lang)}</p>
                 </div>
                 <span className="text-sm font-semibold tabular-nums text-slate-700">
                   {props.categoryCounts[c.key] ?? 0}
@@ -157,10 +154,7 @@ export function DashboardView(props: DashboardViewProps) {
             ))}
           </ul>
           <div className="border-t border-slate-100 px-5 py-3">
-            <Link
-              href="/providers/new"
-              className="text-xs font-medium text-brand-700 hover:underline"
-            >
+            <Link href="/providers/new" className="text-xs font-medium text-brand-700 hover:underline">
               {t("dashboard.connectNewProvider")}
             </Link>
           </div>
@@ -170,23 +164,11 @@ export function DashboardView(props: DashboardViewProps) {
   );
 }
 
-function Stat({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="card px-5 py-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-        {label}
-      </p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-        {value}
-      </p>
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 tabular-nums">{value}</p>
       {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
     </div>
   );
