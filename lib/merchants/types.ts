@@ -42,14 +42,36 @@ export interface MerchantInput {
   notifyParamSet: NotifyParamSet;
   notifyIdFormat: NotifyIdFormat;
   emailNotification: EmailNotification;
+  /** Referring agent id, or null. */
+  agentId: string | null;
 }
 
 /** What the UI receives — never includes the password. */
 export interface MerchantView extends MerchantInput {
   id: string;
   merchantCode: string;
+  /** Payment categories approved through PaymentApplication (e.g. ["credit","qr"]). */
+  enabledMethods: string[];
+  agent: { id: string; agentCode: string; name: string } | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Option shown in the merchant form's agent select. */
+export interface AgentOption {
+  id: string;
+  agentCode: string;
+  name: string;
+  status: string;
+}
+
+export function parseEnabledMethods(json: string): string[] {
+  try {
+    const v = JSON.parse(json);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export const MERCHANT_CODE_PREFIX_BARE = "MER";

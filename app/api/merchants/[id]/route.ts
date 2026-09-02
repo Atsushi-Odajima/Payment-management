@@ -1,14 +1,14 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateMerchantInput } from "@/lib/merchants/schema";
-import { MERCHANT_SELECT } from "../select";
+import { MERCHANT_SELECT, serialize } from "../select";
 
 type Ctx = { params: { id: string } };
 
 export const GET = withApiHandler<Ctx>(async (_req, { params }) => {
   const merchant = await prisma.merchant.findUnique({ where: { id: params.id }, select: MERCHANT_SELECT });
   if (!merchant) throw new ApiError(404, "not_found", "errors.notFound");
-  return ok(merchant);
+  return ok(serialize(merchant));
 });
 
 /** PATCH /api/merchants/:id — update editable fields (code/password are immutable here). */
@@ -17,6 +17,12 @@ export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
   if (!v.ok) {
     throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: v.errors });
   }
+  if (v.data.agentId) {
+    const agent = await prisma.agent.findUnique({ where: { id: v.data.agentId }, select: { id: true } });
+    if (!agent) {
+      throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: { agentId: "invalid" } });
+    }
+  }
   const exists = await prisma.merchant.findUnique({ where: { id: params.id }, select: { id: true } });
   if (!exists) throw new ApiError(404, "not_found", "errors.notFound");
   const updated = await prisma.merchant.update({
@@ -24,5 +30,5 @@ export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
     data: v.data,
     select: MERCHANT_SELECT,
   });
-  return ok(updated);
+  return ok(serialize(updated));
 });

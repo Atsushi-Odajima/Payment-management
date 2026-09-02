@@ -21,6 +21,7 @@ import {
   NOTIFY_FORMATS,
   NOTIFY_ID_FORMATS,
   NOTIFY_PARAM_SETS,
+  type AgentOption,
   type MerchantInput,
   type MerchantView,
 } from "@/lib/merchants/types";
@@ -39,6 +40,8 @@ export interface MerchantFormProps {
   passwordSlot?: React.ReactNode;
   onSaved: (merchant: MerchantView) => void;
   onCancel?: () => void;
+  /** Agents selectable as the referring agent. */
+  agents: AgentOption[];
 }
 
 function withDates(m: Omit<MerchantView, "createdAt" | "updatedAt"> & { createdAt: string | Date; updatedAt: string | Date }): MerchantView {
@@ -46,7 +49,7 @@ function withDates(m: Omit<MerchantView, "createdAt" | "updatedAt"> & { createdA
 }
 
 export function MerchantForm(props: MerchantFormProps) {
-  const { mode, merchantCode, initial, merchantId, passwordSlot, onSaved, onCancel } = props;
+  const { mode, merchantCode, initial, merchantId, passwordSlot, onSaved, onCancel, agents } = props;
   const t = useT();
   const apiJson = useApiJson();
   const formId = useId();
@@ -56,7 +59,7 @@ export function MerchantForm(props: MerchantFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const missingRequired = REQUIRED_MERCHANT_FIELDS.some((k) => values[k].trim() === "");
+  const missingRequired = REQUIRED_MERCHANT_FIELDS.some((k) => String(values[k] ?? "").trim() === "");
 
   function set<K extends MerchantFieldKey>(key: K, value: MerchantInput[K]) {
     setValues((v) => {
@@ -218,6 +221,23 @@ export function MerchantForm(props: MerchantFormProps) {
               aria-invalid={!!errors.contactName}
               aria-describedby={errors.contactName ? `${formId}-contactName-err` : undefined}
             />
+          </Field>
+          <Field id={`${formId}-agentId`} label={t("merchantForm.agent")} error={errorText("agentId")} help={t("merchantForm.agentHelp")}>
+            <select
+              id={`${formId}-agentId`}
+              className={cn("input", errors.agentId && "border-rose-400")}
+              value={values.agentId ?? ""}
+              onChange={(e) => set("agentId", e.target.value || null)}
+              aria-invalid={!!errors.agentId}
+            >
+              <option value="">{t("merchantForm.agentNone")}</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.agentCode} — {a.name}
+                  {a.status !== "active" ? ` (${t("common.disabled")})` : ""}
+                </option>
+              ))}
+            </select>
           </Field>
         </div>
       </section>
