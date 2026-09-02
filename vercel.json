@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "node scripts/prepare-prisma.mjs && prisma generate && prisma db push --accept-data-loss --skip-generate && next build",
+  "buildCommand": "node scripts/prepare-prisma.mjs && prisma generate && prisma db push --skip-generate && next build && tsx prisma/seed.ts",
   "framework": "nextjs",
-  "regions": ["hnd1"]
+  "regions": ["hnd1"],
+  "crons": [
+    { "path": "/api/demo/reset", "schedule": "0 18 * * *" }
+  ]
 }

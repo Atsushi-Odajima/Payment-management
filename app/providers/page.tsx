@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ProvidersView } from "@/components/views/providers-view";
+import { toProviderStatus } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -19,5 +20,9 @@ export default async function ProvidersPage() {
     },
   });
 
-  return <ProvidersView providers={providers} />;
+  return (
+    <ProvidersView
+      providers={providers.map((p) => ({ ...p, status: toProviderStatus(p.status) }))}
+    />
+  );
 }

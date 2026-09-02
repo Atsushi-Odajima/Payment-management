@@ -1,115 +1,81 @@
-# デプロイ手順 — iPhoneから確認するために
+# Deployment Guide
 
-このアプリは Next.js + Prisma で作られているため、公開URLを発行できる Web ホスティングサービスに置けば iPhone のブラウザからそのまま閲覧・操作できます。簡単な順に3つの方法を載せました。
+Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Vercel (東京 hnd1) + Neon Postgres** で動いています。Docker イメージも用意しており、Railway / Render / Fly.io などの PaaS でも動作します。
 
-> どれも GitHub リポジトリ `Atsushi-Odajima/Payment-management` の `claude/payment-management-dashboard-nNGKs` ブランチをそのまま読み込みます。
+| 経路 | DB | スキーマ適用 | 用途 |
+|------|----|-------------|------|
+| **Vercel + Neon** (本番デモ) | Postgres | `prisma db push`（非破壊。破壊的変更はビルド失敗で止まる） | 公開デモ |
+| **Docker** (Railway / Render / Fly) | SQLite on volume | `prisma migrate deploy`（`prisma/migrations`） | 自前ホスト・検証 |
 
----
-
-## 🚆 オプション A: Railway (最も簡単・SQLite のまま動く)
-
-Railway は Docker をそのままビルドして実行する PaaS で、永続ボリュームに SQLite を置けるので **コード変更ゼロ** でデプロイできます。**所要時間 5 分**。
-
-1. <https://railway.app/> にサインアップ（GitHubアカウントでログイン可）。
-2. **New Project → Deploy from GitHub repo** で本リポジトリを選択。
-3. ブランチに `claude/payment-management-dashboard-nNGKs` を指定。
-4. デプロイが始まったらサービスを開き、**Settings → Volumes → New Volume**
-   - Mount Path: `/data`
-   - Size: 1 GB
-5. **Variables** タブで次を追加:
-   - `ENCRYPTION_KEY`: 32バイトのbase64文字列。次のコマンドで生成:
-     ```bash
-     node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-     ```
-   - `DATABASE_URL`: `file:/data/prod.db` (デフォルトのままでも可)
-6. **Settings → Networking → Generate Domain** をクリックすると `https://xxxxx.up.railway.app` の公開URLが発行されます。これを iPhone のSafariで開けば完了です。
-
-> Railway は無料試用クレジット付き。継続利用は月 \$5 から。
+> **経路が2つある理由**: `prisma/schema.prisma` は SQLite 用で、`scripts/prepare-prisma.mjs` がビルド時に `DATABASE_URL` を見て provider を `postgresql` に書き換えます。Prisma 5 は 1 スキーマで複数 provider を扱えないため、Postgres 側は migration 履歴を持たず `db push` で同期しています。Postgres 専用の migration 履歴に一本化するのは [README の Roadmap](./README.md#roadmap) 参照。
 
 ---
 
-## ▲ オプション B: Vercel + Neon (Next.js の本拠地)
+## 環境変数
 
-Vercel は Next.js の作者がホストしている PaaS で、ビルド速度・無料枠ともに優秀です。ただし SQLite は使えないので、**無料の PostgreSQL を Neon で発行して接続** します。**所要時間 10 分**。
+| 変数 | 必須 | 用途 |
+|------|------|------|
+| `DATABASE_URL` | ✅ | `file:./dev.db`（SQLite） / `postgresql://…`（Neon 等） |
+| `ENCRYPTION_KEY` | ✅ | AES-256-GCM 鍵。**base64 32 バイト**。本番は未設定・不正だと起動時に例外（fail-closed） |
+| `ADMIN_PASSWORD` | 推奨 | 設定すると全ての更新操作（決済作成・確定・返金・プロバイダ変更）にログインが必要になる。未設定時は画面に警告バナー |
+| `DEMO_LOGIN_HINT` | 任意 | ログイン画面に「デモ用パスワード: …」を表示（公開デモ用） |
+| `SESSION_SECRET` | 任意 | セッション Cookie の HMAC 鍵。未設定時は `ENCRYPTION_KEY` を流用 |
+| `DEMO_READONLY` | 任意 | `1` で DELETE とプロバイダの PATCH を 403 に（デモ荒らし対策） |
+| `CRON_SECRET` | 任意 | 設定すると `GET/POST /api/demo/reset` が有効になり、Vercel Cron（毎日 03:00 JST）がデモデータを初期化 |
 
-### B-1. Neon で Postgres を発行
-
-1. <https://neon.tech/> にサインアップ。
-2. プロジェクトを作成し、`Pooled connection` の接続文字列をコピー（`postgresql://user:pass@host/dbname?sslmode=require` の形）。
-
-### B-2. Prisma スキーマを Postgres 用に切り替え
-
-`prisma/schema.prisma` の `datasource db` ブロックを書き換えてコミットします:
-
-```diff
- datasource db {
--  provider = "sqlite"
-+  provider = "postgresql"
-   url      = env("DATABASE_URL")
- }
-```
-
-そして既存の SQLite マイグレーションを削除し、Postgres 用に作り直します（ローカルで実行）:
+鍵の生成:
 
 ```bash
-rm -rf prisma/migrations
-# .env の DATABASE_URL を Neon の接続文字列に書き換えてから:
-npx prisma migrate dev --name init
-git add prisma/ && git commit -m "Switch to Postgres" && git push
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
-
-### B-3. Vercel にインポート
-
-1. <https://vercel.com/new> → GitHub から本リポジトリをインポート。
-2. **Environment Variables** で:
-   - `DATABASE_URL`: Neon の接続文字列
-   - `ENCRYPTION_KEY`: 上記のbase64 32バイト
-3. **Deploy** をクリック → `https://xxxxx.vercel.app` で公開されます。
-
-> Vercel の Hobby プランは個人利用無料。
 
 ---
 
-## ☁️ オプション C: Cloudflare Pages (上級者向け)
+## A. Vercel + Neon（現在の公開構成）
 
-ご希望の Cloudflare で動かすことも可能ですが、Workers ランタイムは Node.js ファイルシステムを持たないため **SQLite は使えず**、Prisma も追加設定が必要です。具体的には:
+1. <https://neon.tech/> でプロジェクト作成 → **Pooled connection** の接続文字列をコピー
+2. <https://vercel.com/new> → GitHub からこのリポジトリをインポート（`main` ブランチ）
+3. Environment Variables に上表の値を設定（最低 `DATABASE_URL`, `ENCRYPTION_KEY`。公開デモなら `ADMIN_PASSWORD`, `DEMO_LOGIN_HINT`, `DEMO_READONLY=1`, `CRON_SECRET` も）
+4. Deploy。`vercel.json` の buildCommand が以下を順に実行します:
+   `prepare-prisma → prisma generate → prisma db push → next build → seed（空DBのときだけ投入）`
+5. **Preview デプロイ用に Neon の Branch を別 DB として割り当てる**ことを推奨（Preview と Production が同じ DB を共有しないように）
 
-1. DB は Cloudflare D1 か外部の PostgreSQL (Neon等) を使う
-2. `@cloudflare/next-on-pages` アダプタを導入
-3. Prisma を `Prisma Accelerate` 経由か、D1 ドライバ + `prisma/adapter-d1` で接続
+`ENCRYPTION_KEY` を変更すると既存の暗号化済み認証情報は復号できなくなり、編集画面で「再入力が必要」と表示されます（500 にはなりません）。
 
-すぐに iPhone で見たいなら、まず A (Railway) か B (Vercel) で動かしてから、後で Cloudflare に移すのが現実的です。
+---
 
-それでも Cloudflare で進めたい場合の概略:
+## B. Docker（Railway / Render / Fly.io）
+
+`Dockerfile` は `next build` の standalone 出力を `node` ユーザーで実行し、起動時に `prisma migrate deploy` を流します。SQLite を使うので `/data` に永続ボリュームをマウントしてください。
 
 ```bash
-npm install -D @cloudflare/next-on-pages wrangler
-npx @cloudflare/next-on-pages
-# wrangler.toml を作成、Pages プロジェクトを Cloudflare ダッシュボードで作成
-# DATABASE_URL に Neon の接続文字列を、ENCRYPTION_KEY を Pages の環境変数に設定
-wrangler pages deploy .vercel/output/static
+docker build -t wirepay .
+docker run -p 3000:3000 \
+  -e ENCRYPTION_KEY="$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" \
+  -e ADMIN_PASSWORD=change-me \
+  -v wirepay-data:/data \
+  wirepay
 ```
 
-詳細は <https://developers.cloudflare.com/pages/framework-guides/nextjs/> を参照してください。
+- **Railway**: New Project → Deploy from GitHub → Settings → Volumes → Mount Path `/data`。`railway.toml` 同梱
+- **Render**: `render.yaml` 同梱（Blueprint）。`ENCRYPTION_KEY` は base64 32 バイトを手動で設定してください（自動生成値は形式が合いません）
+- **Fly.io**: `fly launch` 後、`fly volumes create wirepay_data` して `/data` にマウント
+
+Docker 経路は `.dockerignore` により `.env` / ローカル DB / `.git` をイメージに含めません。
 
 ---
 
-## 🔑 必須の環境変数（どのオプションでも共通）
+## C. Cloudflare Pages（参考）
 
-| 変数 | 用途 | 例 |
-|------|------|----|
-| `DATABASE_URL` | Prisma の接続先 | `file:/data/prod.db` (SQLite) / `postgresql://...` (Postgres) |
-| `ENCRYPTION_KEY` | AES-256-GCM の鍵 (32バイト base64) | `xa9fT...==` |
-
-`ENCRYPTION_KEY` を未設定で起動すると開発用フォールバック鍵で動作しますが、**本番では必ず固有の値を設定してください**。鍵を変更すると、既存の暗号化済み認証情報は復号できなくなります。
+Workers ランタイムは Node.js のファイルシステムを持たないため SQLite は使えず、Prisma も追加設定（D1 アダプタ or Prisma Accelerate）が必要です。まず A か B で動かしてから検討することを推奨します。
 
 ---
 
 ## 動作確認（デプロイ後）
 
-1. `https://<your-domain>/` をiPhoneで開く → ダッシュボード表示
-2. 「＋ 決済プロバイダを追加」→ カテゴリ → PayPay 等を選択
-3. ダミーのAPIキーを入力して保存
-4. 「決済を作成」でテスト決済 → ステータスが `売上確定` に変わることを確認
-
-これで実機 (iPhone Safari/Chrome) から、すべての画面が同じUIで操作できます。
+1. `/` を開く → ダッシュボード。右上の **EN / 日本語** で言語が切り替わり、リロード後も維持される
+2. `ADMIN_PASSWORD` を設定した場合は右上「ログイン」→ パスワード入力
+3. **プロバイダ → 新規接続 → PayPay** などを選び、ダミーの認証情報で保存 → 接続テスト
+4. **決済を作成** → 詳細画面で **売上を確定 / 一部返金 / 取消**、イベント履歴に記録されることを確認
+5. Stripe プロバイダの決済で **Webhook をシミュレート** → 署名検証・重複排除を通って状態が変わる
+6. スマホ幅では下部タブバーでナビゲーションできる

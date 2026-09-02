@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { readCredentialsForDisplay } from "@/lib/providers/credentials";
 import { getProviderDefinition } from "@/lib/providers/registry";
 import { ProviderEditView } from "@/components/views/provider-edit-view";
+import { toProviderStatus } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export default async function EditProviderPage({
         id: record.id,
         displayName: record.displayName,
         providerKey: record.providerKey,
-        status: record.status,
+        status: toProviderStatus(record.status),
         testMode: record.testMode,
         lastTestAt: record.lastTestAt,
         lastTestOk: record.lastTestOk,
