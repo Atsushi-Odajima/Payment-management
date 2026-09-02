@@ -192,7 +192,7 @@ lib/
   auth.ts crypto.ts rate-limit.ts time.ts
 prisma/
   schema.prisma migrations/  PaymentProvider · Payment · Refund · PaymentEvent · WebhookEvent · Merchant · Agent · PaymentApplication · IpRestriction
-  seed-data.ts               決定的な seed（固定ID・テーブル単位の upsert で冪等）
+  seed-data.ts               決定的な seed（固定ID・テーブル単位の upsert で冪等）。Vercel は毎ビルドで db push --accept-data-loss → seed
 content/manual/{ja,en}/      マニュアル本文（Markdown）
 scripts/
   check-i18n.mjs build-icons.mts prepare-prisma.mjs
