@@ -4,6 +4,7 @@ export const IP_RESTRICTION_SELECT = {
   merchantId: true,
   cidr: true,
   label: true,
+  mode: true,
   enabled: true,
   createdAt: true,
   updatedAt: true,

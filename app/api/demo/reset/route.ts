@@ -22,5 +22,5 @@ async function handle(req: Request) {
   return ok({ reset: true });
 }
 
-export const GET = withApiHandler(handle);
-export const POST = withApiHandler(handle);
+export const GET = withApiHandler(handle, { ipRestricted: false });
+export const POST = withApiHandler(handle, { ipRestricted: false });

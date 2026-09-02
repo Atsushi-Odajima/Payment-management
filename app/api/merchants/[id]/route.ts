@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateMerchantInput } from "@/lib/merchants/schema";
-import { MERCHANT_SELECT, serialize } from "../select";
+import { MERCHANT_SELECT, serialize, toMerchantData } from "../select";
 
 type Ctx = { params: { id: string } };
 
@@ -27,7 +27,7 @@ export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
   if (!exists) throw new ApiError(404, "not_found", "errors.notFound");
   const updated = await prisma.merchant.update({
     where: { id: params.id },
-    data: v.data,
+    data: toMerchantData(v.data),
     select: MERCHANT_SELECT,
   });
   return ok(serialize(updated));

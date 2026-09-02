@@ -5,7 +5,7 @@ import { validateMerchantInput } from "@/lib/merchants/schema";
 import { nextMerchantCode } from "@/lib/merchants/ids";
 import { encryptMerchantPassword, generateMerchantPassword } from "@/lib/merchants/secrets";
 import { DEMO_LIMITS } from "@/lib/demo";
-import { MERCHANT_SELECT, serialize } from "./select";
+import { MERCHANT_SELECT, serialize, toMerchantData } from "./select";
 
 export const GET = withApiHandler(async () => {
   const merchants = await prisma.merchant.findMany({
@@ -46,7 +46,7 @@ export const POST = withApiHandler(async (req) => {
       const created = await prisma.$transaction(async (tx) => {
         const merchantCode = await nextMerchantCode(tx);
         return tx.merchant.create({
-          data: { ...v.data, merchantCode, passwordEnc },
+          data: { ...toMerchantData(v.data), merchantCode, passwordEnc },
           select: MERCHANT_SELECT,
         });
       });

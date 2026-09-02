@@ -2,6 +2,7 @@
 // API (authoritative). Error messages are i18n keys resolved by the caller.
 
 import { z } from "zod";
+import { PAYMENT_METHODS } from "@/lib/payments/methods";
 import {
   EMAIL_NOTIFICATIONS,
   NOTIFY_FORMATS,
@@ -36,8 +37,14 @@ export const merchantInputSchema = z.object({
   notifyParamSet: z.enum(NOTIFY_PARAM_SETS),
   notifyIdFormat: z.enum(NOTIFY_ID_FORMATS),
   emailNotification: z.enum(EMAIL_NOTIFICATIONS),
-  // Optional on input (older clients omit it), always present on output.
+  // Optional on input (older clients omit them), always present on output.
   agentId: z.string().trim().min(1).max(64).nullable().default(null),
+  enabledMethods: z
+    .array(z.enum(PAYMENT_METHODS))
+    .max(PAYMENT_METHODS.length)
+    .default([])
+    .transform((list) => Array.from(new Set(list))),
+  transferIdDigits: z.union([z.literal(7), z.literal(8)]).default(7),
 }) satisfies z.ZodType<MerchantInput, z.ZodTypeDef, unknown>;
 
 export type MerchantFieldKey = keyof MerchantInput;
@@ -77,6 +84,8 @@ export const EMPTY_MERCHANT_INPUT: MerchantInput = {
   notifyIdFormat: "payment_id",
   emailNotification: "per_payment",
   agentId: null,
+  enabledMethods: [],
+  transferIdDigits: 7,
 };
 
 export const REQUIRED_MERCHANT_FIELDS: readonly MerchantFieldKey[] = [

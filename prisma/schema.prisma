@@ -68,8 +68,27 @@ model Payment {
   idempotencyKey    String?   @unique
   description       String?
   metadata          String    @default("{}")
+  // ── Transaction (決済申請) fields ──────────────────────────────────────
+  // The merchant (加盟店) whose checkout created this transaction. Optional so
+  // rows created before merchants existed stay valid.
+  merchantId        String?
+  merchant          Merchant? @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  // Payment method snapshot at creation: credit | qr | convenience | bank | other
+  // (lib/payments/methods.ts). Falls back to provider.category when null.
+  method            String?
+  productName       String?
+  // Merchant-side user id (ユーザーID) of the buyer.
+  customerId        String?
+  // Bank transfer (銀行振込) only: the transfer id the customer writes on the
+  // remittance (7 or 8 digits per Merchant.transferIdDigits), its deadline,
+  // the amount received so far and the short / excess flag set by reconciliation.
+  transferId        String?   @unique
+  transferDueAt     DateTime?
+  depositAmount     Int?
+  depositDiff       String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+  // Completion time (完了日時): stamped when the status becomes captured.
   capturedAt        DateTime?
   cancelledAt       DateTime?
   refundedAt        DateTime?
@@ -79,8 +98,10 @@ model Payment {
 
   @@unique([providerId, externalId])
   @@index([providerId])
+  @@index([merchantId])
   @@index([status])
   @@index([createdAt])
+  @@index([transferDueAt])
   @@index([livemode])
 }
 
@@ -102,12 +123,12 @@ model PaymentEvent {
   id         String   @id @default(cuid())
   paymentId  String
   payment    Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  // "created" | "capture" | "cancel" | "refund" | "fail"
+  // "created" | "capture" | "cancel" | "refund" | "fail" | "expire" | "deposit"
   type       String
   fromStatus String?
   toStatus   String?
   amount     Int?
-  // Who triggered it: "dashboard" | "webhook" | "seed" | "system"
+  // Who triggered it: "dashboard" | "webhook" | "bank" | "seed" | "system"
   actor      String   @default("dashboard")
   createdAt  DateTime @default(now())
 
@@ -141,12 +162,15 @@ model Merchant {
   // Referring agent (代理店); optional.
   agentId           String?
   agent             Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  // JSON array of approved payment categories, e.g. ["credit","qr"];
-  // written by PaymentApplication approvals.
+  // JSON array of payment methods the merchant may offer, e.g. ["credit","qr"]
+  // (lib/payments/methods.ts). Edited on the merchant form.
   enabledMethods    String   @default("[]")
+  // Length of the bank-transfer id issued to this merchant's customers: 7 or 8.
+  transferIdDigits  Int      @default(7)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  payments       Payment[]
   applications   PaymentApplication[]
   ipRestrictions IpRestriction[]
 
@@ -175,8 +199,13 @@ model Agent {
   @@index([createdAt])
 }
 
-// A merchant's request to use a payment method, reviewed by the PSP.
-// Auto-numbered APP-00001.
+// DEPRECATED — no longer used by the application. "Payment applications" are
+// now transactions on the Payment table (see lib/payments/transitions.ts).
+// The model is kept for one release so `prisma db push` on the production
+// database does not have to drop a non-empty table (which it refuses without
+// --accept-data-loss); the seed empties it. Remove this model, the Merchant
+// relation and the two deleteMany calls in prisma/seed-data.ts in the next
+// release, after this one has been deployed.
 model PaymentApplication {
   id              String    @id @default(cuid())
   applicationCode String    @unique
@@ -199,7 +228,9 @@ model PaymentApplication {
   @@index([merchantId])
 }
 
-// Allow-list entries for the admin UI and the merchant API.
+// IP rules for the admin UI and the merchant API. "deny" rules block matching
+// callers (enforced for the admin target in app/layout.tsx and
+// lib/api/handler.ts); "allow" rules form the informational allow-list.
 model IpRestriction {
   id         String    @id @default(cuid())
   // admin | merchant_api
@@ -209,6 +240,8 @@ model IpRestriction {
   // IPv4 address or CIDR, e.g. 203.0.113.10 or 203.0.113.0/24
   cidr       String
   label      String
+  // allow | deny (lib/ip-restrictions/types.ts)
+  mode       String    @default("allow")
   enabled    Boolean   @default(true)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt

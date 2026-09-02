@@ -1,6 +1,6 @@
 # Payments
 
-Search and operate payments created through connected providers.
+Search and refund **completed transactions** (Completed / Partially refunded / Refunded). Transactions that have not completed yet (applied, awaiting transfer, authorized…) live under [Payment Applications](/manual/applications); both screens share the same detail view.
 
 ## Sales summary
 
@@ -8,26 +8,34 @@ Above the list you see **net sales (gross − refunds)**, **today's sales** and 
 
 ## Filters
 
-Filter by status (Pending / Authorized / Captured / Partially refunded / Refunded / Voided / Failed) and by test / live. The latest 100 rows are shown.
+Filter by status (Completed / Partially refunded / Refunded), payment method, merchant, applied-date range and test / live. Rows are ordered by completion time, newest first.
 
 ## Creating a payment
 
-Use **+ Create Payment** and enter the provider, order number, amount and customer details.
+Use **+ Create Payment** and enter the merchant, provider, order number, amount, product and user name / user ID.
 
-- For cards / QR, “Capture immediately” creates the payment as **Captured**; otherwise it starts **Authorized**.
-- Konbini / bank transfer payments start **Pending** (waiting for the customer) and become Captured through the provider's webhook.
+- For cards / QR, “Complete immediately” creates the transaction as **Completed**; otherwise it starts **Authorized**.
+- Konbini payments start **Applied** (waiting for the customer).
+- Bank transfers get a **transfer ID** of the merchant's configured length (7 or 8 digits) and a 7-day deadline, and start **Awaiting transfer**.
 - Requests carry an idempotency key, so a retry from the same form never creates a duplicate.
+
+## Transaction detail
+
+Shows the transaction (merchant, product, user, method, applied / completed time), the bank-transfer block (transfer ID, deadline, deposited amount, short / excess) where applicable, the **status history** (when / who / from → to) and refunds.
 
 ## Actions (detail screen)
 
-| Action | Allowed from | Result |
-|---|---|---|
-| Capture | Pending / Authorized | Captured |
-| Void | Pending / Authorized | Voided |
-| Refund | Captured / Partially refunded | Partially refunded or Refunded |
+| Action | Allowed from | Result | Role |
+|---|---|---|---|
+| Mark completed | Applied / Authorized | Completed | master |
+| Mark failed | Applied / Authorized | Failed | master |
+| Cancel | Applied / Awaiting transfer / Authorized | Cancelled | master |
+| Mark expired | Overdue awaiting transfer | Expired | master |
+| Reconcile deposit | Awaiting transfer | Completed, or still awaiting (short) | master |
+| Refund | Completed / Partially refunded | Partially refunded or Refunded | logged in |
 
-Refunds take an amount and can be repeated up to the remaining balance. Every action is written to the **event history** as who / when / what.
+Refunds take an amount and can be repeated up to the remaining balance. Every action is written to the **status history**.
 
 ## Simulate a webhook
 
-For providers with a webhook secret (Stripe, Custom Webhook), the detail screen can **send a signed notification to this server** so you can watch signature verification, deduplication and the state transition happen.
+For providers with a webhook secret (Stripe, Custom Webhook), the detail screen can **send a signed notification to this server** so you can watch signature verification, deduplication and the state transition happen (`payment.captured` completes, `payment.failed` fails the transaction).

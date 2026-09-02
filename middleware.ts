@@ -7,8 +7,10 @@
 //   4. session cookie (only when ADMIN_PASSWORD is configured)
 //
 // Reads (GET/HEAD) stay public so the demo can be browsed without logging in.
-// Webhooks authenticate with an HMAC signature and the demo reset endpoint
-// with CRON_SECRET, so both bypass the session check.
+// Webhooks authenticate with an HMAC signature, the demo reset endpoint with
+// CRON_SECRET and the bank deposit notification with DEPOSIT_NOTIFY_SECRET,
+// so they bypass the session check. Admin IP blocking needs the database and
+// therefore lives in app/layout.tsx and lib/api/handler.ts, not here.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { isLang, type Lang } from "@/lib/i18n";
@@ -23,7 +25,7 @@ export const config = {
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const SIGNATURE_AUTH_PREFIXES = ["/api/webhooks/"];
-const SECRET_AUTH_PATHS = ["/api/demo/reset"];
+const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify"];
 const LOGIN_PATH = "/api/auth/login";
 
 export async function middleware(req: NextRequest) {

@@ -6,8 +6,12 @@
 // are merged back into the same inline slots.
 
 import { useId, useMemo, useState } from "react";
-import { useApiJson, useT } from "./language-provider";
+import { useApiJson, useLang, useT } from "./language-provider";
 import { NotificationPreview } from "./notification-preview";
+import { CATEGORIES } from "@/lib/providers/registry";
+import { pickText } from "@/lib/i18n";
+import { PAYMENT_METHODS, type PaymentMethod } from "@/lib/payments/methods";
+import { TRANSFER_ID_DIGITS, type TransferIdDigits } from "@/lib/payments/transfer";
 import { PASSWORD_MASK } from "@/lib/merchants/password-mask";
 import {
   KANA_PLACEHOLDER,
@@ -51,6 +55,7 @@ function withDates(m: Omit<MerchantView, "createdAt" | "updatedAt"> & { createdA
 export function MerchantForm(props: MerchantFormProps) {
   const { mode, merchantCode, initial, merchantId, passwordSlot, onSaved, onCancel, agents } = props;
   const t = useT();
+  const { lang } = useLang();
   const apiJson = useApiJson();
   const formId = useId();
   const [values, setValues] = useState<MerchantInput>(initial);
@@ -68,6 +73,15 @@ export function MerchantForm(props: MerchantFormProps) {
       return next;
     });
     setErrors((e) => ({ ...e, [key]: undefined, ...(key === "email" && sameEmail ? { statementEmail: undefined } : {}) }));
+  }
+
+  function toggleMethod(method: PaymentMethod, checked: boolean) {
+    setValues((v) => ({
+      ...v,
+      enabledMethods: checked
+        ? PAYMENT_METHODS.filter((m) => m === method || v.enabledMethods.includes(m))
+        : v.enabledMethods.filter((m) => m !== method),
+    }));
   }
 
   function toggleSameEmail(checked: boolean) {
@@ -235,6 +249,56 @@ export function MerchantForm(props: MerchantFormProps) {
                 <option key={a.id} value={a.id}>
                   {a.agentCode} — {a.name}
                   {a.status !== "active" ? ` (${t("common.disabled")})` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </section>
+
+      {/* Payment methods / bank transfer */}
+      <section className="space-y-4 border-t border-slate-100 pt-5">
+        <h2 className="text-sm font-semibold text-slate-800">{t("merchantForm.sectionPayment")}</h2>
+        <div className="grid gap-4 sm:grid-cols-[1fr_220px]">
+          <fieldset>
+            <legend className="label">{t("merchantForm.enabledMethods")}</legend>
+            <div className="flex flex-wrap gap-2">
+              {PAYMENT_METHODS.map((m) => {
+                const c = CATEGORIES.find((x) => x.key === m);
+                const checked = values.enabledMethods.includes(m);
+                return (
+                  <label
+                    key={m}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm",
+                      checked
+                        ? "border-brand-400 bg-brand-50 text-brand-900 ring-1 ring-inset ring-brand-300"
+                        : "border-slate-300 text-slate-700 hover:bg-slate-50",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => toggleMethod(m, e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-300"
+                    />
+                    {c ? pickText(c.label, lang) : m}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="help">{t("merchantForm.enabledMethodsHelp")}</p>
+          </fieldset>
+          <Field id={`${formId}-transferIdDigits`} label={t("merchantForm.transferIdDigits")} help={t("merchantForm.transferIdDigitsHelp")}>
+            <select
+              id={`${formId}-transferIdDigits`}
+              className="input"
+              value={values.transferIdDigits}
+              onChange={(e) => set("transferIdDigits", Number(e.target.value) as TransferIdDigits)}
+            >
+              {TRANSFER_ID_DIGITS.map((d) => (
+                <option key={d} value={d}>
+                  {t("merchantForm.digits", { n: d })}
                 </option>
               ))}
             </select>
