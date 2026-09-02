@@ -1,3 +1,5 @@
+import { formatCode, parseCode } from "@/lib/ids";
+
 // Merchant (加盟店) domain vocabulary. Stored as strings (SQLite has no
 // enums); narrowed at the boundary with the guards below.
 
@@ -50,14 +52,13 @@ export interface MerchantView extends MerchantInput {
   updatedAt: Date;
 }
 
-export const MERCHANT_CODE_PREFIX = "MER-";
-export const MERCHANT_CODE_DIGITS = 5;
+export const MERCHANT_CODE_PREFIX_BARE = "MER";
+export const MERCHANT_CODE_PREFIX = `${MERCHANT_CODE_PREFIX_BARE}-`;
 
 export function formatMerchantCode(n: number): string {
-  return `${MERCHANT_CODE_PREFIX}${String(n).padStart(MERCHANT_CODE_DIGITS, "0")}`;
+  return formatCode(MERCHANT_CODE_PREFIX_BARE, n);
 }
 
 export function parseMerchantCode(code: string): number | null {
-  const m = new RegExp(`^${MERCHANT_CODE_PREFIX}(\\d{${MERCHANT_CODE_DIGITS},})$`).exec(code);
-  return m ? Number(m[1]) : null;
+  return parseCode(MERCHANT_CODE_PREFIX_BARE, code);
 }

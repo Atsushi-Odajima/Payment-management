@@ -1,19 +1,13 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, withApiHandler } from "@/lib/api/handler";
+import { requireMaster } from "@/lib/api/role-guard";
 import {
   decryptMerchantPassword,
   encryptMerchantPassword,
   generateMerchantPassword,
 } from "@/lib/merchants/secrets";
-import { roleFromRequest } from "@/lib/role";
 
 type Ctx = { params: { id: string } };
-
-function requireMaster(req: Request) {
-  if (roleFromRequest(req) !== "master") {
-    throw new ApiError(403, "role_required", "errors.masterRequired");
-  }
-}
 
 /** GET — reveal the merchant password (master role only). */
 export const GET = withApiHandler<Ctx>(async (req, { params }) => {
