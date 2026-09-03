@@ -58,7 +58,13 @@
 - **代理店管理** — `AGT-00001` 自動採番、手数料率（% 小数2桁）、有効/無効、詳細画面に担当加盟店の一覧
 - **決済申請一覧（未完了取引の追跡・消込）** — 決済種別 / ステータス / 加盟店 / 期間で絞り込み、振込待ちは振込期限が近い順・期限超過は赤で強調。銀行振込は加盟店ごとに 7 桁 / 8 桁の **振込ID** と振込期限を発行し、**入金消込**（一致 → 完了、不足 → 振込待ちのまま不足フラグ、超過 → 完了 + 超過フラグ）を詳細画面（マスター権限）と、銀行からの入金通知を模した `POST /api/demo/deposit-notify` の両方から実行できる。完了・失敗・キャンセル・期限切れの手動遷移と、ステータス変更履歴（いつ・誰が・何から何へ）
 - **IP制限管理（実際に遮断）** — 管理画面 / 加盟店API 向けの IP / CIDR ルール。**ブロック** ルールに一致する接続元は `app/layout.tsx`（画面）と `withApiHandler`（API）で実際に 403 になり、自分の IP をブロックするルールは保存できない（ロックアウト防止）。許可ルールは判定表示用。現在の接続元 IP と判定を表示
-- **管理画面マニュアル** — 左に目次・右に本文の 9 章構成。`content/manual/{ja,en}/*.md` を自前の Markdown レンダラで描画し、表示言語に連動。各画面ヘッダーの「?」から該当章へ
+- **返金管理** — 返金申請（理由コード・全額 / 一部・残額と審査待ち額の検証）→ マスターの承認 / 否認。返金可能期限の超過はマスターが理由付きで強制。返金一覧 / 詳細、KPI「審査待ち」
+- **精算管理** — 加盟店ごとの締めサイクル・支払サイト・振込先口座、期間内の完了取引（完了時点の契約料率で手数料計算）・返金・チャージバックから精算バッチを生成し、確定 → 振込予定 → 振込済 / 保留の状態遷移、明細 CSV、加盟店 API での参照
+- **Webhook 送信** — 加盟店の通知設定どおりのペイロードを実送信（`X-Signature` / `X-Timestamp`、署名シークレット、10 秒タイムアウト）、1 分 → 24 時間の指数バックオフで最大 5 回の自動再送（cron）と断念、手動再送、送信ログ一覧 / 詳細 / 加盟店タブ、デモ受信エンドポイント
+- **リスク対策** — チャージバック（登録 → 異議申立て → 勝訴 / 敗訴 → 確定、取引ステータス `chargeback`、精算控除、Webhook）、カード識別ハッシュ / 接続元 IP による連続失敗検知（閾値設定）→ ブラックリスト候補 / 承認 / 手動追加 / 作成時ブロック、過不足入金の一覧と対応（差額返金申請・追加入金案内）
+- **レポート・通知** — 期間 / 加盟店 / 決済種別で絞る集計レポート（指標 7 種、推移 / 比率 / ランキングの自前 SVG グラフ、集計 / 明細 CSV）、メールテンプレート（8 キー × 2 言語、プレースホルダー、プレビュー）と送信ログ（デモは記録のみ、`EMAIL_PROVIDER` で差し替え）、お知らせ配信（下書き / 公開 / 終了、対象加盟店、障害の更新履歴、ヘッダーのバナー、加盟店 API）
+- **定期課金・決済リンク・代理店手数料** — 課金プランと定期課金（無料期間 → 有効、毎時 cron の課金、3 日 / 7 日の再試行と 3 回で停止、Webhook・メール、今すぐ課金 / 一時停止 / 再開 / 解約、デモ失敗率）、決済リンク（URL / QR、ログイン不要の決済ページ `/pay/<token>`、有効期限・最大利用回数、無効化）、代理店手数料（精算バッチ × 手数料率の月次集計、CSV）
+- **管理画面マニュアル** — 左に目次・右に本文の 19 章構成。`content/manual/{ja,en}/*.md` を自前の Markdown レンダラで描画し、表示言語に連動。各画面ヘッダーの「?」から該当章へ。通知パラメータ・署名検証・加盟店 API・精算サイクルは開発者向けの精度で記載し、「はじめに」に権限マトリクス
 
 ## アーキテクチャ
 
@@ -223,6 +229,31 @@ tests/integration/           Route Handler の統合テスト
 
 [`DEPLOY.md`](./DEPLOY.md) を参照。公開デモは Vercel (hnd1) + Neon、Docker（standalone 出力・非 root）で Railway / Render / Fly.io にも置けます。
 
+### 本番（実データ）で動かす最短手順
+
+1. Neon などの Postgres を用意し `DATABASE_URL` を設定
+2. 環境変数: `ENCRYPTION_KEY`（base64 32 バイト・変更不可）、`SESSION_SECRET`、`CRON_SECRET`、`DEPOSIT_NOTIFY_SECRET`、`APP_URL`、任意で `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`。`DEMO_LOGIN_HINT` / `DEMO_READONLY` は設定しない
+3. スキーマ: `vercel.json` の `prisma db push --accept-data-loss` は使い捨てのデモ DB 向け。実データでは `prisma migrate deploy` に切り替える（スキーマ変更は追加のみ）
+4. seed（デモ加盟店・取引・管理者 `kuromaru` / `general`）をビルドから外し、管理者を自分で作る
+5. cron を登録: `/api/cron/expire-transfers`（毎時 0 分）・`/api/cron/webhook-retry`（毎時 30 分）・`/api/cron/subscriptions`（毎時 15 分）。`/api/demo/reset` は登録しない
+6. 加盟店ごとに通知先 URL と署名シークレットを発行し、`X-Signature` の検証を実装してもらう（マニュアル「通知パラメータ仕様」）
+
+### 残課題（デモの範囲で未実装・簡略化しているもの）
+
+| 項目 | 現状 | 理由 / 差し込み口 |
+|---|---|---|
+| 決済プロバイダの実 API | 未接続。決済・返金は DB 上の状態遷移のみ | ベンダーごとの SDK と Webhook アダプタが必要。`lib/providers/registry.ts` にデータ定義、`lib/webhooks/events.ts` の `EVENT_TO_ACTION` が受け口 |
+| 加盟店キーによる決済作成 API | 未実装。決済作成は管理画面と `POST /api/payments`（管理者セッション） | `lib/payments/create.ts` の `createTransaction` を `authenticateMerchantApiKey` 付きの route から呼べば追加できる |
+| メールの実送信 | `EMAIL_PROVIDER=log|console` で記録のみ | `lib/email/send.ts` に `EmailProvider`（SES / SendGrid 等）を追加 |
+| 銀行の入金連携 | `POST /api/demo/deposit-notify`（Bearer）で通知を模擬 | 銀行 API のポーリング / Webhook から同じ `applyPaymentAction(deposit)` を呼ぶ |
+| 定期課金の実課金 | デモ用の失敗率で成否を決める | プロバイダの継続課金 API を `chargeSubscription` に接続 |
+| 精算の自動生成・振込 | 手動で生成、振込は状態変更のみ | 締めサイクルごとの cron と振込 API（全銀 / 銀行 API）の接続 |
+| テストモードの精算 | デモではテストモードでも精算バッチを作れる | 本番運用では `livemode=true` のみを対象にする |
+| チャージバックの取引操作 | `chargeback` 遷移は UI アクションではなくチャージバック画面からのみ | 仕様どおり（`MASTER_ACTIONS` に含めない） |
+| レートリミット | インスタンス内メモリ | Upstash Redis 等に置き換え |
+| Postgres の migration 履歴 | Vercel は `db push`（SQLite 用 schema を provider 書き換え） | Postgres 専用 migration に一本化 |
+| 加盟店ポータル | 加盟店向け画面は無く、加盟店 API（ping / settlements / announcements）で代替 | 必要なら加盟店ログインと専用画面を追加 |
+
 ## Roadmap
 
 - [x] 状態遷移表 + アトミック更新 + 冪等キー
@@ -235,6 +266,7 @@ tests/integration/           Route Handler の統合テスト
 - [x] 加盟店管理（発行・編集・通知仕様プレビュー・権限別パスワード表示）
 - [x] 管理者アカウント（TOTP 二段階認証）・操作ログ・横断検索・グループ化ナビ
 - [x] 加盟店の契約プラン / 手数料率・限度額・振込期限 / 返金可能期限・API キー・テスト / 本番スイッチ
+- [x] 返金申請 / 承認・精算バッチ・Webhook 実送信と再送・チャージバック / ブラックリスト / 過不足入金・集計レポート・メールテンプレート / 送信ログ・お知らせ配信・定期課金・決済リンク・代理店手数料（Vitest 275 ケース + Playwright スモーク 52 チェック）
 - [ ] Postgres 専用 migration 履歴への一本化（現在 Vercel は `db push`）
 - [ ] Next.js 15 へのアップグレード（`params` / `searchParams` の await 化）
 - [ ] レートリミットを Upstash Redis に（現在はインスタンス内メモリ）
@@ -288,7 +320,13 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 - **Agent management** — auto-numbered `AGT-00001`, fee rate (%, two decimals), active / inactive, and the merchants each agent refers on the detail page.
 - **Payment applications (open transactions)** — filter by method / status / merchant / period; awaiting transfers are listed by deadline with overdue rows in red. Bank transfers get a per-merchant 7- or 8-digit **transfer ID** and a deadline; **deposit reconciliation** (exact → completed, short → still awaiting with a short flag, excess → completed with an excess flag) runs from the detail screen (master role) and from `POST /api/demo/deposit-notify`, which mimics the bank's deposit notification. Manual complete / fail / cancel / expire, and a status history (when / who / from → to).
 - **IP restrictions (enforced)** — IP / CIDR rules for the admin UI and the merchant API. Callers matching a **Block** rule are refused by `app/layout.tsx` (pages) and `withApiHandler` (API) with a 403; a rule that would block your own IP cannot be saved (lock-out protection). Allow rules are informational; the current IP and its verdict are shown.
-- **In-app manual** — nine chapters, table of contents on the left and the chapter on the right, rendered from `content/manual/{ja,en}/*.md` by a small in-house Markdown renderer and linked to the UI language. Every page header has a "?" that opens its chapter.
+- **Refund management** — refund requests (reason code, full / partial, validated against the remaining balance and pending requests) approved or rejected by a master; the refund window can be overridden by a master with a reason. Refund list / detail and a "pending review" KPI.
+- **Settlements** — per-merchant cycle, payout term and bank account; batches built from the period's completed transactions (fees at the contract rate in force at completion), refunds and chargebacks; confirmed → scheduled → paid / held transitions, line CSV, and a merchant API view.
+- **Outbound webhooks** — real delivery of the merchant's configured payload (`X-Signature` / `X-Timestamp`, signing secrets, 10-second timeout), exponential retries from 1 minute to 24 hours (five attempts, then abandoned) driven by a cron, manual resend, delivery log list / detail / merchant tab, and a demo receiver.
+- **Risk** — chargebacks (register → dispute → won / lost → confirm, transaction status `chargeback`, settlement deduction, webhook), card fingerprint / client IP repeated-failure detection with a configurable threshold → blacklist candidates / approval / manual entries / blocking at creation, and short / excess deposit follow-up (difference refund, top-up notice).
+- **Reports and notices** — aggregated reports by period / merchant / method (seven KPIs, in-house SVG charts for series / share / ranking, summary and detail CSV), e-mail templates (8 keys × 2 languages, placeholders, preview) with a send log (demo only records; `EMAIL_PROVIDER` swaps the provider), and announcements (draft / publish / end, target merchants, incident timeline, header banner, merchant API).
+- **Subscriptions, payment links, agent fees** — billing plans and subscriptions (trial → active, hourly charging cron, retries after 3 / 7 days and suspension on the third failure, webhooks and e-mails, charge now / pause / resume / cancel, demo failure rate), payment links (URL / QR, public checkout page `/pay/<token>`, expiry and usage limit, disable), and monthly agent fees (settlement payout × fee rate, CSV).
+- **In-app manual** — 19 chapters, table of contents on the left and the chapter on the right, rendered from `content/manual/{ja,en}/*.md` by a small in-house Markdown renderer and linked to the UI language. Every page header has a "?" that opens its chapter. Notification parameters, signature verification, the merchant API and settlement cycles are documented at integrator precision, and the introduction carries the permission matrix.
 
 ## Architecture
 
@@ -327,9 +365,34 @@ npm run verify     # lint → typecheck → check:i18n → test → build (same 
 
 See [`DEPLOY.md`](./DEPLOY.md): Vercel (Tokyo) + Neon for the public demo, or the Docker image (standalone output, non-root) on Railway / Render / Fly.io.
 
+### Shortest path to a production (real-data) deployment
+
+1. Provision Postgres (Neon or similar) and set `DATABASE_URL`.
+2. Environment: `ENCRYPTION_KEY` (base64 32 bytes, never rotate casually), `SESSION_SECRET`, `CRON_SECRET`, `DEPOSIT_NOTIFY_SECRET`, `APP_URL`, optionally `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`. Do not set `DEMO_LOGIN_HINT` / `DEMO_READONLY`.
+3. Schema: the `prisma db push --accept-data-loss` in `vercel.json` is for the disposable demo DB; with real data switch to `prisma migrate deploy` (schema changes stay additive).
+4. Remove the seed (demo merchants, transactions and the `kuromaru` / `general` admins) from the build and create your own admin.
+5. Register the crons `/api/cron/expire-transfers` (hourly at :00), `/api/cron/webhook-retry` (:30) and `/api/cron/subscriptions` (:15); do not register `/api/demo/reset`.
+6. Issue a notification URL and a signing secret per merchant and have them verify `X-Signature` (manual chapter "Notification parameter specification").
+
+### Open items (not implemented or simplified in the demo)
+
+| Item | Current state | Reason / where to plug in |
+|---|---|---|
+| Real PSP APIs | Not connected; payments and refunds are DB state transitions only | Needs per-vendor SDKs and webhook adapters. `lib/providers/registry.ts` holds the data, `EVENT_TO_ACTION` in `lib/webhooks/events.ts` is the entry point |
+| Merchant-key payment creation API | Not implemented; payments are created from the dashboard and `POST /api/payments` (admin session) | Call `createTransaction` in `lib/payments/create.ts` from a route guarded by `authenticateMerchantApiKey` |
+| Real e-mail delivery | `EMAIL_PROVIDER=log|console` only records | Add an `EmailProvider` (SES / SendGrid …) in `lib/email/send.ts` |
+| Bank deposit feed | Simulated by `POST /api/demo/deposit-notify` (Bearer) | Call the same `applyPaymentAction(deposit)` from a bank API poller / webhook |
+| Real subscription charging | Outcome decided by the demo failure rate | Connect the provider's recurring-charge API in `chargeSubscription` |
+| Automatic settlement generation and payouts | Generated manually; payout is a status change | Per-cycle cron plus a bank transfer API |
+| Test-mode settlements | The demo allows batches in test mode | Restrict to `livemode=true` in production |
+| Chargeback transaction action | The `chargeback` transition is only reachable from the chargeback screens, not the transaction actions | By design (kept out of `MASTER_ACTIONS`) |
+| Rate limiting | In-process memory | Replace with Upstash Redis or similar |
+| Postgres migration history | Vercel uses `db push` (SQLite schema with the provider rewritten) | Consolidate on Postgres-only migrations |
+| Merchant portal | No merchant-facing screens; the merchant API (ping / settlements / announcements) stands in | Add merchant login and screens if needed |
+
 ## Roadmap
 
-Done: transition table + atomic updates + idempotency · partial refunds + audit log · webhook verification + simulator · login / CSRF / rate limit / headers · fail-closed key · typed JA/EN i18n · admin accounts with TOTP, audit log, global search · merchant contracts / limits / deadlines / API keys and the test / live switch · 230+ tests + CI.
+Done: transition table + atomic updates + idempotency · partial refunds + audit log · webhook verification + simulator · login / CSRF / rate limit / headers · fail-closed key · typed JA/EN i18n · admin accounts with TOTP, audit log, global search · merchant contracts / limits / deadlines / API keys and the test / live switch · refund requests, settlements, outbound webhooks with retries, chargebacks / blacklist / deposit differences, reports, e-mail templates and log, announcements, subscriptions, payment links, agent fees · 275 tests + a 52-check Playwright smoke + CI.
 Next: Postgres-only migration history (Vercel currently uses `db push`) · Next.js 15 · Upstash-backed rate limiting · real PSP SDKs (Stripe → PayPay → GMO PG) with per-vendor webhook adapters · KMS key rotation · payouts & disputes · Playwright E2E.
 
 ## How this was built
