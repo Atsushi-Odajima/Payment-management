@@ -77,7 +77,7 @@ describe("payments", () => {
       params: { id: SEED_IDS.payment1, action: "refund" },
     });
     expect((await read(rest)).body.data).toMatchObject({ status: "refunded", amountRefunded: 4980 });
-    expect(await prisma.refund.count({ where: { paymentId: SEED_IDS.payment1 } })).toBe(2);
+    expect(await prisma.refund.count({ where: { paymentId: SEED_IDS.payment1, status: "completed" } })).toBe(2);
   });
 
   it("rejects unknown actions with 404", async () => {

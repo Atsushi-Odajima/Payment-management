@@ -108,17 +108,41 @@ model Payment {
   @@index([livemode])
 }
 
-// One row per (partial) refund. Full refund history is preserved even after
-// the payment reaches "refunded".
+// One row per refund request (Phase C). A general operator files a request
+// (status requested); a master approves (→ completed, the payment moves to
+// partially_refunded / refunded through the state machine) or rejects it.
+// Rows written by webhooks / seed are completed directly. Full history is
+// preserved even after the payment reaches "refunded".
 model Refund {
-  id        String   @id @default(cuid())
-  paymentId String
-  payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  amount    Int
-  reason    String?
-  createdAt DateTime @default(now())
+  id            String     @id @default(cuid())
+  paymentId     String
+  payment       Payment    @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  // Snapshot of payment.merchantId / livemode for list filters.
+  merchantId    String?
+  livemode      Boolean    @default(false)
+  amount        Int
+  // full | partial (lib/refunds/types.ts)
+  kind          String     @default("partial")
+  // customer | defect | duplicate | other
+  reasonCode    String     @default("other")
+  // Free-text reason (required for "other").
+  reason        String?
+  // requested | approved | rejected | processing | completed | failed
+  status        String     @default("completed")
+  // Master override of the merchant's refund window (reason required).
+  forced        Boolean    @default(false)
+  requestedById String?
+  requestedBy   AdminUser? @relation("RefundRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  approvedById  String?
+  approvedBy    AdminUser? @relation("RefundApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  // Note left by the master on approval / rejection.
+  decisionNote  String?
+  createdAt     DateTime   @default(now())
+  completedAt   DateTime?
 
   @@index([paymentId])
+  @@index([status, createdAt])
+  @@index([merchantId])
 }
 
 // Append-only audit trail of every status change on a payment.
@@ -300,7 +324,9 @@ model AdminUser {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  auditLogs AuditLog[]
+  auditLogs        AuditLog[]
+  refundsRequested Refund[]   @relation("RefundRequestedBy")
+  refundsApproved  Refund[]   @relation("RefundApprovedBy")
 
   @@index([status])
 }

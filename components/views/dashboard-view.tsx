@@ -13,6 +13,7 @@ import type { MessageKey } from "@/lib/i18n";
 import { formatYen } from "@/lib/utils";
 
 export interface DashboardStats {
+  pendingRefundCount: number;
   merchantCount: number;
   agentCount: number;
   todayPaymentCount: number;
@@ -40,6 +41,11 @@ export function DashboardView({ stats }: { stats: DashboardStats }) {
         };
       case "payments":
         return { value: t("dashboard.valueToday", { count: stats.todayPaymentCount, amount: formatYen(stats.todayPaymentAmount) }) };
+      case "refunds":
+        return {
+          value: t("dashboard.valuePendingRefunds", { count: stats.pendingRefundCount }),
+          badge: stats.pendingRefundCount > 0 ? t("dashboard.reviewBadge") : undefined,
+        };
       case "merchants":
         return { value: t("dashboard.valueCount", { count: stats.merchantCount }) };
       case "agents":

@@ -18,7 +18,7 @@ export default async function DashboardPage() {
   const now = new Date();
   const today = startOfDayInTz(now);
   const modeWhere = livemodeWhere(modeFromCookieStore(cookies()));
-  const [merchantCount, agentCount, todayAgg, openCount, overdueCount, activeIpRuleCount, adminCount, auditTodayCount, providerCount] =
+  const [merchantCount, agentCount, todayAgg, openCount, overdueCount, activeIpRuleCount, adminCount, auditTodayCount, providerCount, pendingRefundCount] =
     await Promise.all([
       prisma.merchant.count(),
       prisma.agent.count(),
@@ -33,9 +33,11 @@ export default async function DashboardPage() {
       prisma.adminUser.count(),
       prisma.auditLog.count({ where: { createdAt: { gte: today } } }),
       prisma.paymentProvider.count({ where: { status: "active" } }),
+      prisma.refund.count({ where: { ...modeWhere, status: "requested" } }),
     ]);
 
   const stats: DashboardStats = {
+    pendingRefundCount,
     merchantCount,
     agentCount,
     todayPaymentCount: todayAgg._count,

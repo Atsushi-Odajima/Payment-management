@@ -21,7 +21,11 @@ export interface PaymentEventItem {
 export interface RefundItem {
   id: string;
   amount: number;
+  kind: string;
+  reasonCode: string;
   reason: string | null;
+  status: string;
+  forced: boolean;
   createdAt: Date;
 }
 
@@ -48,6 +52,8 @@ export interface TransactionDetail {
   failureReason: string | null;
   /** capturedAt + merchant.refundWindowDays (null when not completed or no merchant). */
   refundDeadlineAt: Date | null;
+  /** Amount reserved by refund requests not decided yet. */
+  pendingRefundAmount: number;
   overdue: boolean;
   merchant: { id: string; merchantCode: string; siteName: string; transferIdDigits: number; refundWindowDays: number } | null;
   provider: {
@@ -94,11 +100,14 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
       },
       refunds: {
         orderBy: { createdAt: "desc" },
-        select: { id: true, amount: true, reason: true, createdAt: true },
+        select: { id: true, amount: true, kind: true, reasonCode: true, reason: true, status: true, forced: true, createdAt: true },
       },
     },
   });
   if (!payment) return null;
+  const pendingRefundAmount = payment.refunds
+    .filter((r) => r.status === "requested" || r.status === "approved" || r.status === "processing")
+    .reduce((sum, r) => sum + r.amount, 0);
 
   // Only a presence check crosses to the client — never the credential store.
   const webhookAvailable = storedFieldKeys(payment.provider.credentials).includes("webhook_secret");
@@ -126,6 +135,7 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
     failureReason: payment.failureReason,
     refundDeadlineAt:
       payment.capturedAt && payment.merchant ? new Date(payment.capturedAt.getTime() + payment.merchant.refundWindowDays * 86_400_000) : null,
+    pendingRefundAmount,
     overdue: isTransferOverdue(payment, now),
     merchant: payment.merchant,
     provider: {
