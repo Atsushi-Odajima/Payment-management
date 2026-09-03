@@ -20,7 +20,7 @@ import { detectRepeatedFailures } from "@/lib/risk/service";
 import { notifyPaymentCompleted, notifyRefundCompleted } from "@/lib/email/hooks";
 import type { MerchantWebhookEvent } from "@/lib/webhooks/events";
 
-export const PAYMENT_ACTORS = ["dashboard", "webhook", "bank", "cvs", "system", "seed"] as const;
+export const PAYMENT_ACTORS = ["dashboard", "api", "webhook", "bank", "cvs", "system", "seed"] as const;
 export type PaymentActor = (typeof PAYMENT_ACTORS)[number];
 
 export interface ApplyActionInput {

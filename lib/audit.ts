@@ -6,7 +6,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { clientIpFromHeaders } from "@/lib/ip";
 import { currentAdminFromRequest } from "@/lib/admin/current";
 
-export const AUDIT_ACTOR_TYPES = ["admin", "system", "webhook", "bank", "cvs", "cron", "seed"] as const;
+export const AUDIT_ACTOR_TYPES = ["admin", "merchant", "system", "webhook", "bank", "cvs", "cron", "seed"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
 export const AUDIT_TARGET_TYPES = [
@@ -112,6 +112,9 @@ export const AUDIT_ACTIONS = [
   "global_setting.update",
   "receipt.issue",
   "settlement.invoice_export",
+  "merchant.login",
+  "merchant.logout",
+  "merchant.lockout",
   "provider.create",
   "provider.update",
   "provider.delete",
@@ -129,7 +132,8 @@ export function isAuditTargetType(v: unknown): v is AuditTargetType {
   return typeof v === "string" && (AUDIT_TARGET_TYPES as readonly string[]).includes(v);
 }
 
-export type AuditActor = { type: "admin"; id: string } | { type: Exclude<AuditActorType, "admin"> };
+/** Operators carry their AdminUser id; merchants (public API / portal, Phase L) their Merchant id. */
+export type AuditActor = { type: "admin"; id: string } | { type: "merchant"; id: string } | { type: Exclude<AuditActorType, "admin" | "merchant"> };
 
 export interface AuditContext {
   actor: AuditActor;
@@ -179,6 +183,7 @@ export async function recordAudit(db: Db, ctx: AuditContext, entry: AuditEntry):
     data: {
       actorType: ctx.actor.type,
       actorId: ctx.actor.type === "admin" ? ctx.actor.id : null,
+      merchantId: ctx.actor.type === "merchant" ? ctx.actor.id : null,
       action: entry.action,
       targetType: entry.targetType,
       targetId: entry.targetId ?? null,
@@ -200,6 +205,11 @@ export async function auditContextFromRequest(req: Request): Promise<AuditContex
 }
 
 /** Context for non-interactive actors (webhooks, the bank notification, cron, seed). */
-export function systemAuditContext(type: Exclude<AuditActorType, "admin">, ip: string | null = null): AuditContext {
+export function systemAuditContext(type: Exclude<AuditActorType, "admin" | "merchant">, ip: string | null = null): AuditContext {
   return { actor: { type }, ip };
+}
+
+/** Context for a merchant acting through the public API or the merchant portal (Phase L). */
+export function merchantAuditContext(merchantId: string, ip: string | null = null): AuditContext {
+  return { actor: { type: "merchant", id: merchantId }, ip };
 }

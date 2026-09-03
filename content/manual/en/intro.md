@@ -121,6 +121,7 @@ Roles (master / general) belong to the signed-in admin account and are enforced 
 | Global settings | Update | ○ |  |  |  |  |
 | CSV export | Export | ○ | ○ | ○ | ○ |  |
 | Personal data | Unmask | ○ |  | ○ |  |  |
+| API docs | View | ○ | ○ | ○ | ○ | ○ |
 <!-- permissions:end -->
 
 On the public demo `DEMO_READONLY=1` turns provider updates and every delete into 403, even for masters.

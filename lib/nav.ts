@@ -86,6 +86,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { key: "auditLogs", href: "/audit-logs", icon: "clipboard", implemented: true },
       { key: "providers", href: "/providers", icon: "plug", implemented: true },
       { key: "manual", href: "/manual", icon: "book", implemented: true },
+      { key: "apiDocs", href: "/docs/api", icon: "plug", implemented: true, permission: ["api_docs", "view"] },
     ],
   },
 ];
