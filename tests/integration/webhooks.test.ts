@@ -155,7 +155,7 @@ describe("delivery", () => {
     const list = await read(await listLogs(new Request(BASE + "/api/webhook-logs?mode=test"), {}));
     expect(list.body.data.deliveries.map((d: any) => d.status)).toEqual(["abandoned", "retrying", "success"]);
     expect(list.body.data.failedCount).toBe(2);
-    const csv = await listLogs(new Request(BASE + "/api/webhook-logs?mode=test&format=csv"), {});
+    const csv = await listLogs(new Request(BASE + "/api/webhook-logs?mode=test&format=csv", { headers: MASTER }), {});
     expect((await csv.text()).split("\r\n").filter(Boolean)).toHaveLength(4);
 
     const okRes = await read(await receiver(new Request(BASE + "/api/demo/webhook-receiver?result=ok&payment_id=x", { headers: { "x-signature": "v1=abc" } }), {}));

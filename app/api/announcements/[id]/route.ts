@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest } from "@/lib/audit";
 import { loadAnnouncement } from "@/lib/announcements/list";
 import { updateAnnouncement } from "@/lib/announcements/service";
@@ -17,7 +17,7 @@ export const GET = withApiHandler<Ctx>(async (_req, { params }) => {
 
 /** PATCH /api/announcements/:id — edit contents / window / audience. */
 export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
-  await requireAdmin(req);
+  await requirePermission(req, "announcement", "update");
   const parsed = announcementInputSchema.safeParse(await readJson(req));
   if (!parsed.success) {
     throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: Object.fromEntries(parsed.error.issues.map((i) => [i.path.join("."), i.message])) });

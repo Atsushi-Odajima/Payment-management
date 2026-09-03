@@ -11,7 +11,7 @@ import { DataTable, type DataColumn } from "@/components/data-table";
 import { BlacklistStatusBadge } from "@/components/risk-badges";
 import { FormField } from "@/components/ui/form-field";
 import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
-import { useRole } from "@/components/session-provider";
+import { useCan } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import type { BlacklistFilters, BlacklistRow } from "@/lib/risk/blacklist";
 import { BLACKLIST_KINDS, BLACKLIST_SOURCES, BLACKLIST_STATUSES, type BlacklistKind, type BlacklistStatus, type RiskSettingsInput } from "@/lib/risk/types";
@@ -41,7 +41,9 @@ export function BlacklistView({
   const router = useRouter();
   const apiJson = useApiJson();
   const toast = useToast();
-  const { isMaster } = useRole();
+  const isMaster = useCan("blacklist", "update");
+  const canCreate = useCan("blacklist", "create");
+  const canRules = useCan("risk_setting", "update");
   const formatDate = useFormatDateTime();
   const [busyId, setBusyId] = useState<string | null>(null);
   const params: QueryParams = {
@@ -116,8 +118,8 @@ export function BlacklistView({
       />
 
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
-        <AddForm disabled={!isMaster} />
-        <SettingsForm settings={settings} disabled={!isMaster} />
+        <AddForm disabled={!canCreate} />
+        <SettingsForm settings={settings} disabled={!canRules} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3 text-xs text-slate-600">

@@ -116,6 +116,7 @@ model Payment {
   events      PaymentEvent[]
   chargebacks Chargeback[]
   unmatchedDeposits UnmatchedDeposit[]
+  notes             TransactionNote[]
 
   @@unique([providerId, externalId])
   @@index([providerId])
@@ -189,6 +190,7 @@ model PaymentEvent {
 // is encrypted with the same AES-GCM key as provider credentials and is only
 // revealed to the "master" role (see lib/role.ts).
 model Merchant {
+  methodControls PaymentMethodControl[]
   id                String   @id @default(cuid())
   // Auto-numbered public identifier, MER-00001 …
   merchantCode      String   @unique
@@ -355,6 +357,7 @@ model ApiKey {
 // is AES-GCM encrypted (lib/admin/secrets.ts). role: master | general,
 // status: active | disabled | invited (invited = created, never logged in).
 model AdminUser {
+  notes         TransactionNote[]
   id            String    @id @default(cuid())
   loginId       String    @unique
   name          String
@@ -743,4 +746,92 @@ model UnmatchedDeposit {
   @@index([livemode])
   @@index([receivedAt])
   @@index([paymentId])
+}
+
+/// Internal comments on a transaction (Phase I-2). Shown only in the
+/// operator dashboard, merged with the status history into one timeline.
+model TransactionNote {
+  id        String    @id @default(cuid())
+  paymentId String
+  payment   Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    AdminUser @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  body      String
+  pinned    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  editedAt  DateTime?
+
+  @@index([paymentId])
+  @@index([authorId])
+}
+
+/// Payment method suspension switches (Phase I-3): a global row per method
+/// (merchantId null) and optional per-merchant rows. A method is available
+/// when neither the global nor the merchant row is suspended and the
+/// merchant has it enabled.
+model PaymentMethodControl {
+  id            String    @id @default(cuid())
+  /// global | merchant
+  scope         String
+  merchantId    String?
+  merchant      Merchant? @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  /// credit | qr | convenience | bank
+  method        String
+  suspended     Boolean   @default(false)
+  reason        String?
+  suspendedById String?
+  suspendedAt   DateTime?
+  /// When set and in the past, the hourly cron resumes the method.
+  resumeAt      DateTime?
+  resumedAt     DateTime?
+  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime  @default(now())
+
+  @@unique([scope, merchantId, method])
+  @@index([suspended])
+  @@index([resumeAt])
+}
+
+/// Operator notifications (Phase J; the table and the emitter land in Phase I
+/// so the payment-method switch can raise critical notices).
+model Notification {
+  id         String   @id @default(cuid())
+  /// e.g. payment_method.suspended, webhook.abandoned, settlement.generated
+  kind       String
+  /// info | warning | critical
+  severity   String   @default("info")
+  title      String
+  body       String
+  href       String?
+  /// JSON array of roles that should see it; empty = everyone
+  roles      String   @default("[]")
+  targetType String?
+  targetId   String?
+  createdAt  DateTime @default(now())
+  reads      NotificationRead[]
+
+  @@index([kind])
+  @@index([severity])
+  @@index([createdAt])
+  @@index([targetType, targetId])
+}
+
+model NotificationRead {
+  id             String       @id @default(cuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  adminUserId    String
+  readAt         DateTime     @default(now())
+
+  @@unique([notificationId, adminUserId])
+  @@index([adminUserId])
+}
+
+/// Single-row global settings (id "global"). Later phases add columns here
+/// (Slack URL, invoice issuer, retention periods) instead of new tables.
+model GlobalSetting {
+  id              String   @id @default("global")
+  /// Whether the viewer role may export CSV.
+  viewerCsvExport Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
 }

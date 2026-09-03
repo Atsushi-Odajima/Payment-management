@@ -1,3 +1,4 @@
+import { requirePermission } from "@/lib/api/role-guard";
 import { z } from "zod";
 import { ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { runConnectionTest } from "@/lib/providers/connection";
@@ -11,6 +12,7 @@ const Schema = z.object({
 
 /** Ephemeral connection test against unsaved form values. */
 export const POST = withApiHandler(async (req) => {
+    await requirePermission(req, "provider", "test");
   const lang = langFromRequest(req);
   const body = Schema.parse(await readJson(req));
   const result = runConnectionTest(body.providerKey, body.credentials, body.testMode, lang);

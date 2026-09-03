@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
+import { sessionHeaders } from "../helpers/session";
 import { SEED_IDS, seed, truncateAll } from "@/prisma/seed-data";
 import { GET as listAgents, POST as createAgent } from "@/app/api/agents/route";
 import { GET as getAgent, PATCH as patchAgent } from "@/app/api/agents/[id]/route";
 import { POST as createMerchant } from "@/app/api/merchants/route";
 
 const BASE = "http://localhost";
+let ADMIN: Record<string, string> = {};
 
 const validAgent = {
   name: "Test Agency",
@@ -31,10 +33,10 @@ const validMerchant = {
   emailNotification: "per_payment",
 };
 
-function json(path: string, method: string, body?: unknown) {
+function json(path: string, method: string, body?: unknown, headers: Record<string, string> = {}) {
   return new Request(BASE + path, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...ADMIN, ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
@@ -45,6 +47,7 @@ async function read(res: Response) {
 beforeEach(async () => {
   await truncateAll(prisma);
   await seed(prisma, { now: new Date("2026-09-01T03:00:00Z") });
+  ADMIN = await sessionHeaders("admin");
 });
 
 describe("agents API", () => {

@@ -3,6 +3,7 @@
 // here already (so labels, routes and icons are fixed) but hidden until
 // `implemented` is true.
 
+import type { ActionOf, Permission, Resource } from "@/lib/role";
 import type { IconName } from "@/components/icons";
 
 export type NavGroupKey = "transactions" | "merchants" | "settlement" | "risk" | "reports" | "notices" | "settings";
@@ -14,7 +15,8 @@ export interface NavItem {
   icon: IconName;
   implemented: boolean;
   /** Master-only screen (hidden for the general role). */
-  masterOnly?: boolean;
+  /** Required permission (lib/role.ts); items without one are visible to everyone. */
+  permission?: Permission;
   /** Manual chapter shown from the dashboard card. */
   manual?: string;
 }
@@ -76,7 +78,9 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     key: "settings",
     items: [
-      { key: "admins", href: "/admins", icon: "user", implemented: true, masterOnly: true },
+      { key: "admins", href: "/admins", icon: "user", implemented: true, permission: ["admin_user", "view"] },
+      { key: "paymentMethodControls", href: "/payment-method-controls", icon: "alert", implemented: true },
+      { key: "globalSettings", href: "/global-settings", icon: "shield", implemented: true, permission: ["global_setting", "view"] },
       { key: "ipRestrictions", href: "/ip-restrictions", icon: "shield", implemented: true },
       { key: "auditLogs", href: "/audit-logs", icon: "clipboard", implemented: true },
       { key: "providers", href: "/providers", icon: "plug", implemented: true },
@@ -86,10 +90,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
 ];
 
 /** Groups with only the implemented items, filtered by role. */
-export function visibleNavGroups(isMaster: boolean): NavGroup[] {
+export function visibleNavGroups(can: <R extends Resource>(resource: R, action: ActionOf<R>) => boolean): NavGroup[] {
   return NAV_GROUPS.map((g) => ({
     key: g.key,
-    items: g.items.filter((i) => i.implemented && (!i.masterOnly || isMaster)),
+    items: g.items.filter((i) => i.implemented && (!i.permission || can(i.permission[0], i.permission[1] as never))),
   })).filter((g) => g.items.length > 0);
 }
 

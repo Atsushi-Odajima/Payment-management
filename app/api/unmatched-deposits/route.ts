@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest } from "@/lib/audit";
 import { CSV_MAX_ROWS, csvResponse, toCsv } from "@/lib/csv";
 import { resolveMode } from "@/lib/mode";
@@ -42,7 +42,7 @@ export const GET = withApiHandler(async (req) => {
 
 /** POST /api/unmatched-deposits — support registers a deposit seen on the bank statement that carries no usable transfer id. */
 export const POST = withApiHandler(async (req) => {
-  await requireAdmin(req);
+  await requirePermission(req, "unmatched_deposit", "register");
   const q = Object.fromEntries(new URL(req.url).searchParams.entries());
   const parsed = unmatchedDepositInputSchema.safeParse(await readJson(req));
   if (!parsed.success) {

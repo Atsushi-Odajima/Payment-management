@@ -13,6 +13,7 @@ import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
 import { DecryptionError, EncryptionKeyError } from "@/lib/crypto";
 import { langFromRequest, type Lang, type MessageParams } from "@/lib/i18n";
+import { assertCsvExportAllowed } from "@/lib/settings/csv-guard";
 import { checkAdminAccess } from "@/lib/ip-restrictions/enforce";
 import { failBody, type ApiFail, type ApiOk, type ErrorKey } from "./envelope";
 
@@ -72,6 +73,7 @@ export function withApiHandler<Ctx = unknown>(handler: Handler<Ctx>, options: Ha
           throw new ApiError(403, "ip_blocked", "errors.ipBlocked", { ip: access.ip ?? "" });
         }
       }
+      if (new URL(req.url).searchParams.get("format") === "csv") await assertCsvExportAllowed(req);
       return await handler(req, ctx);
     } catch (err) {
       return errorToResponse(err, lang);

@@ -66,18 +66,18 @@ describe("settlement batches", () => {
   it("generates a batch from completed transactions with contract fees and refuses duplicates", async () => {
     // Seed (NOW = 2026-09-01 12:00 JST): payment1 (4,980 credit, 3.6% standard → 179),
     // payment2 (1,280 qr → 38) and payment7 (12,000 bank, merchant3) completed within the last day.
-    const res = await read(await generate(json("/api/settlements/generate?mode=test", "POST", { merchantId: SEED_IDS.merchant1, from: "2026-08-25", to: "2026-09-01" }, GENERAL), {}));
+    const res = await read(await generate(json("/api/settlements/generate?mode=test", "POST", { merchantId: SEED_IDS.merchant1, from: "2026-08-25", to: "2026-09-01" }, MASTER), {}));
     expect(res.status).toBe(201);
     expect(res.body.data).toMatchObject({ status: "collecting", grossAmount: 6_260, feeAmount: 217, refundAmount: 0, settlementFee: 330, netAmount: 5_713, livemode: false });
     expect(res.body.data._count.lines).toBe(2);
     expect(new Date(res.body.data.scheduledAt).toISOString()).toBe(new Date("2026-10-31T00:00:00+09:00").toISOString());
     expect(await prisma.auditLog.count({ where: { action: "settlement.generate", targetId: res.body.data.id } })).toBe(1);
 
-    const dup = await read(await generate(json("/api/settlements/generate?mode=test", "POST", { merchantId: SEED_IDS.merchant1, from: "2026-08-25", to: "2026-09-01" }, GENERAL), {}));
+    const dup = await read(await generate(json("/api/settlements/generate?mode=test", "POST", { merchantId: SEED_IDS.merchant1, from: "2026-08-25", to: "2026-09-01" }, MASTER), {}));
     expect(dup.status).toBe(409);
     expect(dup.body.error.code).toBe("settlement_exists");
 
-    const csv = await lines(new Request(`${BASE}/api/settlements/${res.body.data.id}/lines?format=csv`), { params: { id: res.body.data.id } });
+    const csv = await lines(new Request(`${BASE}/api/settlements/${res.body.data.id}/lines?format=csv`, { headers: MASTER }), { params: { id: res.body.data.id } });
     expect(csv.headers.get("content-type")).toContain("text/csv");
     expect((await csv.text()).split("\r\n").filter(Boolean)).toHaveLength(3);
 
@@ -114,17 +114,17 @@ describe("settlement batches", () => {
     const list = await read(await listSettlements(new Request(BASE + "/api/settlements?mode=test"), {}));
     expect(list.body.data.settlements.map((s: any) => s.status).sort()).toEqual(["confirmed", "paid"]); // seeded
     expect((await read(await listSettlements(new Request(BASE + "/api/settlements?mode=live"), {}))).body.data.total).toBe(0);
-    const csv = await listSettlements(new Request(BASE + "/api/settlements?mode=test&format=csv"), {});
+    const csv = await listSettlements(new Request(BASE + "/api/settlements?mode=test&format=csv", { headers: MASTER }), {});
     expect((await csv.text()).split("\r\n").filter(Boolean)).toHaveLength(3);
   });
 
   it("stores settlement settings and audits them", async () => {
-    const bad = await read(await patchSettings(json(`/api/merchants/${SEED_IDS.merchant2}/settlement`, "PATCH", { settlementCycle: "weekly", payoutTerm: "next_week", bankAccountNumber: "12" }, GENERAL), { params: { id: SEED_IDS.merchant2 } }));
+    const bad = await read(await patchSettings(json(`/api/merchants/${SEED_IDS.merchant2}/settlement`, "PATCH", { settlementCycle: "weekly", payoutTerm: "next_week", bankAccountNumber: "12" }, MASTER), { params: { id: SEED_IDS.merchant2 } }));
     expect(bad.status).toBe(400);
     expect(bad.body.error.details.fieldErrors.bankAccountNumber).toBe("digits");
     const ok = await read(
       await patchSettings(
-        json(`/api/merchants/${SEED_IDS.merchant2}/settlement`, "PATCH", { settlementCycle: "weekly", payoutTerm: "next_week", bankName: "B", bankBranch: "", bankAccountType: "current", bankAccountNumber: "7654321", bankAccountHolder: "H", settlementFee: 220 }, GENERAL),
+        json(`/api/merchants/${SEED_IDS.merchant2}/settlement`, "PATCH", { settlementCycle: "weekly", payoutTerm: "next_week", bankName: "B", bankBranch: "", bankAccountType: "current", bankAccountNumber: "7654321", bankAccountHolder: "H", settlementFee: 220 }, MASTER),
         { params: { id: SEED_IDS.merchant2 } },
       ),
     );

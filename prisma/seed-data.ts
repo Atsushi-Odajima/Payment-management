@@ -41,8 +41,8 @@ export const SEED_IDS = {
   ip2: "ip_demo_002",
   ip3: "ip_demo_003",
   ip4: "ip_demo_004",
-  adminMaster: DEMO_ADMIN_ACCOUNTS.master.id,
-  adminGeneral: DEMO_ADMIN_ACCOUNTS.general.id,
+  adminMaster: DEMO_ADMIN_ACCOUNTS.admin.id,
+  adminGeneral: DEMO_ADMIN_ACCOUNTS.cs.id,
   audit1: "aud_demo_001",
   audit2: "aud_demo_002",
   audit3: "aud_demo_003",
@@ -80,6 +80,9 @@ export const SEED_IDS = {
   payment13: "pay_demo_013",
   unmatched1: "und_demo_001",
   unmatched2: "und_demo_002",
+  note1: "note_demo_001",
+  note2: "note_demo_002",
+  methodControl1: "pmc_demo_001",
 } as const;
 
 /** Fixed token of the seeded payment link (the hosted page is /pay/<token>). */
@@ -581,7 +584,10 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
   // ── Admin users ───────────────────────────────────────────────────────
   // Passwords are hashed with scrypt on every run; `update: {}` keeps a
   // password changed through the UI.
-  const admins = [DEMO_ADMIN_ACCOUNTS.master, DEMO_ADMIN_ACCOUNTS.general];
+  // Phase I-1: legacy role names are migrated in place (idempotent), then one demo account per role is ensured.
+  await prisma.adminUser.updateMany({ where: { role: "master" }, data: { role: "admin" } });
+  await prisma.adminUser.updateMany({ where: { role: "general" }, data: { role: "cs" } });
+  const admins = Object.values(DEMO_ADMIN_ACCOUNTS);
   for (const a of admins) {
     await prisma.adminUser.upsert({
       where: { id: a.id },
@@ -612,7 +618,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       reasonCode: "defect",
       reason: "プリントのかすれ（写真あり）",
       status: "requested",
-      requestedById: DEMO_ADMIN_ACCOUNTS.general.id,
+      requestedById: DEMO_ADMIN_ACCOUNTS.cs.id,
       createdAt: hoursAgo(2),
     },
     {
@@ -624,8 +630,8 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       reasonCode: "customer",
       reason: "サイズ違いのため返品希望",
       status: "rejected",
-      requestedById: DEMO_ADMIN_ACCOUNTS.general.id,
-      approvedById: DEMO_ADMIN_ACCOUNTS.master.id,
+      requestedById: DEMO_ADMIN_ACCOUNTS.cs.id,
+      approvedById: DEMO_ADMIN_ACCOUNTS.admin.id,
       decisionNote: "返品受領前のため否認。商品到着後に再申請",
       createdAt: hoursAgo(5),
       completedAt: hoursAgo(4),
@@ -657,7 +663,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       status: "paid",
       scheduledAt: new Date(monthAgoTo.getTime() + 29 * 86_400_000),
       paidAt: new Date(monthAgoTo.getTime() + 29 * 86_400_000),
-      createdById: DEMO_ADMIN_ACCOUNTS.master.id,
+      createdById: DEMO_ADMIN_ACCOUNTS.admin.id,
       createdAt: new Date(monthAgoTo.getTime() + 86_400_000),
       lines: [
         { kind: "payment", method: "credit", description: "ORD-2608-0142", amount: 64_800, fee: 2_332, occurredAt: new Date(monthAgoFrom.getTime() + 3 * 86_400_000) },
@@ -680,7 +686,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       netAmount: 84_688,
       status: "confirmed",
       scheduledAt: new Date(monthAgoTo.getTime() + 14 * 86_400_000),
-      createdById: DEMO_ADMIN_ACCOUNTS.master.id,
+      createdById: DEMO_ADMIN_ACCOUNTS.admin.id,
       createdAt: new Date(monthAgoTo.getTime() + 86_400_000),
       lines: [
         { kind: "payment", method: "bank", description: "ORD-2608-0311", amount: 48_000, fee: 616, occurredAt: new Date(monthAgoFrom.getTime() + 8 * 86_400_000) },
@@ -766,7 +772,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
   // ── Risk (Phase F) ────────────────────────────────────────────────────
   await prisma.riskSetting.upsert({ where: { id: "global" }, update: {}, create: { id: "global", windowMinutes: 10, maxFailures: 3 } });
   const blacklist = [
-    { id: SEED_IDS.blacklist1, kind: "ip", value: "198.51.100.77", reason: "複数加盟店で不正利用の報告", source: "manual", status: "active", createdById: DEMO_ADMIN_ACCOUNTS.master.id, createdAt: daysAgo(12) },
+    { id: SEED_IDS.blacklist1, kind: "ip", value: "198.51.100.77", reason: "複数加盟店で不正利用の報告", source: "manual", status: "active", createdById: DEMO_ADMIN_ACCOUNTS.admin.id, createdAt: daysAgo(12) },
     { id: SEED_IDS.blacklist2, kind: "card", value: "9c1185a5c5e9fc54612808977ee8f548b2258d31a4a6ea1a6ec0b0e4d0e6d6a1", reason: "auto: 3 failures in 10 min", source: "auto", status: "candidate", createdAt: hoursAgo(3) },
   ];
   for (const b of blacklist) {
@@ -837,7 +843,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       targetAll: true,
       targetMerchantIds: "[]",
       status: "published",
-      createdById: DEMO_ADMIN_ACCOUNTS.master.id,
+      createdById: DEMO_ADMIN_ACCOUNTS.admin.id,
       createdAt: daysAgo(3),
     },
   });
@@ -854,7 +860,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       targetAll: true,
       targetMerchantIds: "[]",
       status: "published",
-      createdById: DEMO_ADMIN_ACCOUNTS.master.id,
+      createdById: DEMO_ADMIN_ACCOUNTS.admin.id,
       createdAt: hoursAgo(5),
       updates: {
         create: [
@@ -927,7 +933,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       usedCount: 1,
       status: "active",
       livemode: false,
-      createdById: DEMO_ADMIN_ACCOUNTS.master.id,
+      createdById: DEMO_ADMIN_ACCOUNTS.admin.id,
       createdAt: daysAgo(45),
     },
     {
@@ -942,7 +948,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       usedCount: 0,
       status: "disabled",
       livemode: false,
-      createdById: DEMO_ADMIN_ACCOUNTS.general.id,
+      createdById: DEMO_ADMIN_ACCOUNTS.cs.id,
       createdAt: daysAgo(10),
     },
   ];
@@ -1005,12 +1011,28 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     await prisma.unmatchedDeposit.upsert({ where: { id: d.id }, update: {}, create: d });
   }
 
+  // ── Phase I: notes, payment-method switch, global settings ────────────
+  await prisma.globalSetting.upsert({ where: { id: "global" }, update: {}, create: { id: "global", viewerCsvExport: false } });
+  const notes = [
+    { id: SEED_IDS.note1, paymentId: SEED_IDS.payment4, authorId: DEMO_ADMIN_ACCOUNTS.cs.id, body: "お客様より「振込は明日行う」と電話連絡あり。期限延長の希望は無し。", pinned: true, createdAt: daysAgo(1) },
+    { id: SEED_IDS.note2, paymentId: SEED_IDS.payment2, authorId: DEMO_ADMIN_ACCOUNTS.admin.id, body: "返金申請の理由を確認済み。写真は加盟店から受領。", pinned: false, createdAt: hoursAgo(3) },
+  ];
+  for (const n of notes) {
+    await prisma.transactionNote.upsert({ where: { id: n.id }, update: {}, create: n });
+  }
+  // merchant2 has QR suspended (a merchant-level switch); no global switch is on.
+  await prisma.paymentMethodControl.upsert({
+    where: { id: SEED_IDS.methodControl1 },
+    update: {},
+    create: { id: SEED_IDS.methodControl1, scope: "merchant", merchantId: SEED_IDS.merchant2, method: "qr", suspended: true, reason: "QR 決済事業者側の障害対応中（加盟店からの依頼）", suspendedById: DEMO_ADMIN_ACCOUNTS.cs.id, suspendedAt: hoursAgo(5), createdAt: hoursAgo(5) },
+  });
+
   // ── Audit log samples ─────────────────────────────────────────────────
   const audits = [
     {
       id: SEED_IDS.audit1,
       actorType: "admin",
-      actorId: DEMO_ADMIN_ACCOUNTS.master.id,
+      actorId: DEMO_ADMIN_ACCOUNTS.admin.id,
       action: "merchant.update",
       targetType: "merchant",
       targetId: SEED_IDS.merchant2,
@@ -1034,7 +1056,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     {
       id: SEED_IDS.audit3,
       actorType: "admin",
-      actorId: DEMO_ADMIN_ACCOUNTS.master.id,
+      actorId: DEMO_ADMIN_ACCOUNTS.admin.id,
       action: "ip_restriction.create",
       targetType: "ip_restriction",
       targetId: SEED_IDS.ip4,
@@ -1065,6 +1087,11 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
 /** Remove all demo data (used by the demo reset endpoint and tests). */
 export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.auditLog.deleteMany();
+  await prisma.notificationRead.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.transactionNote.deleteMany();
+  await prisma.paymentMethodControl.deleteMany();
+  await prisma.globalSetting.deleteMany();
   await prisma.announcementUpdate.deleteMany();
   await prisma.announcement.deleteMany();
   await prisma.emailLog.deleteMany();

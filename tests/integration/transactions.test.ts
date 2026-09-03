@@ -17,7 +17,7 @@ const BASE = "http://localhost";
 const NOW = new Date("2026-09-01T03:00:00Z");
 let MASTER: Record<string, string> = {};
 
-function json(path: string, method: string, body?: unknown, headers: Record<string, string> = {}) {
+function json(path: string, method: string, body?: unknown, headers: Record<string, string> = MASTER) {
   return new Request(BASE + path, {
     method,
     headers: { "content-type": "application/json", ...headers },
@@ -112,7 +112,7 @@ describe("deposit reconciliation (入金消込)", () => {
 
   it("validates the amount, the role and the status", async () => {
     expect((await act(SEED_IDS.payment4, "deposit", { amount: 0 })).status).toBe(400);
-    expect((await act(SEED_IDS.payment4, "deposit", { amount: 100 }, {})).status).toBe(403);
+    expect((await act(SEED_IDS.payment4, "deposit", { amount: 100 }, {})).status).toBe(401);
     const notAwaiting = await read(await act(SEED_IDS.payment3, "deposit", { amount: 100 }));
     expect(notAwaiting.status).toBe(409);
     expect(notAwaiting.body.error.code).toBe("invalid_transition");

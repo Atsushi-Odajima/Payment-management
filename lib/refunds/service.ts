@@ -5,13 +5,14 @@
 
 import type { PrismaClient } from "@prisma/client";
 import { ApiError } from "@/lib/api/handler";
+import { can, type Role } from "@/lib/role";
 import { recordAudit, type AuditContext } from "@/lib/audit";
 import { applyPaymentAction } from "@/lib/payments/actions";
 import { PENDING_REFUND_STATUSES, type RefundRequestInput } from "./types";
 
 export interface RefundActor {
   id: string;
-  role: "master" | "general";
+  role: Role;
 }
 
 export const REFUND_SELECT = {
@@ -68,7 +69,7 @@ export async function createRefundRequest(
   const deadline = refundDeadline(payment.capturedAt, payment.merchant?.refundWindowDays);
   let forced = false;
   if (deadline && deadline.getTime() < now.getTime()) {
-    if (actor.role !== "master" || !input.force) {
+    if (!can(actor.role, "refund", "force") || !input.force) {
       throw new ApiError(409, "refund_window_expired", "errors.refundWindowExpired");
     }
     if (!input.reason) {

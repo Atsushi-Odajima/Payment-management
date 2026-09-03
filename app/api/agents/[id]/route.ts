@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { requirePermission } from "@/lib/api/role-guard";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateAgentInput } from "@/lib/agents/schema";
 import { AGENT_SELECT } from "../select";
@@ -14,6 +15,7 @@ export const GET = withApiHandler<Ctx>(async (_req, { params }) => {
 
 /** PATCH /api/agents/:id — update editable fields (agentCode is immutable). */
 export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
+    await requirePermission(req, "agent", "update");
   const v = validateAgentInput(await readJson(req));
   if (!v.ok) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: v.errors });
   const existing = await prisma.agent.findUnique({ where: { id: params.id }, select: AGENT_SELECT });

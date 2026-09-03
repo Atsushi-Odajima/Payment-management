@@ -22,6 +22,7 @@ import { agentFee } from "@/lib/agent-fees/service";
 import { sessionHeaders } from "../helpers/session";
 
 const BASE = "http://localhost";
+let ACCOUNTING: Record<string, string> = {};
 const NOW = new Date("2026-09-01T03:00:00Z");
 let MASTER: Record<string, string> = {};
 let GENERAL: Record<string, string> = {};
@@ -37,6 +38,7 @@ const act = async (id: string, action: string, headers: Record<string, string>, 
 beforeEach(async () => {
   await truncateAll(prisma);
   await seed(prisma, { now: NOW });
+  ACCOUNTING = await sessionHeaders("accounting");
   MASTER = await sessionHeaders("master");
   GENERAL = await sessionHeaders("general");
 });
@@ -81,14 +83,14 @@ describe("subscriptions", () => {
 
     const list = await read(await listSubscriptions(new Request(BASE + "/api/subscriptions?mode=live"), {}));
     expect(list.body.data.subscriptions.map((r: any) => r.id)).toEqual([live.body.data.id]);
-    const csv = await listSubscriptions(new Request(BASE + "/api/subscriptions?mode=test&format=csv"), {});
+    const csv = await listSubscriptions(new Request(BASE + "/api/subscriptions?mode=test&format=csv", { headers: MASTER }), {});
     expect(csv.headers.get("content-type")).toContain("text/csv");
     expect(await csv.text()).toContain(SEED_IDS.subscription1);
   });
 
   it("charges through the transaction pipeline and advances the next charge date", async () => {
     const before = await prisma.subscription.findUniqueOrThrow({ where: { id: SEED_IDS.subscription1 } });
-    expect((await act(SEED_IDS.subscription1, "charge", GENERAL, { outcome: "success" })).status).toBe(403);
+    expect((await act(SEED_IDS.subscription1, "charge", ACCOUNTING, { outcome: "success" })).status).toBe(403);
     const res = await act(SEED_IDS.subscription1, "charge", MASTER, { outcome: "success" });
     expect(res.status).toBe(200);
     expect(res.body.data.result).toMatchObject({ ok: true, status: "active" });
@@ -279,7 +281,7 @@ describe("agent fees", () => {
     expect(filtered.body.data.rows).toHaveLength(0);
     expect((await read(await agentFeesRoute(new Request(BASE + "/api/agent-fees?month=bad&mode=test"), {}))).body.data.month).toMatch(/^\d{4}-\d{2}$/);
 
-    const csv = await agentFeesRoute(new Request(BASE + `/api/agent-fees?month=${lastMonth}&mode=test&format=csv`), {});
+    const csv = await agentFeesRoute(new Request(BASE + `/api/agent-fees?month=${lastMonth}&mode=test&format=csv`, { headers: MASTER }), {});
     expect(csv.headers.get("content-type")).toContain("text/csv");
     const text = await csv.text();
     expect(text).toContain("AGT-00002");

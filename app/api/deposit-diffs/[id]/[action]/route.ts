@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest } from "@/lib/audit";
 import { applyDepositDiffAction, isDepositDiffAction } from "@/lib/risk/deposit-diffs";
 import { notifyDepositShort } from "@/lib/email/hooks";
@@ -11,7 +11,7 @@ import { notifyDepositShort } from "@/lib/email/hooks";
  */
 export const POST = withApiHandler<{ params: { id: string; action: string } }>(async (req, { params }) => {
   if (!isDepositDiffAction(params.action)) throw new ApiError(404, "invalid_action", "errors.invalidAction");
-  const admin = await requireAdmin(req);
+  const admin = await requirePermission(req, "deposit_diff", "update");
   const row = await applyDepositDiffAction(prisma, {
     paymentId: params.id,
     action: params.action,

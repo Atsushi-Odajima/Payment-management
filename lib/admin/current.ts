@@ -5,6 +5,7 @@
 import { prisma } from "@/lib/db";
 import { SESSION_COOKIE, cookieFromHeader, verifySessionToken } from "@/lib/auth";
 import { isAdminStatus, type CurrentAdmin } from "./types";
+import { normalizeRole } from "@/lib/role";
 
 const CURRENT_SELECT = {
   id: true,
@@ -26,7 +27,7 @@ export async function currentAdminFromToken(token: string | null | undefined): P
     loginId: row.loginId,
     name: row.name,
     email: row.email,
-    role: row.role === "master" ? "master" : "general",
+    role: normalizeRole(row.role),
     status: isAdminStatus(row.status) ? row.status : "active",
     totpEnabled: row.totpEnabled,
   };

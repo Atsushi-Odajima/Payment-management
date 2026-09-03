@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { requirePermission } from "@/lib/api/role-guard";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateIpRestrictionInput } from "@/lib/ip-restrictions/schema";
 import { assertNotSelfBlock } from "@/lib/ip-restrictions/self-block";
@@ -15,6 +16,7 @@ export const GET = withApiHandler<Ctx>(async (_req, { params }) => {
 });
 
 export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
+    await requirePermission(req, "ip_restriction", "update");
   const v = validateIpRestrictionInput(await readJson(req));
   if (!v.ok) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: v.errors });
   if (v.data.merchantId) {
@@ -38,6 +40,7 @@ export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
 });
 
 export const DELETE = withApiHandler<Ctx>(async (req, { params }) => {
+    await requirePermission(req, "ip_restriction", "delete");
   const existing = await prisma.ipRestriction.findUnique({ where: { id: params.id }, select: IP_RESTRICTION_SELECT });
   if (!existing) throw new ApiError(404, "not_found", "errors.notFound");
   const audit = await auditContextFromRequest(req);

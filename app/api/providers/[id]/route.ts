@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { requirePermission } from "@/lib/api/role-guard";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { mergeCredentialStore } from "@/lib/providers/credentials";
 import { getProviderDefinition } from "@/lib/providers/registry";
@@ -18,6 +19,7 @@ const UpdateSchema = z.object({
 type Ctx = { params: { id: string } };
 
 export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
+    await requirePermission(req, "provider", "update");
   const lang = langFromRequest(req);
   const body = UpdateSchema.parse(await readJson(req));
 
@@ -67,6 +69,7 @@ export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
 });
 
 export const DELETE = withApiHandler<Ctx>(async (req, { params }) => {
+    await requirePermission(req, "provider", "delete");
   const record = await prisma.paymentProvider.findUnique({
     where: { id: params.id },
     select: { id: true, providerKey: true, displayName: true, _count: { select: { payments: true } } },

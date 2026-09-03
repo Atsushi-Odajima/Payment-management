@@ -3,6 +3,7 @@
 // to the client — only whether a webhook secret exists.
 
 import { prisma } from "@/lib/db";
+import { NOTE_SELECT, type NoteRow } from "./notes";
 import { storedFieldKeys } from "@/lib/providers/credentials";
 import { toPaymentMethod, type PaymentMethod } from "@/lib/payments/methods";
 import { toPaymentStatus, type PaymentStatus } from "@/lib/payments/transitions";
@@ -70,6 +71,8 @@ export interface TransactionDetail {
   };
   events: PaymentEventItem[];
   refunds: RefundItem[];
+  /** Internal notes (Phase I-2), oldest first. */
+  notes: NoteRow[];
 }
 
 export async function loadTransactionDetail(id: string, now: Date = new Date()): Promise<TransactionDetail | null> {
@@ -105,6 +108,7 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
       provider: {
         select: { id: true, displayName: true, providerKey: true, category: true, credentials: true },
       },
+      notes: { orderBy: { createdAt: "asc" }, select: NOTE_SELECT },
       events: {
         orderBy: { createdAt: "asc" },
         select: { id: true, type: true, fromStatus: true, toStatus: true, amount: true, actor: true, createdAt: true },
@@ -152,6 +156,7 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
     refundDeadlineAt:
       payment.capturedAt && payment.merchant ? new Date(payment.capturedAt.getTime() + payment.merchant.refundWindowDays * 86_400_000) : null,
     pendingRefundAmount,
+    notes: payment.notes,
     overdue: isTransferOverdue(payment, now),
     merchant: payment.merchant,
     provider: {

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireMaster } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { loadEmailTemplate } from "@/lib/email/list";
 import { emailTemplateUpdateSchema } from "@/lib/email/templates";
@@ -16,7 +16,7 @@ export const GET = withApiHandler<Ctx>(async (_req, { params }) => {
 
 /** PATCH /api/email-templates/:id — subject / body / enabled (master). */
 export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
-  await requireMaster(req);
+  await requirePermission(req, "email_template", "update");
   const parsed = emailTemplateUpdateSchema.safeParse(await readJson(req));
   if (!parsed.success) {
     throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: Object.fromEntries(parsed.error.issues.map((i) => [i.path.join("."), i.message])) });

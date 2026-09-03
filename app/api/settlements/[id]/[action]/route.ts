@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireMaster } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest } from "@/lib/audit";
 import { transitionBatch } from "@/lib/settlements/service";
 import { holdSchema, isSettlementAction } from "@/lib/settlements/types";
@@ -11,7 +11,7 @@ import { holdSchema, isSettlementAction } from "@/lib/settlements/types";
  */
 export const POST = withApiHandler<{ params: { id: string; action: string } }>(async (req, { params }) => {
   if (!isSettlementAction(params.action)) throw new ApiError(404, "invalid_action", "errors.invalidAction");
-  await requireMaster(req);
+  await requirePermission(req, "settlement", "transition");
   let reason: string | undefined;
   if (params.action === "hold") {
     const parsed = holdSchema.safeParse(await readJson(req));

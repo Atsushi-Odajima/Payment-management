@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { useT } from "@/components/language-provider";
-import { NewPaymentForm, type MerchantChoice, type ProviderOption } from "@/components/new-payment-form";
+import { NewPaymentForm, type MerchantChoice, type ProviderOption, type SuspendedControl } from "@/components/new-payment-form";
 
-export function NewPaymentView({ providers, merchants }: { providers: ProviderOption[]; merchants: MerchantChoice[] }) {
+export function NewPaymentView({ providers, merchants, suspended = [] }: { providers: ProviderOption[]; merchants: MerchantChoice[]; suspended?: SuspendedControl[] }) {
   const t = useT();
   return (
     <div>
@@ -28,7 +28,7 @@ export function NewPaymentView({ providers, merchants }: { providers: ProviderOp
           </Link>
         </div>
       ) : (
-        <NewPaymentForm providers={providers} merchants={merchants} />
+        <NewPaymentForm providers={providers} merchants={merchants} suspended={suspended} />
       )}
     </div>
   );

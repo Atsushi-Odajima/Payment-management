@@ -23,15 +23,16 @@ const validBody = {
   emailNotification: "per_payment",
 };
 
-function json(path: string, method: string, body?: unknown, headers: Record<string, string> = {}) {
+const ROLES: Record<"master" | "general", Record<string, string>> = { master: {}, general: {} };
+const asRole = (role: "master" | "general") => ROLES[role];
+// Mutations need a session since Phase I; requests default to the admin account.
+function json(path: string, method: string, body?: unknown, headers: Record<string, string> = ROLES.master) {
   return new Request(BASE + path, {
     method,
     headers: { "content-type": "application/json", ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
-const ROLES: Record<"master" | "general", Record<string, string>> = { master: {}, general: {} };
-const asRole = (role: "master" | "general") => ROLES[role];
 async function read(res: Response) {
   return { status: res.status, body: (await res.json()) as Record<string, any> };
 }
@@ -89,10 +90,10 @@ describe("merchants API", () => {
       await getPassword(new Request(BASE + "/x", { headers: asRole("general") }), { params: { id: SEED_IDS.merchant1 } }),
     );
     expect(denied.status).toBe(403);
-    expect(denied.body.error.code).toBe("role_required");
+    expect(denied.body.error.code).toBe("permission_required");
 
     const noCookie = await read(await getPassword(new Request(BASE + "/x"), { params: { id: SEED_IDS.merchant1 } }));
-    expect(noCookie.status).toBe(403);
+    expect(noCookie.status).toBe(401);
 
     const ok = await read(
       await getPassword(new Request(BASE + "/x", { headers: asRole("master") }), { params: { id: SEED_IDS.merchant1 } }),

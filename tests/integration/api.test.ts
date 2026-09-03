@@ -20,13 +20,14 @@ const createPayment2 = (req: Request) => createPayment(req, {});
 const createProvider2 = (req: Request) => createProvider(req, {});
 
 const BASE = "http://localhost";
+let GENERAL: Record<string, string> = {};
 // Application-stage actions (capture / cancel / fail / expire / deposit) need the master role.
 let MASTER: Record<string, string> = {};
 
 function json(path: string, method: string, body?: unknown, headers: Record<string, string> = {}) {
   return new Request(BASE + path, {
     method,
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json", ...MASTER, ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
@@ -38,6 +39,7 @@ async function read(res: Response) {
 beforeEach(async () => {
   await truncateAll(prisma);
   await seed(prisma, { now: new Date("2026-09-01T03:00:00Z") });
+  GENERAL = await sessionHeaders("cs");
   MASTER = await sessionHeaders("master");
 });
 
@@ -88,10 +90,10 @@ describe("payments", () => {
   });
 
   it("refuses application-stage actions for the general role but not refunds", async () => {
-    const denied = await paymentAction(json(`/api/payments/${SEED_IDS.payment3}/capture`, "POST"), {
+    const denied = await paymentAction(json(`/api/payments/${SEED_IDS.payment3}/capture`, "POST", undefined, GENERAL), {
       params: { id: SEED_IDS.payment3, action: "capture" },
     });
-    expect((await read(denied)).body.error.code).toBe("role_required");
+    expect((await read(denied)).body.error.code).toBe("permission_required");
     expect(denied.status).toBe(403);
     const refund = await paymentAction(json(`/api/payments/${SEED_IDS.payment2}/refund`, "POST", { amount: 100 }), {
       params: { id: SEED_IDS.payment2, action: "refund" },
@@ -170,7 +172,7 @@ describe("providers", () => {
 
   it("refuses to delete a provider that has payments (409) and deletes an empty one", async () => {
     const blocked = await read(
-      await deleteProvider(new Request(BASE + `/api/providers/${SEED_IDS.stripeProvider}`, { method: "DELETE" }), {
+      await deleteProvider(new Request(BASE + `/api/providers/${SEED_IDS.stripeProvider}`, { method: "DELETE", headers: MASTER }), {
         params: { id: SEED_IDS.stripeProvider },
       }),
     );
@@ -180,7 +182,7 @@ describe("providers", () => {
     const fresh = await read(
       await createProvider2(json("/api/providers", "POST", { providerKey: "custom_webhook", displayName: "X", credentials: { service_name: "s", endpoint: "https://e.example" } })),
     );
-    const del = await deleteProvider(new Request(BASE + `/api/providers/${fresh.body.data.id}`, { method: "DELETE" }), {
+    const del = await deleteProvider(new Request(BASE + `/api/providers/${fresh.body.data.id}`, { method: "DELETE", headers: MASTER }), {
       params: { id: fresh.body.data.id },
     });
     expect(del.status).toBe(200);
