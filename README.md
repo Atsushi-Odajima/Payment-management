@@ -29,6 +29,10 @@
   <img src="docs/screenshots/ip-restrictions-en.png" alt="IP制限管理: ブロック / 許可ルールと現在の接続元IPの判定" width="49%">
 </p>
 <p align="center">
+  <img src="docs/screenshots/audit-log-detail-en.png" alt="操作ログ詳細: 変更前後の差分" width="49%">
+  <img src="docs/screenshots/account-2fa-en.png" alt="アカウント設定: 認証アプリ（TOTP）の登録" width="49%">
+</p>
+<p align="center">
   <img src="docs/screenshots/manual-ja.png" alt="管理画面マニュアル（日本語）" width="49%">
   <img src="docs/screenshots/manual-en.png" alt="Admin manual (English)" width="49%">
 </p>
@@ -41,16 +45,19 @@
 - **冪等キー** — 決済作成 API は `Idempotency-Key` ヘッダを受け、同じキーの再送には同じ結果を返す
 - **監査ログ（PaymentEvent）** — 誰が（ダッシュボード / Webhook）いつ何をしたかを追記専用で記録し、詳細画面にタイムライン表示
 - **Webhook 受信** — Stripe 互換の HMAC-SHA256 署名検証（timestamp tolerance 付き）と、イベントIDによる重複排除。詳細画面から署名付き Webhook を自サーバーに送って挙動を確認できる
-- **管理者ログイン + CSRF + レートリミット + セキュリティヘッダ** — 閲覧は公開、更新操作はログイン必須。Origin 検証と `X-Requested-With`、IP 単位の rate limit、CSP / HSTS / frame-ancestors
+- **管理者アカウント + 二段階認証 + CSRF + レートリミット + セキュリティヘッダ** — 管理者は `AdminUser`（ログインID + scrypt パスワード、TOTP / RFC 6238 の二段階認証、マスター / 一般ロール、招待・仮パスワード再発行・最後のマスター保護）。更新操作はセッション必須、Origin 検証と `X-Requested-With`、IP 単位の rate limit、CSP / HSTS / frame-ancestors
+- **操作ログ（監査）** — 誰が・いつ・何を・何に対して・どこから変更したかを変更前後の JSON とともに記録。操作者 / 操作種別 / 対象 / 期間で絞り込み、差分表示、CSV 出力
+- **横断検索** — ヘッダーの検索ボックス（Ctrl+K）で取引ID・注文番号・振込ID・メール・加盟店・代理店・管理者をまとめて検索
+- **グループ化ナビ** — 取引 / 加盟店 / 精算 / リスク / レポート / 配信 / 設定のグループを `lib/nav.ts` で一元定義し、サイドバー・トップカード・モバイルタブを生成（未実装フェーズは非表示）
 - **日本語 / 英語** — ヘッダーの「EN / 日本語」トグル。cookie + localStorage に保存し、SSR から正しい言語で描画。APIのエラー文言も翻訳。通貨は JPY 固定、時刻は Asia/Tokyo 固定
 - **テスト / 本番モード** — プロバイダのモードを決済に `livemode` としてスナップショット。ダッシュボードと一覧で切替表示
 - **モバイル対応** — 下部タブバー、横スクロールするテーブル、`<dialog>` ベースの確認ダイアログ、loading / error / not-found の各ページ
 - **加盟店管理（PSP 視点）** — 加盟店アカウントの発行（`MER-00001` 自動採番・パスワード自動生成/暗号化保存）、サイト名ふりがな（カタカナ）/ メール / https の検証、通知設定（型 × パラメータセット × 識別子）に応じて **実際に送信されるリクエストをリアルタイムでプレビュー**、閲覧 → 編集 → 更新のモード切替、マスター権限のみパスワード表示・再発行（権限は cookie を API 側で検査）、担当代理店の紐付け
-- **ダッシュボード（6 カード）** — 加盟店 / 代理店 / 決済一覧（本日の件数・金額）/ 決済申請（未完了件数・振込期限超過をバッジ表示）/ IP制限（有効ルール数）/ マニュアル。サイドバーも同じ 6 項目
+- **ダッシュボード** — サイドバーと同じグループ構成のカードに主要 KPI（本日の決済件数・金額、未完了取引と振込期限超過、有効 IP ルール、本日の操作ログ件数など）を表示
 - **代理店管理** — `AGT-00001` 自動採番、手数料率（% 小数2桁）、有効/無効、詳細画面に担当加盟店の一覧
 - **決済申請一覧（未完了取引の追跡・消込）** — 決済種別 / ステータス / 加盟店 / 期間で絞り込み、振込待ちは振込期限が近い順・期限超過は赤で強調。銀行振込は加盟店ごとに 7 桁 / 8 桁の **振込ID** と振込期限を発行し、**入金消込**（一致 → 完了、不足 → 振込待ちのまま不足フラグ、超過 → 完了 + 超過フラグ）を詳細画面（マスター権限）と、銀行からの入金通知を模した `POST /api/demo/deposit-notify` の両方から実行できる。完了・失敗・キャンセル・期限切れの手動遷移と、ステータス変更履歴（いつ・誰が・何から何へ）
 - **IP制限管理（実際に遮断）** — 管理画面 / 加盟店API 向けの IP / CIDR ルール。**ブロック** ルールに一致する接続元は `app/layout.tsx`（画面）と `withApiHandler`（API）で実際に 403 になり、自分の IP をブロックするルールは保存できない（ロックアウト防止）。許可ルールは判定表示用。現在の接続元 IP と判定を表示
-- **管理画面マニュアル** — 左に目次・右に本文の 8 章構成。`content/manual/{ja,en}/*.md` を自前の Markdown レンダラで描画し、表示言語に連動。各画面ヘッダーの「?」から該当章へ
+- **管理画面マニュアル** — 左に目次・右に本文の 9 章構成。`content/manual/{ja,en}/*.md` を自前の Markdown レンダラで描画し、表示言語に連動。各画面ヘッダーの「?」から該当章へ
 
 ## アーキテクチャ
 
@@ -133,7 +140,7 @@ npm install
 cp .env.example .env
 # ENCRYPTION_KEY を 32 バイトの base64 に置き換える:
 #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-# （任意）ADMIN_PASSWORD を設定するとログインが有効になる
+# ログイン: kuromaru / atusi0130（マスター）, general / general1234（一般）— prisma/seed-accounts.ts
 
 npx prisma migrate deploy   # スキーマ適用
 npm run db:seed             # デモデータ（プロバイダ・決済・加盟店・代理店・申請・IP ルール）。テーブル単位の upsert で何度実行しても増えない
@@ -152,7 +159,9 @@ npm test         # Vitest のみ（SQLite の test.db を自動作成）
 
 ```
 app/
-  page.tsx                   ダッシュボード（6 カード: 加盟店 / 代理店 / 決済 / 申請 / IP制限 / マニュアル）
+  page.tsx                   ダッシュボード（lib/nav.ts のグループ構成でカード + KPI。未ログインは /login へ）
+  login/ account/ admins/    ログイン（ID + パスワード + TOTP）/ アカウント設定 / 管理者管理（マスター）
+  audit-logs/ search/        操作ログ（絞り込み・差分・CSV）/ 横断検索
   payments/                  決済一覧（純売上・本日の売上・テスト/本番切替）/ 作成 / 詳細（イベント履歴・返金・Webhookシミュレート）
   merchants/                 加盟店一覧 / 追加 / 詳細・編集（通知サンプルのプレビュー・担当代理店）
   agents/                    代理店一覧 / 追加 / 詳細・編集（担当加盟店）
@@ -170,7 +179,11 @@ app/
     agents/                  代理店 CRUD
     payments/[id]/[action]   capture|cancel|refund|fail|expire|deposit（refund 以外はマスター権限）
     ip-restrictions/         ブロック / 許可ルール CRUD（自己ロックアウト防止）
-    auth/                    login / logout（署名付き Cookie）
+    auth/                    login（ID + パスワード）/ 2fa（TOTP）/ logout（署名付き Cookie）
+    account/                 自分のパスワード変更・二段階認証の登録/解除
+    admins/                  管理者の招待・更新・仮パスワード・2FA 解除（マスター）
+    audit-logs/              操作ログ一覧 + CSV
+    search/                  横断検索
     demo/reset/ demo/deposit-notify/  CRON_SECRET で保護されたデモ初期化 / 銀行の入金通知を模した消込 API（DEPOSIT_NOTIFY_SECRET）
 middleware.ts                rate limit · CSRF · DEMO_READONLY · セッション
 components/
@@ -184,7 +197,10 @@ lib/
   agents/                    代理店の語彙・Zod・採番
   ip-restrictions/ ip.ts     ルールの Zod / enforce.ts（ブロック判定）/ IPv4・CIDR の純関数（parseCidr, ipInCidr, evaluateRules）
   manual/                    chapters.ts（章の定義）, markdown.tsx（自前レンダラ）, load.ts
-  api/role-guard.ts          requireMaster（マスター限定 API の唯一の検査点）
+  api/role-guard.ts          requireAdmin / requireMaster（セッション由来のロール検査）
+  admin/                     管理者の語彙・Zod・scrypt・TOTP・セッション発行・ページガード
+  audit.ts audit-list.ts     監査ログの記録（recordAudit）と一覧ローダ
+  nav.ts search.ts csv.ts    ナビ定義 / 横断検索 / CSV 出力
   providers/                 registry（定義）, credentials（暗号化 I/O）, validation（Zod 生成）, connection
   webhooks/                  verify.ts（署名）, events.ts（イベント語彙）
   api/                       handler.ts（レスポンス統一・エラー変換）, envelope.ts
@@ -253,16 +269,19 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 - **Idempotency** — `POST /api/payments` honors an `Idempotency-Key` header and replays the original result.
 - **Audit trail (PaymentEvent)** — append-only record of who did what and when (dashboard vs. webhook), rendered as a timeline.
 - **Webhook ingestion** — Stripe-compatible HMAC-SHA256 signatures with a timestamp tolerance, plus deduplication on event id. The payment page can send itself a signed webhook to demonstrate the path end to end.
-- **Admin login, CSRF, rate limiting, security headers** — reads are public, mutations require a session. Origin check + `X-Requested-With`, per-IP limits, CSP / HSTS / `frame-ancestors 'none'`.
+- **Admin accounts with two-factor auth, CSRF, rate limiting, security headers** — operators are `AdminUser` rows (login ID + scrypt password, TOTP / RFC 6238 two-factor, master / general roles, invitations, temporary passwords, last-master protection). Mutations require a session; Origin check + `X-Requested-With`, per-IP limits, CSP / HSTS / `frame-ancestors 'none'`.
+- **Audit log** — who changed what, when, on which record and from which IP, with redacted before / after snapshots. Filter by actor / action / target / period, diff view, CSV export.
+- **Global search** — the header box (Ctrl+K) searches transaction IDs, order numbers, transfer IDs, emails, merchants, agents and admins at once.
+- **Grouped navigation** — Transactions / Merchants / Settlement / Risk / Reports / Notices / Settings are defined once in `lib/nav.ts` and drive the sidebar, the dashboard cards and the mobile tabs (unimplemented phases stay hidden).
 - **Japanese / English** — an EN / 日本語 toggle in the header. Stored in a cookie + localStorage so SSR already renders the right language; API error messages are localized too. Currency stays JPY; times are Asia/Tokyo.
 - **Test / live mode** — each payment snapshots the provider's mode as `livemode`; dashboard and list can filter on it.
 - **Mobile** — bottom tab bar, horizontally scrolling tables, `<dialog>`-based confirmations, loading / error / not-found routes.
 - **Merchant management (PSP side)** — issue merchant accounts (auto-numbered `MER-00001`, generated + encrypted password), katakana / email / https validation, and notification settings (format × parameter set × identifier) with a **live preview of the exact request the merchant will receive**; read → edit → update mode switch; only the master role can reveal or regenerate the password (the role is enforced server-side from a cookie); optional referring agent.
-- **Dashboard (6 cards)** — Merchants / Agents / Payments (today's count and amount) / Payment Applications (open count, overdue transfers as a badge) / IP Restrictions (active rules) / Manual. The sidebar mirrors the same six items.
+- **Dashboard** — cards grouped like the sidebar, each with its headline figure (today's payments, open transactions and overdue transfers, active IP rules, today's audit entries…).
 - **Agent management** — auto-numbered `AGT-00001`, fee rate (%, two decimals), active / inactive, and the merchants each agent refers on the detail page.
 - **Payment applications (open transactions)** — filter by method / status / merchant / period; awaiting transfers are listed by deadline with overdue rows in red. Bank transfers get a per-merchant 7- or 8-digit **transfer ID** and a deadline; **deposit reconciliation** (exact → completed, short → still awaiting with a short flag, excess → completed with an excess flag) runs from the detail screen (master role) and from `POST /api/demo/deposit-notify`, which mimics the bank's deposit notification. Manual complete / fail / cancel / expire, and a status history (when / who / from → to).
 - **IP restrictions (enforced)** — IP / CIDR rules for the admin UI and the merchant API. Callers matching a **Block** rule are refused by `app/layout.tsx` (pages) and `withApiHandler` (API) with a 403; a rule that would block your own IP cannot be saved (lock-out protection). Allow rules are informational; the current IP and its verdict are shown.
-- **In-app manual** — eight chapters, table of contents on the left and the chapter on the right, rendered from `content/manual/{ja,en}/*.md` by a small in-house Markdown renderer and linked to the UI language. Every page header has a "?" that opens its chapter.
+- **In-app manual** — nine chapters, table of contents on the left and the chapter on the right, rendered from `content/manual/{ja,en}/*.md` by a small in-house Markdown renderer and linked to the UI language. Every page header has a "?" that opens its chapter.
 
 ## Architecture
 
@@ -288,7 +307,7 @@ npm install
 cp .env.example .env
 # set ENCRYPTION_KEY to base64 of 32 random bytes:
 #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-# optionally set ADMIN_PASSWORD to enable the login
+# log in as kuromaru / atusi0130 (master) or general / general1234 — see prisma/seed-accounts.ts
 
 npx prisma migrate deploy
 npm run db:seed

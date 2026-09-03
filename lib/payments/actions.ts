@@ -14,6 +14,7 @@ import {
   type PaymentStatus,
 } from "./transitions";
 import { reconcileDeposit, type DepositDiff } from "./transfer";
+import { recordAudit, type AuditContext } from "@/lib/audit";
 
 export const PAYMENT_ACTORS = ["dashboard", "webhook", "bank", "system", "seed"] as const;
 export type PaymentActor = (typeof PAYMENT_ACTORS)[number];
@@ -26,6 +27,8 @@ export interface ApplyActionInput {
   /** refund only */
   reason?: string | null;
   actor: Exclude<PaymentActor, "seed">;
+  /** When given, an AuditLog row is written in the same transaction. */
+  audit?: AuditContext;
 }
 
 export interface ApplyActionResult {
@@ -123,10 +126,20 @@ export async function applyPaymentAction(
         actor,
       },
     });
-    return tx.payment.findUniqueOrThrow({
+    const after = await tx.payment.findUniqueOrThrow({
       where: { id: paymentId },
       select: { id: true, status: true, amountRefunded: true, depositAmount: true, depositDiff: true },
     });
+    if (input.audit) {
+      await recordAudit(tx, input.audit, {
+        action: `payment.${action}`,
+        targetType: "payment",
+        targetId: paymentId,
+        before: { status: current, amountRefunded: payment.amountRefunded, depositAmount: payment.depositAmount },
+        after: { status: after.status, amountRefunded: after.amountRefunded, depositAmount: after.depositAmount, depositDiff: after.depositDiff, amount: eventAmount },
+      });
+    }
+    return after;
   });
 
   return {

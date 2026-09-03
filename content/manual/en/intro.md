@@ -14,7 +14,7 @@ This demo never calls an external payment API.
 
 ## Roles (Master / General)
 
-The **role toggle** in the header switches the demo role.
+The role (master / general) belongs to the signed-in admin account.
 
 | Action | Master | General |
 |---|---|---|
@@ -24,11 +24,11 @@ The **role toggle** in the header switches the demo role.
 | Complete / fail / cancel / expire a transaction, reconcile deposits | ✓ | ✗ |
 | Refund | ✓ | ✓ |
 
-Roles are enforced on the server (API). Switching the toggle in the UI alone never grants access to passwords or transaction changes. In production the toggle is replaced by the signed-in user's role.
+Roles are enforced on the server (API). The role belongs to the signed-in admin account and is enforced by the API; see the “Admins, Audit Log & Search” chapter.
 
 ## Login
 
-When `ADMIN_PASSWORD` is configured, browsing stays open but **creating, updating and deleting require a login**. Use “Log in” in the header.
+Opening the top page shows the login screen: sign in with your **login ID and password** (plus the authenticator code when two-factor is enabled). The session lasts 12 hours; browsing is open, but **creating, updating and deleting require a login**. Your name in the header opens “Account settings”.
 
 ## Language
 

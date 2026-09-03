@@ -4,6 +4,7 @@ import { SEED_IDS, SEED_MERCHANT_PASSWORDS, seed, truncateAll } from "@/prisma/s
 import { GET as listMerchants, POST as createMerchant } from "@/app/api/merchants/route";
 import { GET as getMerchant, PATCH as patchMerchant } from "@/app/api/merchants/[id]/route";
 import { GET as getPassword, POST as regeneratePassword } from "@/app/api/merchants/[id]/password/route";
+import { sessionHeaders } from "../helpers/session";
 
 const BASE = "http://localhost";
 const KANA = "テスト ショップ";
@@ -29,7 +30,8 @@ function json(path: string, method: string, body?: unknown, headers: Record<stri
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
-const asRole = (role: "master" | "general") => ({ cookie: `wirepay.role=${role}` });
+const ROLES: Record<"master" | "general", Record<string, string>> = { master: {}, general: {} };
+const asRole = (role: "master" | "general") => ROLES[role];
 async function read(res: Response) {
   return { status: res.status, body: (await res.json()) as Record<string, any> };
 }
@@ -37,6 +39,8 @@ async function read(res: Response) {
 beforeEach(async () => {
   await truncateAll(prisma);
   await seed(prisma, { now: new Date("2026-09-01T03:00:00Z") });
+  ROLES.master = await sessionHeaders("master");
+  ROLES.general = await sessionHeaders("general");
 });
 
 describe("merchants API", () => {

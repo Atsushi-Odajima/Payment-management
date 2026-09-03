@@ -220,6 +220,50 @@ model IpRestriction {
   @@index([merchantId])
 }
 
+// Operators of this dashboard. Passwords are scrypt hashes; the TOTP secret
+// is AES-GCM encrypted (lib/admin/secrets.ts). role: master | general,
+// status: active | disabled | invited (invited = created, never logged in).
+model AdminUser {
+  id            String    @id @default(cuid())
+  loginId       String    @unique
+  name          String
+  email         String    @unique
+  role          String    @default("general")
+  status        String    @default("active")
+  passwordHash  String
+  totpSecretEnc String?
+  totpEnabled   Boolean   @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@index([status])
+}
+
+// Append-only audit trail of every data change (lib/audit.ts recordAudit).
+// actorType: admin | system | webhook | bank | cron | seed; actorId is set for
+// admin actors. before / after hold redacted JSON snapshots.
+model AuditLog {
+  id         String     @id @default(cuid())
+  actorType  String     @default("admin")
+  actorId    String?
+  actor      AdminUser? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String
+  targetId   String?
+  before     String?
+  after      String?
+  ip         String?
+  createdAt  DateTime   @default(now())
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId])
+  @@index([action])
+}
+
 // Inbound provider notifications, deduplicated on (provider, external event id).
 model WebhookEvent {
   id              String    @id @default(cuid())

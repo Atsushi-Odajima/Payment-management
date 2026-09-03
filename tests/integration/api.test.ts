@@ -13,6 +13,7 @@ import { POST as paymentAction } from "@/app/api/payments/[id]/[action]/route";
 import { GET as listProviders, POST as createProvider } from "@/app/api/providers/route";
 import { DELETE as deleteProvider, PATCH as patchProvider } from "@/app/api/providers/[id]/route";
 import { POST as webhook } from "@/app/api/webhooks/[providerId]/route";
+import { sessionHeaders } from "../helpers/session";
 
 // Handlers without route params still take a context argument.
 const createPayment2 = (req: Request) => createPayment(req, {});
@@ -20,7 +21,7 @@ const createProvider2 = (req: Request) => createProvider(req, {});
 
 const BASE = "http://localhost";
 // Application-stage actions (capture / cancel / fail / expire / deposit) need the master role.
-const MASTER = { cookie: "wirepay.role=master" };
+let MASTER: Record<string, string> = {};
 
 function json(path: string, method: string, body?: unknown, headers: Record<string, string> = {}) {
   return new Request(BASE + path, {
@@ -37,6 +38,7 @@ async function read(res: Response) {
 beforeEach(async () => {
   await truncateAll(prisma);
   await seed(prisma, { now: new Date("2026-09-01T03:00:00Z") });
+  MASTER = await sessionHeaders("master");
 });
 
 describe("payments", () => {

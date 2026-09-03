@@ -2,12 +2,12 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { cookies, headers } from "next/headers";
 import { LanguageProvider } from "@/components/language-provider";
+import { SessionProvider } from "@/components/session-provider";
 import { AppShell } from "@/components/app-shell";
 import { BlockedScreen } from "@/components/blocked-screen";
 import { LANG_COOKIE, resolveInitialLang, translate, type Lang } from "@/lib/i18n";
-import { SESSION_COOKIE, isAuthConfigured, verifySessionToken } from "@/lib/auth";
-import { RoleProvider } from "@/components/role-provider";
-import { ROLE_COOKIE, resolveRole } from "@/lib/role";
+import { SESSION_COOKIE } from "@/lib/auth";
+import { currentAdminFromToken } from "@/lib/admin/current";
 import { checkAdminAccess } from "@/lib/ip-restrictions/enforce";
 
 function requestLang(): Lang {
@@ -55,17 +55,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     );
   }
 
-  const authenticated = await verifySessionToken(cookies().get(SESSION_COOKIE)?.value);
-  const role = resolveRole(cookies().get(ROLE_COOKIE)?.value);
+  // The signed-in operator (null when browsing anonymously). Role and
+  // identity flow to client components through SessionProvider.
+  const user = await currentAdminFromToken(cookies().get(SESSION_COOKIE)?.value);
   return (
     <html lang={lang}>
       <body>
         <LanguageProvider initialLang={lang}>
-          <RoleProvider initialRole={role}>
-            <AppShell authConfigured={isAuthConfigured()} authenticated={authenticated}>
-              {children}
-            </AppShell>
-          </RoleProvider>
+          <SessionProvider user={user}>
+            <AppShell>{children}</AppShell>
+          </SessionProvider>
         </LanguageProvider>
       </body>
     </html>

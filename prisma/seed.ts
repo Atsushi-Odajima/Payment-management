@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 seed(prisma)
   .then((s) => {
     console.log(
-      `Seed ensured: ${s.providers} providers, ${s.payments} transactions, ${s.merchants} merchants, ${s.agents} agents, ${s.ipRestrictions} IP rules (existing rows untouched).`,
+      `Seed ensured: ${s.providers} providers, ${s.payments} transactions, ${s.merchants} merchants, ${s.agents} agents, ${s.ipRestrictions} IP rules, ${s.admins} admins, ${s.auditLogs} audit rows (existing rows untouched).`,
     );
   })
   .catch((e: unknown) => {

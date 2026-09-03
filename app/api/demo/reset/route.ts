@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { ApiError, ok, withApiHandler } from "@/lib/api/handler";
 import { seed, truncateAll } from "@/prisma/seed-data";
 import { timingSafeEqualBytes } from "@/lib/auth";
+import { recordAudit, requestIp, systemAuditContext } from "@/lib/audit";
 
 /**
  * Reset the demo database to the seed state.
@@ -19,6 +20,7 @@ async function handle(req: Request) {
   }
   await truncateAll(prisma);
   await seed(prisma);
+  await recordAudit(prisma, systemAuditContext("cron", requestIp(req)), { action: "demo.reset", targetType: "demo" });
   return ok({ reset: true });
 }
 

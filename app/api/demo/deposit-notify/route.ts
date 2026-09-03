@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { applyPaymentAction } from "@/lib/payments/actions";
 import { timingSafeEqualBytes } from "@/lib/auth";
+import { requestIp, systemAuditContext } from "@/lib/audit";
 
 const Body = z.object({
   /** The transfer id the customer wrote on the remittance (7 or 8 digits). */
@@ -49,6 +50,7 @@ export const POST = withApiHandler(
       action: "deposit",
       amount: body.amount,
       actor: "bank",
+      audit: systemAuditContext("bank", requestIp(req)),
     });
     return ok({
       transferId: body.transferId,

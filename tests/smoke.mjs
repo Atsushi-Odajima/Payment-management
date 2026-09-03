@@ -1,13 +1,13 @@
 // Manual end-to-end smoke run against a running server (not part of `npm test`).
-//   ADMIN_PASSWORD=demo1234 npx next start -p 3010 &
-//   BASE=http://localhost:3010 PASSWORD=demo1234 node tests/smoke.mjs
+//   DEMO_LOGIN_HINT=1 npx next start -p 3010 &
+//   BASE=http://localhost:3010 node tests/smoke.mjs
 // Also writes the README screenshots into docs/screenshots/.
 
 import { chromium, devices } from "playwright";
 import { mkdirSync } from "node:fs";
 
 const BASE = process.env.BASE ?? "http://localhost:3010";
-const PASSWORD = process.env.PASSWORD ?? "demo1234";
+const PASSWORD = process.env.PASSWORD ?? "atusi0130";
 const OUT = "docs/screenshots";
 mkdirSync(OUT, { recursive: true });
 
@@ -26,8 +26,13 @@ const check = (name, ok, extra = "") => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: "ja-JP" });
   const page = await ctx.newPage();
   await page.goto(BASE + "/", { waitUntil: "networkidle" });
+  check("anonymous top page redirects to the login screen (Japanese)", page.url().endsWith("/login") && (await page.locator("h1").textContent()) === "ログイン");
+  await page.fill("#loginId", "kuromaru");
+  await page.fill("#password", PASSWORD);
+  await page.getByRole("button", { name: "ログイン" }).click();
+  await page.waitForURL(BASE + "/");
   await page.screenshot({ path: `${OUT}/dashboard-ja.png` });
-  check("dashboard renders in Japanese", (await page.locator("h1").textContent()) === "ダッシュボード");
+  check("dashboard renders in Japanese after login", (await page.locator("h1").textContent()) === "ダッシュボード");
   await ctx.close();
 }
 
@@ -46,21 +51,18 @@ const check = (name, ok, extra = "") => {
   });
 
   await page.goto(BASE + "/", { waitUntil: "networkidle" });
-  check("dashboard renders in English (Accept-Language)", (await page.locator("h1").textContent()) === "Dashboard");
-  await page.screenshot({ path: `${OUT}/dashboard-en.png` });
+  check("anonymous top page redirects to login (English)", page.url().endsWith("/login") && (await page.locator("h1").textContent()) === "Log in");
 
-  // Unauthenticated mutation is refused with a localized message
+  // Unauthenticated mutation is refused by the middleware
   await page.goto(BASE + "/payments/pay_demo_003", { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Master" }).click();
-  await page.waitForTimeout(300);
-  await page.getByRole("button", { name: "Mark completed" }).click();
-  await page.locator("dialog[open]").getByRole("button", { name: "Mark completed" }).click();
-  await page.waitForSelector("[role=alert]:not(#__next-route-announcer__)");
-  check("unauthenticated complete → 'Login required'", (await page.locator("[role=alert]:not(#__next-route-announcer__)").textContent())?.includes("Login required"));
+  check("anonymous visitor sees the detail read-only (complete disabled)", await page.getByRole("button", { name: "Mark completed" }).isDisabled());
+  const anonStatus = await page.evaluate(async () => (await fetch("/api/payments/pay_demo_003/capture", { method: "POST", headers: { "x-requested-with": "fetch" } })).status);
+  check("unauthenticated API mutation → 401", anonStatus === 401, String(anonStatus));
 
   // Login
   await page.goto(BASE + "/login", { waitUntil: "networkidle" });
-  check("login page shows demo hint", (await page.textContent("body"))?.includes("Demo password"));
+  check("login page lists the demo accounts", (await page.textContent("body"))?.includes("Demo accounts"));
+  await page.fill("#loginId", "kuromaru");
   await page.fill("#password", "wrong");
   await page.getByRole("button", { name: "Log in" }).click();
   await page.waitForSelector("[role=alert]:not(#__next-route-announcer__)");
@@ -68,7 +70,8 @@ const check = (name, ok, extra = "") => {
   await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: "Log in" }).click();
   await page.waitForURL(BASE + "/");
-  check("login redirects to dashboard and shows Log out", await page.getByRole("button", { name: "Log out" }).isVisible());
+  check("login redirects to dashboard and shows the account menu", (await page.locator("h1").textContent()) === "Dashboard" && (await page.getByRole("button", { name: "Log out" }).count()) === 1);
+  await page.screenshot({ path: `${OUT}/dashboard-en.png` });
 
   // Provider config screenshot (Stripe form, EN)
   await page.goto(BASE + "/providers/new/stripe", { waitUntil: "networkidle" });
@@ -87,11 +90,6 @@ const check = (name, ok, extra = "") => {
   await page.getByText("Authorized").first().waitFor({ timeout: 15000 });
   check("created transaction is Authorized (applications detail)", (await page.locator(".badge").allTextContents()).includes("Authorized"));
 
-  await page.getByRole("button", { name: "General" }).click();
-  await page.waitForTimeout(400);
-  check("general role cannot complete", await page.getByRole("button", { name: "Mark completed" }).isDisabled());
-  await page.getByRole("button", { name: "Master" }).click();
-  await page.waitForTimeout(500);
   await page.getByRole("button", { name: "Mark completed" }).click();
   await page.locator("dialog[open]").getByRole("button", { name: "Mark completed" }).click();
   await page.getByText("Transaction completed.").waitFor({ timeout: 15000 });

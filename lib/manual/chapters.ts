@@ -10,6 +10,7 @@ export const MANUAL_CHAPTERS = [
   "applications",
   "ip-restrictions",
   "notification-spec",
+  "admins",
 ] as const;
 
 export type ManualChapter = (typeof MANUAL_CHAPTERS)[number];
