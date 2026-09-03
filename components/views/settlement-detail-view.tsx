@@ -29,6 +29,7 @@ export function SettlementDetailView({ batch, lines }: { batch: SettlementRow; l
   const toast = useToast();
   const { confirm } = useConfirm();
   const isMaster = useCan("settlement", "transition");
+  const canInvoice = useCan("invoice", "export");
   const formatDate = useFormatDateTime();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +159,7 @@ export function SettlementDetailView({ batch, lines }: { batch: SettlementRow; l
                       <th className="px-5 py-2">{t("settlements.thMethod")}</th>
                       <th className="px-5 py-2 text-right">{t("settlements.thAmount")}</th>
                       <th className="px-5 py-2 text-right">{t("settlements.thFee")}</th>
+                      <th className="px-5 py-2">{t("settlements.thTaxCategory")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -177,6 +179,7 @@ export function SettlementDetailView({ batch, lines }: { batch: SettlementRow; l
                         <td className="px-5 py-2 text-slate-600">{isPaymentMethod(l.method) ? methodLabel(l.method, lang) : l.method ?? "—"}</td>
                         <td className={cn("px-5 py-2 text-right tabular-nums", l.amount < 0 && "text-rose-700")}>{formatYen(l.amount)}</td>
                         <td className="px-5 py-2 text-right tabular-nums text-slate-600">{l.fee ? `−${formatYen(l.fee)}` : "—"}</td>
+                        <td className="px-5 py-2 text-xs text-slate-500">{l.fee ? t(`settlementEnums.taxCategory.${l.taxCategory}` as MessageKey) : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -208,6 +211,15 @@ export function SettlementDetailView({ batch, lines }: { batch: SettlementRow; l
                 </p>
               )}
             </div>
+          </div>
+          <div className="card p-4 text-xs text-slate-600">
+            <p className="font-semibold text-slate-800">{t("settlements.invoicePdf")}</p>
+            <p className="mt-1">{batch.status === "collecting" ? t("settlements.invoiceCollecting") : t("settlements.invoiceHelp")}</p>
+            {batch.status !== "collecting" && canInvoice && (
+              <a href={`/api/settlements/${batch.id}/invoice`} target="_blank" rel="noopener" className="btn-secondary mt-3 inline-flex w-full justify-center">
+                {t("settlements.invoicePdf")}
+              </a>
+            )}
           </div>
           <div className="card p-4 text-xs text-slate-600">
             <p className="font-semibold text-slate-800">{t("settlements.flowTitle")}</p>

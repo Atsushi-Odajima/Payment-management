@@ -93,10 +93,13 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 | 返金 | 申請 | ○ |  | ○ |  |  |
 | 返金 | 期限超過の強制 | ○ |  |  |  |  |
 | 返金 | 承認 / 否認 | ○ | ○ |  |  |  |
+| 領収書 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 領収書 | 発行 | ○ | ○ | ○ |  |  |
 | 精算バッチ | 閲覧 | ○ | ○ | ○ | ○ | ○ |
 | 精算バッチ | 生成 | ○ | ○ |  |  |  |
 | 精算バッチ | 確定 / 振込予定 / 振込済 / 保留 / 解除 | ○ | ○ |  |  |  |
 | 精算バッチ | 削除 | ○ | ○ |  |  |  |
+| 請求書（インボイス） | 出力 | ○ | ○ |  |  |  |
 | 代理店手数料 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
 | 集計レポート | 閲覧 | ○ | ○ | ○ | ○ | ○ |
 | Webhook 送信ログ | 閲覧 | ○ | ○ | ○ | ○ | ○ |
@@ -221,6 +224,14 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - **配信**: `lib/notifications/deliver.ts` の `dispatchPendingNotifications`（`dispatchedAt` null の行を claim して配信）。root の PrismaClient から emit したときは即時、tx 内から emit したときは毎時 50 分の `GET/POST /api/cron/notifications`（日次まとめも同じ cron）で配信。メールは `NotificationPreference.email` の管理者へテンプレート `notification`（プレースホルダー `title` / `body` / `link`）で送信ログへ、Slack は `GlobalSetting.slackWebhookUrl` に `sendSlack`（8 秒タイムアウト、1 回リトライ、`SlackLog`。テスト / `WEBHOOK_DELIVERY=queue` では `demo` 記録のみ、`force` でテスト送信）
 - **閲覧**: `lib/notifications/list.ts`。可視性は `roles` JSON が空か自ロールを含む行。`GET /api/notifications`（絞り込み kind / severity / read / from / to）、`GET /api/notifications/unread`（ベル: 未読数 + 最新 10 件、未ログインは空）、`POST /api/notifications/[id]/read`、`POST /api/notifications/read-all`、`GET/PUT /api/notifications/preferences`（自分の設定のみ）、`POST /api/global-settings/slack-test`（admin）。画面 `/notifications`、`/notifications/settings`、ヘッダー `components/notification-bell.tsx`（60 秒ポーリング）、全体設定に Slack URL とテスト送信。ナビ `notifications`（配信グループ）、KPI「未読」
 
+## コンビニ決済・領収書 PDF・インボイス（フェーズK）
+
+- **コンビニ決済は `Payment` の列**（`cvsBrand` seven | lawson | familymart | ministop | other、`cvsReceiptNo` 13 桁 @unique、`cvsPaidAt`。期限は `transferDueAt` を共用、`Merchant.cvsDueDays` 既定 3 / 1〜30）。語彙は `lib/payments/konbini.ts`（`generateCvsReceiptNo` / `cvsDueDate` / `formatCvsReceiptNo`）。`createTransaction` が `method === "convenience"` のとき採番し、メール `cvs_guide` を送る。ステータスは新設せず **`pending` = 支払待ち**（申請一覧で振込待ちと同じレーン、`transactions.cvsWaiting` バッジ）。`TRANSITIONS.deposit.from` に `pending` を追加し、`applyPaymentAction(deposit)` は `cvsReceiptNo` があれば `reconcileDeposit(..., "pending")` で判定して `cvsPaidAt` を刻む（振込IDも受付番号も無い取引は 400）。actor `cvs` / 監査 actorType `cvs`。`POST /api/demo/cvs-notify`（`DEPOSIT_NOTIFY_SECRET` 共用、`{ receiptNo, amount? }`）と決済リンクページの「店頭で支払い済みにする（デモ）」が同じ deposit を呼ぶ。期限切れは `expireOverdueTransfers` が `pending + cvsReceiptNo` も対象にし、日次ダイジェスト `cvs.overdue` はそのまま。ダッシュボードの期限超過件数も含む
+- **領収書 = `Receipt`**（`paymentId` @unique、`receiptNo` `RC-YYYYMM-00001` 月次連番、`recipientName`、`amount` = 金額 − 返金済、`source` dashboard | customer、`issuedById`、`reissueCount`、`lastIssuedAt`）。`lib/receipts/service.ts` の `issueReceipt`（完了 / 一部返金のみ、再発行は番号据え置きで回数++、毎回 `receipt.issue` を監査。customer の再ダウンロードは再発行に数えない）。`POST /api/payments/[id]/receipt`（`receipt.issue`: admin / accounting / cs）、`GET .../receipt`（PDF、`requireAdmin`）。**エンドユーザー DL は署名付き URL**（`lib/receipts/customer-token.ts`、HMAC(SESSION_SECRET) over リンクトークン + 取引ID + 期限 30 日、`GET /api/pay/[token]/receipt?p=&e=&s=`）で、管理者セッションと無関係。`POST /api/pay/[token]/complete` が `receiptUrl` を返す
+- **PDF は `lib/pdf/document.ts`**（pdf-lib + @pdf-lib/fontkit、`lib/pdf/fonts/` の Noto Sans JP サブセット Regular = JIS X 0208 約 2.1 MB / Bold = 第 1 水準 約 1 MB。`scripts/build-pdf-font.mjs` + `scripts/pdf-font-unicodes*.txt` で再生成、ライセンスは `fonts/LICENSE.txt`）。**pdf-lib 自身のサブセット化（`subset: true`）はこの TTF でグリフが欠けるので使わない**: 描画を ops として記録し、`bytes()` で使用文字だけを `subset-font`（HarfBuzz wasm、約 40 ms）で切り出して `subset: false` で埋め込む（領収書 1 枚 10〜30 KB）。文字幅は fontkit で計測。`next.config.js` の `outputFileTracingIncludes` で `/api/**` にフォントと `harfbuzzjs/hb-subset.wasm` を同梱。Chromium 系は 50 MB 圧縮上限を超えるため不採用。`lib/pdf/receipt.ts` / `invoice.ts` はチェック対象外（`scripts/check-i18n.mjs` の ALLOW）
+- **インボイス**: `GlobalSetting` に `issuerName` / `issuerRegistrationNo`（`REGISTRATION_NO_RE` = T + 13 桁）/ `issuerAddress` / `issuerTel` / `taxRounding`（floor 既定 | round | ceil）、`Merchant` に `invoiceNumber` / `address`（精算設定タブ・`PATCH /api/merchants/[id]/settlement`）、`SettlementLine.taxCategory`（`TAX_CATEGORIES` standard10 | reduced8 | exempt。`collectLines` が売上行 standard10 / 返金・CB 行 exempt を付与、旧行は `defaultTaxCategory(kind)`）。税計算は `lib/settlements/tax.ts`（**手数料は内税**: `includedTax` = 税込 × 率 / (100 + 率) を税率ごとに丸める。差引支払額は変えない）。`GET /api/settlements/[id]/invoice`（`invoice.export`: admin / accounting、collecting は 409 `settlement_not_confirmed`、監査 `settlement.invoice_export`、番号 `INV-YYYYMM-<加盟店番号>`）
+- 権限 `receipt.issue` / `invoice.export`、監査 `receipt.issue` / `settlement.invoice_export`、対象種別 `receipt`。マニュアル章 `konbini` / `receipts`。seed: コンビニプロバイダ `prov_cvs_demo`（web_conveni）、payment14（支払待ち）/ payment15（支払済 + 領収書 `rcp_demo_001`）、`SEED_CVS_RECEIPT_NOS`
+
 ## 未消込入金と API 再通知（銀行振込のみ）
 
 - **`UnmatchedDeposit`**（`amount`, `payerName`, `receivedAt`, `bankReference`, `givenTransferId`（顧客が書いた誤った / 不足の振込ID）, `note`, `source` bank | manual, `status` unmatched | matched | dismissed, `paymentId` SetNull, `matchedTransferId`, `matchedById`, `matchedAt`, `dismissReason`, `livemode`）。振込IDの付け忘れなどで消込できなかった入金の置き場。`POST /api/demo/deposit-notify` は `transferId` が無い / 不明なら **404 ではなく 202 で未消込入金を登録**（`payerName` / `bankReference` / `receivedAt` / `mode` を任意で受ける）
@@ -293,7 +304,9 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **未消込入金 / API 再通知**（完了）
 - [x] **フェーズI ロール細分化・取引メモ・決済手段一時停止**（完了）: 5 ロール（admin / accounting / cs / developer / viewer）と `lib/role.ts` の権限マトリクス、`requirePermission` / `useCan`、取引メモ（タイムライン統合・ピン留め・削除の監査）、決済手段の全体 / 加盟店別停止（理由必須・自動再開 cron・赤バナー・障害お知らせ下書き）、通知テーブルと `emitNotification`（J の最小部分）、`GlobalSetting`（viewer の CSV 可否）
 - [x] **フェーズJ 通知センター**（完了）: 14 種の通知を既存処理に組み込み（Webhook 断念・決済手段停止・バッチ失敗・チャージバック期限・振込 / コンビニ期限超過の日次まとめ・ブラックリスト候補・限度額超過・定期課金失敗・精算の生成 / 保留・返金申請・加盟店登録）、ヘッダーのベル + 未読バッジ + 最新 10 件、一覧（種別・重要度・既読 / 未読・期間、全既読）、管理者ごとのメール / Slack 設定、Slack Incoming Webhook の実送信（1 回リトライ・SlackLog）
-- [ ] **フェーズK コンビニ決済・領収書 PDF・インボイス**（次はここ）
+- [x] **フェーズK コンビニ決済・領収書 PDF・インボイス**（完了）: 受付番号 13 桁・支払店舗・加盟店ごとの支払期限（申請一覧の支払待ちレーン・期限切れ cron・日次通知・入金通知 API `/api/demo/cvs-notify` は銀行振込と同じ `deposit`・決済リンクページ・案内メール）、領収書（月次連番・宛名・再発行回数・PDF・署名付き URL による顧客ダウンロード）、インボイス（発行者情報・登録番号検証・税区分・税率ごとの内税計算と端数処理・確定以降の精算バッチから請求書 PDF）。PDF は pdf-lib + Noto Sans JP サブセット同梱
+- [ ] **フェーズL 公開 API v1・加盟店ログイン・API ドキュメント**（次はここ）
+- [ ] **フェーズM 顧客・PaymentToken・個人情報保護**
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
 - 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う
 - 検索対象「カード下4桁」はフェーズF（カードハッシュ列）で追加する

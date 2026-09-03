@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { PAYMENT_METHODS } from "@/lib/payments/methods";
+import { CVS_BRANDS } from "@/lib/payments/konbini";
 
 export const PAYMENT_LINK_STATUSES = ["active", "disabled"] as const;
 export type PaymentLinkStatus = (typeof PAYMENT_LINK_STATUSES)[number];
@@ -26,6 +27,8 @@ export const linkCheckoutSchema = z.object({
   method: z.enum(PAYMENT_METHODS),
   customerName: z.string().trim().min(1, "required").max(120, "tooLong"),
   customerEmail: z.string().trim().email("email").max(200, "tooLong").or(z.literal("")).default(""),
+  /** Konbini only (Phase K-1): the store chain the customer will pay at. */
+  cvsBrand: z.enum(CVS_BRANDS).optional(),
 });
 export type LinkCheckoutInput = z.infer<typeof linkCheckoutSchema>;
 

@@ -11,6 +11,8 @@ import type { PrismaClient } from "@prisma/client";
 import { buildCredentialStore } from "../lib/providers/credentials";
 import { encryptMerchantPassword } from "../lib/merchants/secrets";
 import { transferDueDate } from "../lib/payments/transfer";
+import { cvsDueDate } from "../lib/payments/konbini";
+import { partsInTz } from "../lib/settlements/schedule";
 import { hashPassword } from "../lib/admin/password";
 import { PLAN_DEFAULT_RATES } from "../lib/merchants/fees";
 import { displayPrefix } from "../lib/merchants/api-keys";
@@ -86,6 +88,16 @@ export const SEED_IDS = {
   notification1: "ntf_demo_001",
   notification2: "ntf_demo_002",
   notification3: "ntf_demo_003",
+  cvsProvider: "prov_cvs_demo",
+  payment14: "pay_demo_014",
+  payment15: "pay_demo_015",
+  receipt1: "rcp_demo_001",
+} as const;
+
+/** Fixed konbini receipt numbers of the seeded slips (Phase K-1). */
+export const SEED_CVS_RECEIPT_NOS = {
+  [SEED_IDS.payment14]: "4102993827716", // pending, merchant3
+  [SEED_IDS.payment15]: "5583017740219", // paid, merchant3
 } as const;
 
 /** Fixed token of the seeded payment link (the hosted page is /pay/<token>). */
@@ -202,6 +214,26 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     },
   });
 
+  // Konbini provider (Phase K-1): offered to merchant3's customers.
+  const cvs = await prisma.paymentProvider.upsert({
+    where: { id: SEED_IDS.cvsProvider },
+    update: {},
+    create: {
+      id: SEED_IDS.cvsProvider,
+      providerKey: "web_conveni",
+      category: "convenience",
+      displayName: "本店 (コンビニ決済)",
+      testMode: true,
+      credentials: JSON.stringify(
+        buildCredentialStore("web_conveni", {
+          contract_code: "WC-SEED-0001",
+          api_token: "WC_SEED_TOKEN_0001",
+          stores: "seven,lawson,familymart,ministop",
+        }),
+      ),
+    },
+  });
+
   // ── Agents ────────────────────────────────────────────────────────────
   const agents = [
     {
@@ -252,6 +284,8 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       agentId: SEED_IDS.agent1,
       enabledMethods: JSON.stringify(["credit", "qr"]),
       transferIdDigits: 7,
+      invoiceNumber: "T1234567890123",
+      address: "東京都渋谷区神宮前 1-2-3 コトリビル 4F",
       settlementCycle: "monthly",
       payoutTerm: "next_month_end",
       bankName: "デモ銀行",
@@ -298,6 +332,8 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       agentId: null,
       enabledMethods: JSON.stringify(["bank", "convenience"]),
       transferIdDigits: 7,
+      cvsDueDays: 3,
+      address: "東京都中央区築地 5-6-7",
       createdAt: daysAgo(20),
     },
   ] as const;
@@ -1002,6 +1038,77 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     await prisma.payment.upsert({ where: { id: p.id }, update: {}, create: { ...p, livemode: false, events: { create: events } } });
   }
 
+  // ── Phase K: konbini slips and a receipt ──────────────────────────────
+  // One slip awaiting payment (due in 2 days) and one paid at the store
+  // three days ago with a receipt issued from the dashboard.
+  const cvsPayments = [
+    {
+      id: SEED_IDS.payment14,
+      providerId: cvs.id,
+      merchantId: SEED_IDS.merchant3,
+      method: "convenience",
+      orderNumber: "ORD-DEMO-014",
+      productName: "本まぐろ赤身 300g",
+      amount: 3980,
+      status: "pending",
+      externalId: "cvs_demo_014",
+      customerName: "小林 直樹",
+      customerId: "u_30211",
+      customerEmail: "naoki@example.com",
+      description: "本まぐろ赤身 300g x 1",
+      cvsBrand: "lawson",
+      cvsReceiptNo: SEED_CVS_RECEIPT_NOS[SEED_IDS.payment14],
+      transferDueAt: cvsDueDate(daysAgo(1), 3),
+      createdAt: daysAgo(1),
+      events: [ev("created", null, "pending", 3980, "seed", daysAgo(1))],
+    },
+    {
+      id: SEED_IDS.payment15,
+      providerId: cvs.id,
+      merchantId: SEED_IDS.merchant3,
+      method: "convenience",
+      orderNumber: "ORD-DEMO-015",
+      productName: "本まぐろ大トロ 200g",
+      amount: 5400,
+      status: "captured",
+      externalId: "cvs_demo_015",
+      customerName: "松本 彩",
+      customerId: "u_30187",
+      customerEmail: "aya@example.com",
+      description: "本まぐろ大トロ 200g x 1",
+      cvsBrand: "seven",
+      cvsReceiptNo: SEED_CVS_RECEIPT_NOS[SEED_IDS.payment15],
+      cvsPaidAt: daysAgo(3),
+      transferDueAt: cvsDueDate(daysAgo(4), 3),
+      depositAmount: 5400,
+      createdAt: daysAgo(4),
+      capturedAt: daysAgo(3),
+      events: [ev("created", null, "pending", 5400, "seed", daysAgo(4)), ev("deposit", "pending", "captured", 5400, "cvs", daysAgo(3))],
+    },
+  ];
+  for (const { events, ...p } of cvsPayments) {
+    await prisma.payment.upsert({ where: { id: p.id }, update: {}, create: { ...p, livemode: false, events: { create: events } } });
+  }
+  const receiptMonth = partsInTz(daysAgo(3));
+  await prisma.receipt.upsert({
+    where: { id: SEED_IDS.receipt1 },
+    update: {},
+    create: {
+      id: SEED_IDS.receipt1,
+      receiptNo: `RC-${receiptMonth.y}${String(receiptMonth.m).padStart(2, "0")}-00001`,
+      paymentId: SEED_IDS.payment15,
+      merchantId: SEED_IDS.merchant3,
+      livemode: false,
+      recipientName: "松本 彩",
+      amount: 5400,
+      source: "dashboard",
+      issuedById: DEMO_ADMIN_ACCOUNTS.accounting.id,
+      reissueCount: 0,
+      issuedAt: daysAgo(2),
+      lastIssuedAt: daysAgo(2),
+    },
+  });
+
   // ── Unmatched deposits (未消込入金) ────────────────────────────────────
   // A deposit that arrived without the transfer id (same amount as the
   // awaiting transfer ORD-DEMO-005, so the match dialog suggests it) and one
@@ -1015,7 +1122,11 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
   }
 
   // ── Phase I: notes, payment-method switch, global settings ────────────
-  await prisma.globalSetting.upsert({ where: { id: "global" }, update: {}, create: { id: "global", viewerCsvExport: false } });
+  await prisma.globalSetting.upsert({
+    where: { id: "global" },
+    update: {},
+    create: { id: "global", viewerCsvExport: false, issuerName: "ワイヤーペイ株式会社", issuerRegistrationNo: "T9876543210987", issuerAddress: "東京都千代田区丸の内 1-1-1 ワイヤービル 10F", issuerTel: "03-0000-0000", taxRounding: "floor" },
+  });
   const notes = [
     { id: SEED_IDS.note1, paymentId: SEED_IDS.payment4, authorId: DEMO_ADMIN_ACCOUNTS.cs.id, body: "お客様より「振込は明日行う」と電話連絡あり。期限延長の希望は無し。", pinned: true, createdAt: daysAgo(1) },
     { id: SEED_IDS.note2, paymentId: SEED_IDS.payment2, authorId: DEMO_ADMIN_ACCOUNTS.admin.id, body: "返金申請の理由を確認済み。写真は加盟店から受領。", pinned: false, createdAt: hoursAgo(3) },
@@ -1085,7 +1196,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
   }
 
   return {
-    providers: 3,
+    providers: 4,
     payments: payments.length,
     merchants: merchants.length,
     agents: agents.length,
@@ -1125,6 +1236,7 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.unmatchedDeposit.deleteMany();
   await prisma.paymentEvent.deleteMany();
   await prisma.refund.deleteMany();
+  await prisma.receipt.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.subscription.deleteMany();
   await prisma.plan.deleteMany();

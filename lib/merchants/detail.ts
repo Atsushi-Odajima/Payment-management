@@ -16,7 +16,7 @@ export { MERCHANT_TABS, isMerchantTab, type MerchantTab, type MerchantContract, 
 export async function loadMerchantSettlement(merchantId: string, mode: DataMode): Promise<MerchantSettlement | null> {
   const m = await prisma.merchant.findUnique({
     where: { id: merchantId },
-    select: { settlementCycle: true, payoutTerm: true, bankName: true, bankBranch: true, bankAccountType: true, bankAccountNumber: true, bankAccountHolder: true, settlementFee: true },
+    select: { settlementCycle: true, payoutTerm: true, bankName: true, bankBranch: true, bankAccountType: true, bankAccountNumber: true, bankAccountHolder: true, settlementFee: true, invoiceNumber: true, address: true },
   });
   if (!m) return null;
   const batches = await loadMerchantSettlements(merchantId, mode);
@@ -30,6 +30,8 @@ export async function loadMerchantSettlement(merchantId: string, mode: DataMode)
       bankAccountNumber: m.bankAccountNumber ?? "",
       bankAccountHolder: m.bankAccountHolder ?? "",
       settlementFee: m.settlementFee,
+      invoiceNumber: m.invoiceNumber ?? "",
+      address: m.address ?? "",
     },
     batches,
   };
@@ -37,11 +39,11 @@ export async function loadMerchantSettlement(merchantId: string, mode: DataMode)
 
 export async function loadMerchantContract(merchantId: string, now: Date = new Date()): Promise<MerchantContract | null> {
   const [merchant, rows] = await Promise.all([
-    prisma.merchant.findUnique({ where: { id: merchantId }, select: { transferDueDays: true, refundWindowDays: true } }),
+    prisma.merchant.findUnique({ where: { id: merchantId }, select: { transferDueDays: true, cvsDueDays: true, refundWindowDays: true } }),
     prisma.merchantFeeSchedule.findMany({ where: { merchantId }, orderBy: { effectiveFrom: "desc" }, select: { id: true, plan: true, rates: true, effectiveFrom: true, note: true, createdAt: true } }),
   ]);
   if (!merchant) return null;
-  return { schedules: toFeeScheduleViews(rows, now), transferDueDays: merchant.transferDueDays, refundWindowDays: merchant.refundWindowDays };
+  return { schedules: toFeeScheduleViews(rows, now), transferDueDays: merchant.transferDueDays, cvsDueDays: merchant.cvsDueDays, refundWindowDays: merchant.refundWindowDays };
 }
 
 export async function loadMerchantLimits(merchantId: string, mode: DataMode, now: Date = new Date()): Promise<MerchantLimits> {

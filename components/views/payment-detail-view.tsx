@@ -7,7 +7,9 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { PaymentActions } from "@/components/payment-actions";
+import { ReceiptCard } from "@/components/receipt-card";
 import { PaymentTimeline } from "@/components/payment-timeline";
+import { formatCvsReceiptNo, isCvsBrand } from "@/lib/payments/konbini";
 import { ModeBadge, PaymentStatusBadge } from "@/components/payment-status-badge";
 import { DetailRow } from "@/components/ui/detail-row";
 import { useFormatDateTime, useLang, useT } from "@/components/language-provider";
@@ -30,6 +32,7 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
   const providerName = def ? pickText(def.name, lang) : payment.provider.providerKey;
   const remaining = payment.amount - payment.amountRefunded;
   const isBank = payment.transferId !== null;
+  const isCvs = payment.cvsReceiptNo !== null;
 
   return (
     <div>
@@ -47,6 +50,7 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
           <>
             <ModeBadge live={payment.livemode} />
             <PaymentStatusBadge status={payment.status} />
+            {isCvs && payment.status === "pending" && <span className="badge bg-sky-100 text-sky-800 ring-sky-200">{t("paymentDetail.cvsWaiting")}</span>}
             {payment.overdue && <span className="badge bg-rose-600 text-white ring-rose-700">{t("transactions.overdue")}</span>}
           </>
         }
@@ -170,6 +174,25 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
             </section>
           )}
 
+          {isCvs && (
+            <section className={cn("card divide-y divide-slate-100", payment.overdue && "border-rose-300")} aria-labelledby="cvs-heading">
+              <h2 id="cvs-heading" className="px-5 py-3 text-sm font-semibold text-slate-800">
+                {t("paymentDetail.sectionCvs")}
+              </h2>
+              <DetailRow label={t("paymentDetail.cvsBrand")}>{isCvsBrand(payment.cvsBrand) ? t(`cvsEnums.brand.${payment.cvsBrand}`) : payment.cvsBrand ?? "—"}</DetailRow>
+              <DetailRow label={t("paymentDetail.cvsReceiptNo")}>
+                <span className="font-mono text-base font-semibold tracking-wider">{formatCvsReceiptNo(payment.cvsReceiptNo!)}</span>
+              </DetailRow>
+              <DetailRow label={t("paymentDetail.cvsDueAt")}>
+                <span className={cn(payment.overdue && "font-semibold text-rose-700")}>{payment.transferDueAt ? formatDate(payment.transferDueAt) : "—"}</span>
+                {payment.overdue && <span className="badge ml-2 bg-rose-600 text-white ring-rose-700">{t("transactions.overdue")}</span>}
+              </DetailRow>
+              <DetailRow label={t("paymentDetail.cvsPaidAt")}>
+                {payment.cvsPaidAt ? formatDate(payment.cvsPaidAt) : <span className="text-slate-500">{t("paymentDetail.cvsUnpaid")}</span>}
+              </DetailRow>
+            </section>
+          )}
+
           <PaymentTimeline paymentId={payment.id} events={payment.events} notes={payment.notes} eventLabel={(type) => t(eventLabelKey(type))} statusLabel={(st) => statusLabel(t, st)} actorLabel={(actor) => t(actorLabelKey(actor))} />
 
           {payment.refunds.length > 0 && (
@@ -210,6 +233,7 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
               <PaymentActions payment={payment} />
             </div>
           </div>
+          <ReceiptCard paymentId={payment.id} status={payment.status} receipt={payment.receipt} customerName={payment.customerName} />
           {(payment.status === "captured" || payment.status === "partially_refunded" || payment.status === "refunded") && (
             <div className="card p-4 text-xs text-slate-600">
               <p className="font-semibold text-slate-800">{t("paymentDetail.chargebackTitle")}</p>
@@ -256,6 +280,8 @@ function actorLabelKey(actor: string): MessageKey {
       return "paymentDetail.actorWebhook";
     case "bank":
       return "paymentDetail.actorBank";
+    case "cvs":
+      return "paymentDetail.actorCvs";
     case "seed":
       return "paymentDetail.actorSeed";
     case "system":

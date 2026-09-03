@@ -27,7 +27,7 @@ export const POST = withApiHandler<Ctx>(
       throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: Object.fromEntries(parsed.error.issues.map((i) => [i.path.join("."), i.message])) });
     }
     const result = await checkoutFromLink(prisma, { token: params.token, input: parsed.data, clientIp: clientIpFromHeaders((n) => req.headers.get(n)) });
-    const payment = await prisma.payment.findUniqueOrThrow({ where: { id: result.payment.id }, select: { id: true, status: true, amount: true, transferId: true, transferDueAt: true, method: true, orderNumber: true } });
+    const payment = await prisma.payment.findUniqueOrThrow({ where: { id: result.payment.id }, select: { id: true, status: true, amount: true, transferId: true, transferDueAt: true, cvsBrand: true, cvsReceiptNo: true, method: true, orderNumber: true } });
     return ok({ payment, method: result.method }, { status: 201 });
   },
   { ipRestricted: false },

@@ -34,6 +34,13 @@ const nextConfig = {
   // Standalone output keeps the Docker runtime image to .next/standalone + static.
   // Opt-in via env so plain `next start` (Vercel, local) does not warn.
   ...(process.env.NEXT_OUTPUT_STANDALONE === "1" ? { output: "standalone" } : {}),
+  // The PDF routes read the bundled Noto Sans JP subset at runtime (lib/pdf/document.ts);
+  // include the font files in the traced serverless bundles.
+  experimental: {
+    outputFileTracingIncludes: { "/api/**/*": ["./lib/pdf/fonts/*.ttf", "./node_modules/harfbuzzjs/hb-subset.wasm"] },
+    // The HarfBuzz subsetter loads its .wasm from disk with require.resolve; keep it out of the webpack bundle.
+    serverComponentsExternalPackages: ["subset-font", "harfbuzzjs", "fontverter"],
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

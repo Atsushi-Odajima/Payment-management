@@ -42,15 +42,15 @@ describe("reports", () => {
     const res = await read(await getReport(new Request(BASE + "/api/reports?granularity=custom&from=2026-08-01&to=2026-09-02&mode=test"), {}));
     expect(res.status).toBe(200);
     const r = res.body.data;
-    // Seed (test mode, NOW): payment1/2/3/4/5/6/7 created within the window; 3 completed (1, 2, 7).
-    expect(r.totals.applications).toBe(7);
-    expect(r.totals.completed).toBe(3);
-    expect(r.totals.completedAmount).toBe(4980 + 1280 + 12000);
-    expect(r.totals.successRate).toBe(42.9);
-    expect(r.totals.averageAmount).toBe(6087);
-    expect(r.shares.map((s: any) => s.method).sort()).toEqual(["bank", "credit", "qr"]);
+    // Seed (test mode, NOW): payment1/2/3/4/5/6/7 and the konbini slips 14/15 created within the window; 4 completed (1, 2, 7, 15).
+    expect(r.totals.applications).toBe(9);
+    expect(r.totals.completed).toBe(4);
+    expect(r.totals.completedAmount).toBe(4980 + 1280 + 12000 + 5400);
+    expect(r.totals.successRate).toBe(44.4);
+    expect(r.totals.averageAmount).toBe(5915);
+    expect(r.shares.map((s: any) => s.method).sort()).toEqual(["bank", "convenience", "credit", "qr"]);
     expect(r.ranking[0].merchantCode).toBe("MER-00003");
-    expect(r.series.reduce((s: number, p: any) => s + p.applications, 0)).toBe(7);
+    expect(r.series.reduce((s: number, p: any) => s + p.applications, 0)).toBe(9);
     const monthly = await read(await getReport(new Request(BASE + "/api/reports?granularity=monthly&from=2026-08-01&to=2026-09-30&merchant=" + SEED_IDS.merchant1), {}));
     expect(monthly.body.data.series.every((p: any) => /^\d{4}-\d{2}$/.test(p.bucket))).toBe(true);
     expect(monthly.body.data.totals.applications).toBe(2);
@@ -59,7 +59,7 @@ describe("reports", () => {
     expect(summary.headers.get("content-type")).toContain("text/csv");
     expect((await summary.text())).toContain("bucket,applications,completed,amount");
     const detail = await getReport(new Request(BASE + "/api/reports?granularity=custom&from=2026-08-01&to=2026-09-02&format=csv&kind=detail", { headers: MASTER }), {});
-    expect((await detail.text()).split("\r\n").filter(Boolean)).toHaveLength(8);
+    expect((await detail.text()).split("\r\n").filter(Boolean)).toHaveLength(10);
   });
 });
 
@@ -68,7 +68,7 @@ describe("email templates and log", () => {
     expect(renderTemplate("Hi {{customerName}}, {{ amount }} / {{missing}}", { customerName: "A", amount: "¥1" })).toBe("Hi A, ¥1 / ");
     expect(placeholdersIn("{{a}} {{b}} {{a}}")).toEqual(["a", "b"]);
     const list = await read(await getTemplates(new Request(BASE + "/api/email-templates"), {}));
-    expect(list.body.data.templates).toHaveLength(18);
+    expect(list.body.data.templates).toHaveLength(20);
   });
 
   it("logs event emails (demo provider) and lets a master edit / disable templates", async () => {

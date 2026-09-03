@@ -6,6 +6,7 @@ import { useApiJson, useLang, useT } from "./language-provider";
 import { getCategory, getProviderDefinition } from "@/lib/providers/registry";
 import { ASYNC_CATEGORIES } from "@/lib/payments/transitions";
 import { TRANSFER_DUE_DAYS } from "@/lib/payments/transfer";
+import { CVS_BRANDS, DEFAULT_CVS_BRAND, type CvsBrand } from "@/lib/payments/konbini";
 import { pickText } from "@/lib/i18n";
 
 export interface ProviderOption {
@@ -55,6 +56,7 @@ export function NewPaymentForm({ providers: allProviders, merchants, suspended =
   const [customerEmail, setCustomerEmail] = useState("");
   const [description, setDescription] = useState("");
   const [autoCapture, setAutoCapture] = useState(true);
+  const [cvsBrand, setCvsBrand] = useState<CvsBrand>(DEFAULT_CVS_BRAND);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({});
@@ -67,6 +69,7 @@ export function NewPaymentForm({ providers: allProviders, merchants, suspended =
   const category = selectedDef?.category ?? "other";
   const isAsync = ASYNC_CATEGORIES.includes(category);
   const isBank = category === "bank";
+  const isCvs = category === "convenience";
 
   function optionLabel(p: ProviderOption): string {
     const def = getProviderDefinition(p.providerKey);
@@ -96,6 +99,7 @@ export function NewPaymentForm({ providers: allProviders, merchants, suspended =
         customerEmail: customerEmail || null,
         description: description || null,
         autoCapture: isAsync ? false : autoCapture,
+        ...(isCvs ? { cvsBrand } : {}),
       }),
     });
     if (!res.ok) {
@@ -216,6 +220,22 @@ export function NewPaymentForm({ providers: allProviders, merchants, suspended =
 
       {isBank ? (
         <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">{t("newPayment.bankHint", { days: TRANSFER_DUE_DAYS })}</p>
+      ) : isCvs ? (
+        <div className="space-y-2">
+          <div>
+            <label htmlFor="cvsBrand" className="label">
+              {t("newPayment.cvsBrand")}
+            </label>
+            <select id="cvsBrand" className="input sm:w-64" value={cvsBrand} onChange={(e) => setCvsBrand(e.target.value as CvsBrand)}>
+              {CVS_BRANDS.map((b) => (
+                <option key={b} value={b}>
+                  {t(`cvsEnums.brand.${b}`)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">{t("newPayment.cvsHint")}</p>
+        </div>
       ) : isAsync ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{t("newPayment.asyncHint")}</p>
       ) : (

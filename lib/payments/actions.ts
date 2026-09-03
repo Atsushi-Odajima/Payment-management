@@ -20,7 +20,7 @@ import { detectRepeatedFailures } from "@/lib/risk/service";
 import { notifyPaymentCompleted, notifyRefundCompleted } from "@/lib/email/hooks";
 import type { MerchantWebhookEvent } from "@/lib/webhooks/events";
 
-export const PAYMENT_ACTORS = ["dashboard", "webhook", "bank", "system", "seed"] as const;
+export const PAYMENT_ACTORS = ["dashboard", "webhook", "bank", "cvs", "system", "seed"] as const;
 export type PaymentActor = (typeof PAYMENT_ACTORS)[number];
 
 export interface ApplyActionInput {
@@ -64,6 +64,7 @@ export async function applyPaymentAction(
       amountRefunded: true,
       transferId: true,
       transferDueAt: true,
+      cvsReceiptNo: true,
       depositAmount: true,
       merchantId: true,
       livemode: true,
@@ -101,16 +102,19 @@ export async function applyPaymentAction(
     eventAmount = refundAmount;
     extra = { amountRefunded: { increment: refundAmount } };
   } else if (action === "deposit") {
-    if (!payment.transferId) throw new ApiError(400, "not_bank_transfer", "errors.notBankTransfer");
+    // Bank transfers carry a transfer id; konbini slips (Phase K) a receipt number.
+    const isCvs = payment.cvsReceiptNo !== null;
+    if (!payment.transferId && !isCvs) throw new ApiError(400, "not_bank_transfer", "errors.notBankTransfer");
+    if (current === "pending" && !isCvs) throw new ApiError(409, "invalid_transition", "errors.depositOnlyAwaiting");
     const deposit = input.amount;
     if (deposit === undefined || !Number.isInteger(deposit) || deposit <= 0) {
       throw new ApiError(400, "invalid_input", "errors.depositAmountInvalid");
     }
-    const outcome = reconcileDeposit(payment.amount, payment.depositAmount ?? 0, deposit);
+    const outcome = reconcileDeposit(payment.amount, payment.depositAmount ?? 0, deposit, isCvs ? "pending" : "awaiting_transfer");
     nextStatus = outcome.status;
     eventAmount = deposit;
     // A short / excess deposit opens a follow-up case (Phase F-3).
-    extra = { depositAmount: outcome.total, depositDiff: outcome.diff, depositDiffStatus: outcome.diff ? "open" : null };
+    extra = { depositAmount: outcome.total, depositDiff: outcome.diff, depositDiffStatus: outcome.diff ? "open" : null, ...(isCvs && outcome.status === "captured" ? { cvsPaidAt: new Date() } : {}) };
   }
 
   const now = new Date();

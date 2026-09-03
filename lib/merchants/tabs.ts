@@ -21,6 +21,8 @@ export function isMerchantTab(v: unknown): v is MerchantTab {
 export interface MerchantContract {
   schedules: FeeScheduleView[];
   transferDueDays: number;
+  /** Konbini payment deadline in days (Phase K-1). */
+  cvsDueDays: number;
   refundWindowDays: number;
 }
 
