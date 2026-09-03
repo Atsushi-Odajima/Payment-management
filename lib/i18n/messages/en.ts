@@ -120,6 +120,7 @@ export const en: MessageShape<typeof ja> = {
       auditLogs: "Who changed what, and when",
       providers: "Payment service connections and credentials",
       manual: "How each feature works and the notification spec",
+      apiDocs: "Public API v1 guides, generated reference, test cards and the sandbox",
       refunds: "Review refund requests (approve / reject) and refund history",
       settlements: "Generate, confirm and pay per-merchant settlement batches",
       webhookLogs: "Deliveries of merchant notifications (webhooks) and resends",
