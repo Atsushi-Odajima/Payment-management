@@ -31,7 +31,7 @@ export default async function DashboardPage() {
         where: { ...modeWhere, status: { in: [...SALES_STATUSES] }, capturedAt: { gte: today } },
       }),
       prisma.payment.count({ where: { ...modeWhere, status: { in: [...OPEN_STATUSES] } } }),
-      prisma.payment.count({ where: { ...modeWhere, status: "awaiting_transfer", transferDueAt: { lt: now } } }),
+      prisma.payment.count({ where: { ...modeWhere, transferDueAt: { lt: now }, OR: [{ status: "awaiting_transfer" }, { status: "pending", cvsReceiptNo: { not: null } }] } }),
       prisma.ipRestriction.count({ where: { enabled: true } }),
       prisma.adminUser.count(),
       prisma.auditLog.count({ where: { createdAt: { gte: today } } }),

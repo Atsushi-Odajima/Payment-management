@@ -1,0 +1,17 @@
+Noto Sans JP (subset)
+
+Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name
+'Source'. Noto is a trademark of Google LLC.
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+https://openfontlicense.org/ (full text: https://scripts.sil.org/OFL)
+
+The two files in this directory are subsets of Noto Sans JP v2.004 produced
+with fontTools' pyftsubset (see scripts/build-pdf-font.mjs):
+
+  NotoSansJP-Regular.ttf  JIS X 0208 (kana, symbols, JIS level 1 + 2 kanji)
+  NotoSansJP-Bold.ttf     JIS X 0208 without level 2 kanji
+
+Hinting and OpenType layout tables were dropped to keep the PDF functions
+small; at render time each document is subset again to the characters it
+uses (HarfBuzz via subset-font) before pdf-lib embeds it.

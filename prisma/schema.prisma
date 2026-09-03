@@ -103,6 +103,12 @@ model Payment {
   // Bank transfer only: the last manual "re-notify" of the merchant (API 再通知) and how many were sent.
   renotifiedAt      DateTime?
   renotifyCount     Int       @default(0)
+  // Konbini (Phase K-1): store brand (seven | lawson | familymart | ministop |
+  // other), the 13-digit payment slip number the customer quotes at the till
+  // and when it was paid. The deadline reuses transferDueAt.
+  cvsBrand          String?
+  cvsReceiptNo      String?   @unique
+  cvsPaidAt         DateTime?
   subscriptionId    String?
   subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   createdAt         DateTime  @default(now())
@@ -117,6 +123,7 @@ model Payment {
   chargebacks Chargeback[]
   unmatchedDeposits UnmatchedDeposit[]
   notes             TransactionNote[]
+  receipt           Receipt?
 
   @@unique([providerId, externalId])
   @@index([providerId])
@@ -224,6 +231,12 @@ model Merchant {
   // requested (返金可能期限).
   transferDueDays   Int      @default(7)
   refundWindowDays  Int      @default(180)
+  // Days a customer has to pay at the konbini counter (Phase K-1).
+  cvsDueDays        Int      @default(3)
+  // Qualified-invoice data of the merchant (Phase K-3): its own registration
+  // number (T + 13 digits, optional) and postal address printed on invoices.
+  invoiceNumber     String?
+  address           String?
   // ── Settlement settings (Phase D, lib/settlements/types.ts) ─────────────
   // monthly | semimonthly | weekly
   settlementCycle   String   @default("monthly")
@@ -359,6 +372,7 @@ model ApiKey {
 model AdminUser {
   notes         TransactionNote[]
   notificationPreferences NotificationPreference[]
+  receiptsIssued Receipt[]
   id            String    @id @default(cuid())
   loginId       String    @unique
   name          String
@@ -468,6 +482,8 @@ model SettlementLine {
   amount       Int
   fee          Int             @default(0)
   occurredAt   DateTime
+  // Consumption-tax category of the fee (Phase K-3): standard10 | reduced8 | exempt.
+  taxCategory  String?
 
   @@index([batchId])
 }
@@ -839,7 +855,38 @@ model GlobalSetting {
   viewerCsvExport Boolean  @default(false)
   /// Slack Incoming Webhook URL for notification fan-out (Phase J).
   slackWebhookUrl String?
+  /// Qualified-invoice issuer (Phase K-3): the PSP's name, registration
+  /// number (T + 13 digits), address and phone printed on invoices, and how
+  /// consumption tax is rounded per rate (floor | round | ceil).
+  issuerName           String?
+  issuerRegistrationNo String?
+  issuerAddress        String?
+  issuerTel            String?
+  taxRounding          String   @default("floor")
   updatedAt       DateTime @updatedAt
+}
+
+/// Receipt (領収書) issued for a completed transaction (Phase K-2). One row
+/// per payment: the number is assigned on the first issue and a re-issue only
+/// bumps reissueCount (the PDF is stamped "再発行"). source: dashboard |
+/// customer (downloaded from the hosted payment page).
+model Receipt {
+  id            String    @id @default(cuid())
+  receiptNo     String    @unique
+  paymentId     String    @unique
+  payment       Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  merchantId    String?
+  livemode      Boolean   @default(false)
+  recipientName String
+  amount        Int
+  source        String    @default("dashboard")
+  issuedById    String?
+  issuedBy      AdminUser? @relation(fields: [issuedById], references: [id], onDelete: SetNull)
+  reissueCount  Int       @default(0)
+  issuedAt      DateTime  @default(now())
+  lastIssuedAt  DateTime  @default(now())
+
+  @@index([merchantId, issuedAt])
 }
 
 /// Per-admin channel choice per notification kind (Phase J). In-app is

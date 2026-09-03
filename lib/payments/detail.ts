@@ -57,6 +57,12 @@ export interface TransactionDetail {
   /** Bank transfer only: last manual API re-notification of the merchant (API 再通知). */
   renotifiedAt: Date | null;
   renotifyCount: number;
+  /** Konbini (Phase K-1): brand, receipt number, paid time. */
+  cvsBrand: string | null;
+  cvsReceiptNo: string | null;
+  cvsPaidAt: Date | null;
+  /** Receipt (Phase K-2) issued for this transaction, if any. */
+  receipt: { id: string; receiptNo: string; recipientName: string; amount: number; reissueCount: number; issuedAt: Date; lastIssuedAt: Date; source: string } | null;
   /** capturedAt + merchant.refundWindowDays (null when not completed or no merchant). */
   refundDeadlineAt: Date | null;
   /** Amount reserved by refund requests not decided yet. */
@@ -104,6 +110,10 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
       depositDiffStatus: true,
       renotifiedAt: true,
       renotifyCount: true,
+      cvsBrand: true,
+      cvsReceiptNo: true,
+      cvsPaidAt: true,
+      receipt: { select: { id: true, receiptNo: true, recipientName: true, amount: true, reissueCount: true, issuedAt: true, lastIssuedAt: true, source: true } },
       merchant: { select: { id: true, merchantCode: true, siteName: true, transferIdDigits: true, refundWindowDays: true } },
       provider: {
         select: { id: true, displayName: true, providerKey: true, category: true, credentials: true },
@@ -153,6 +163,10 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
     depositDiffStatus: payment.depositDiffStatus,
     renotifiedAt: payment.renotifiedAt,
     renotifyCount: payment.renotifyCount,
+    cvsBrand: payment.cvsBrand,
+    cvsReceiptNo: payment.cvsReceiptNo,
+    cvsPaidAt: payment.cvsPaidAt,
+    receipt: payment.receipt,
     refundDeadlineAt:
       payment.capturedAt && payment.merchant ? new Date(payment.capturedAt.getTime() + payment.merchant.refundWindowDays * 86_400_000) : null,
     pendingRefundAmount,

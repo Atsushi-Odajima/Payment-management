@@ -2,8 +2,10 @@
 
 // Hosted checkout for a payment link (customer-facing, no admin chrome).
 // Step 1: pick a method and enter the name / e-mail → POST /api/pay/:token.
-// Step 2: bank transfer shows the transfer ID and deadline; other methods
-// show a demo "pay" button that captures the transaction.
+// Step 2: bank transfer shows the transfer ID and deadline; konbini shows
+// the store, receipt number and deadline (Phase K-1); other methods show a
+// demo "pay" button that captures the transaction. Once completed, a signed
+// receipt link (Phase K-2) lets the customer download the PDF — no session.
 
 import { useState } from "react";
 import { useApiJson, useFormatDateTime, useLang, useT } from "@/components/language-provider";
@@ -11,6 +13,7 @@ import { FormField } from "@/components/ui/form-field";
 import { LanguageToggle } from "@/components/language-toggle";
 import { WirePayIcon } from "@/components/wire-pay-icon";
 import type { LinkUnavailableReason } from "@/lib/payment-links/types";
+import { CVS_BRANDS, DEFAULT_CVS_BRAND, formatCvsReceiptNo, isCvsBrand, type CvsBrand } from "@/lib/payments/konbini";
 import type { PaymentMethod } from "@/lib/payments/methods";
 import { CATEGORIES } from "@/lib/providers/registry";
 import { pickText, type MessageKey } from "@/lib/i18n";
@@ -28,7 +31,7 @@ export interface PublicLinkInfo {
 }
 
 interface CheckoutResult {
-  payment: { id: string; status: string; amount: number; transferId: string | null; transferDueAt: string | null; method: string | null; orderNumber: string };
+  payment: { id: string; status: string; amount: number; transferId: string | null; transferDueAt: string | null; cvsBrand: string | null; cvsReceiptNo: string | null; method: string | null; orderNumber: string };
   method: PaymentMethod;
 }
 
@@ -38,12 +41,14 @@ export function PayPageView({ link }: { link: PublicLinkInfo }) {
   const apiJson = useApiJson();
   const formatDate = useFormatDateTime();
   const [method, setMethod] = useState<PaymentMethod | "">(link.methods[0] ?? "");
+  const [cvsBrand, setCvsBrand] = useState<CvsBrand>(DEFAULT_CVS_BRAND);
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CheckoutResult | null>(null);
   const [completed, setCompleted] = useState(false);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
 
   const methodLabel = (m: PaymentMethod) => {
     const c = CATEGORIES.find((x) => x.key === m);
@@ -55,7 +60,11 @@ export function PayPageView({ link }: { link: PublicLinkInfo }) {
     if (!method) return;
     setBusy(true);
     setError(null);
-    const res = await apiJson<CheckoutResult>(`/api/pay/${link.token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ method, customerName, customerEmail }) });
+    const res = await apiJson<CheckoutResult>(`/api/pay/${link.token}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ method, customerName, customerEmail, ...(method === "convenience" ? { cvsBrand } : {}) }),
+    });
     setBusy(false);
     if (!res.ok) {
       setError(res.error.message);
@@ -68,12 +77,13 @@ export function PayPageView({ link }: { link: PublicLinkInfo }) {
     if (!result) return;
     setBusy(true);
     setError(null);
-    const res = await apiJson(`/api/pay/${link.token}/complete`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paymentId: result.payment.id }) });
+    const res = await apiJson<{ receiptUrl: string | null }>(`/api/pay/${link.token}/complete`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paymentId: result.payment.id }) });
     setBusy(false);
     if (!res.ok) {
       setError(res.error.message);
       return;
     }
+    setReceiptUrl(res.data.receiptUrl);
     setCompleted(true);
   }
 
@@ -101,6 +111,14 @@ export function PayPageView({ link }: { link: PublicLinkInfo }) {
           <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900" role="status">
             <p className="font-semibold">{t("pay.completedTitle")}</p>
             <p className="mt-1">{t("pay.completedBody", { order: result.payment.orderNumber })}</p>
+            {receiptUrl && (
+              <div className="mt-3">
+                <a href={receiptUrl} target="_blank" rel="noopener" className="btn-secondary inline-flex">
+                  {t("pay.receiptDownload")}
+                </a>
+                <p className="mt-1 text-xs text-emerald-800">{t("pay.receiptHelp")}</p>
+              </div>
+            )}
           </div>
         ) : result ? (
           <div className="mt-6 space-y-4" role="status">
@@ -116,6 +134,24 @@ export function PayPageView({ link }: { link: PublicLinkInfo }) {
                   <dd>{result.payment.transferDueAt ? formatDate(result.payment.transferDueAt) : "—"}</dd>
                 </dl>
                 <p className="mt-3 text-xs">{t("pay.transferHelp")}</p>
+              </div>
+            ) : result.method === "convenience" && result.payment.cvsReceiptNo ? (
+              <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-900">
+                <p className="font-semibold">{t("pay.cvsTitle")}</p>
+                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                  <dt className="text-sky-700">{t("pay.cvsStore")}</dt>
+                  <dd>{isCvsBrand(result.payment.cvsBrand) ? t(`cvsEnums.brand.${result.payment.cvsBrand}`) : "—"}</dd>
+                  <dt className="text-sky-700">{t("pay.cvsReceiptNo")}</dt>
+                  <dd className="font-mono text-base font-bold">{formatCvsReceiptNo(result.payment.cvsReceiptNo)}</dd>
+                  <dt className="text-sky-700">{t("pay.cvsAmount")}</dt>
+                  <dd className="tabular-nums">{formatYen(result.payment.amount)}</dd>
+                  <dt className="text-sky-700">{t("pay.cvsDue")}</dt>
+                  <dd>{result.payment.transferDueAt ? formatDate(result.payment.transferDueAt) : "—"}</dd>
+                </dl>
+                <p className="mt-3 text-xs">{t("pay.cvsHelp")}</p>
+                <button type="button" className="btn-secondary mt-4 w-full" disabled={busy} onClick={complete}>
+                  {busy ? t("common.processing") : t("pay.cvsPayDemo")}
+                </button>
               </div>
             ) : (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
@@ -148,6 +184,17 @@ export function PayPageView({ link }: { link: PublicLinkInfo }) {
                 </div>
               )}
             </fieldset>
+            {method === "convenience" && (
+              <FormField id="pay-cvs-brand" label={t("pay.cvsBrand")}>
+                <select id="pay-cvs-brand" className="input" value={cvsBrand} onChange={(e) => setCvsBrand(e.target.value as CvsBrand)}>
+                  {CVS_BRANDS.map((b) => (
+                    <option key={b} value={b}>
+                      {t(`cvsEnums.brand.${b}`)}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            )}
             <FormField id="pay-name" label={t("pay.customerName")} required>
               <input id="pay-name" className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} maxLength={120} required autoComplete="name" />
             </FormField>

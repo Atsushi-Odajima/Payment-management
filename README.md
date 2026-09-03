@@ -67,6 +67,8 @@
 - **ロール細分化・取引メモ・決済手段の一時停止** — 5 ロール（admin / accounting / cs / developer / viewer）と `lib/role.ts` の権限マトリクス（リソース × 操作 × ロール。API・ページ・UI・CLAUDE.md・マニュアルの表はすべてここから）、取引の内部メモ（ステータス変更履歴と 1 本のタイムライン、ピン留め、削除だけ監査）、決済手段の全体 / 加盟店別の一時停止（理由必須、自動再開 cron、赤バナー、障害お知らせの下書き、全決済経路で 409）
 - **通知センター** — 14 種の管理者向け通知（Webhook 断念・決済手段停止・バッチ失敗・チャージバック期限・期限超過の日次まとめ・ブラックリスト候補・限度額超過・定期課金失敗・精算の生成 / 保留・返金申請・加盟店登録）をヘッダーのベル + 一覧で確認し、管理者ごとにメール / Slack（Incoming Webhook 実送信、1 回リトライ、送信ログ）を選択
 - **未消込入金と API 再通知（銀行振込のみ）** — 振込IDを付け忘れた入金を「未消込入金」として受け（入金通知 API は 404 ではなく 202 で記録）、サポートが振込IDを付与すると通常の入金消込が走り、完了時に加盟店の通知先へ `payment.completed` を送信。取引詳細の「API 再通知」で完了通知を再送でき、手動で加盟店側を更新せず API で反映できる
+- **コンビニ決済** — 13 桁の受付番号・支払店舗・加盟店ごとの支払期限（既定 3 日）を発行し、申請一覧では振込待ちと同じレーンで期限順に表示。店頭支払いの通知 `POST /api/demo/cvs-notify` は銀行振込と同じ入金消込を通り、期限切れは毎時の cron、期限超過は日次通知。決済リンクページでも店舗を選択可能
+- **領収書 PDF / インボイス** — 完了取引の領収書（月次連番 `RC-YYYYMM-00001`、宛名編集、再発行回数を PDF に表示）を管理画面から発行し、決済リンクの購入者には署名付き URL（30 日）でダウンロードを提供。確定以降の精算バッチからは決済手数料の適格請求書 PDF（発行者登録番号 T + 13 桁、税区分ごとの内税計算、端数処理の設定）。PDF は pdf-lib + Noto Sans JP サブセット同梱でヘッドレスブラウザ不要
 - **管理画面マニュアル** — 左に目次・右に本文の 19 章構成。`content/manual/{ja,en}/*.md` を自前の Markdown レンダラで描画し、表示言語に連動。各画面ヘッダーの「?」から該当章へ。通知パラメータ・署名検証・加盟店 API・精算サイクルは開発者向けの精度で記載し、「はじめに」に権限マトリクス
 
 ## アーキテクチャ
@@ -197,6 +199,10 @@ app/
     audit-logs/              操作ログ一覧 + CSV
     search/                  横断検索
     demo/reset/ demo/deposit-notify/  CRON_SECRET で保護されたデモ初期化 / 銀行の入金通知を模した消込 API（DEPOSIT_NOTIFY_SECRET）
+    demo/cvs-notify/         コンビニの入金通知を模した消込 API（同じ secret）
+    payments/[id]/receipt/   領収書の発行（POST）と PDF（GET）
+    settlements/[id]/invoice/ 適格請求書 PDF
+lib/pdf/                     pdf-lib + Noto Sans JP サブセット（fonts/）、領収書・請求書のレイアウト
 middleware.ts                rate limit · CSRF · DEMO_READONLY · セッション
 components/
   views/                     各画面の表示（client, i18n）
@@ -332,6 +338,8 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 - **Fine-grained roles, transaction notes, payment-method suspension** — five roles (admin / accounting / cs / developer / viewer) driven by the permission matrix in `lib/role.ts` (resource × action × role; the API, pages, UI, CLAUDE.md and the manual tables all derive from it), internal transaction notes merged with the status history into one timeline (pins, audited deletion), and global / per-merchant payment-method suspension (reason required, auto-resume cron, red banner, incident-announcement draft, 409 on every checkout path)
 - **Notification centre** — 14 operator notification kinds (abandoned webhooks, method suspension, batch failures, chargeback deadlines, daily overdue digests, blacklist candidates, limit blocks, subscription failures, settlement generation / hold, refund requests, merchant registration) in a header bell and a list, with per-admin e-mail / Slack delivery (real Incoming Webhook posts, one retry, logged)
 - **Unmatched deposits and API re-notify (bank transfers only)** — deposits that arrive without a transfer ID are kept as "unmatched" (the deposit notification API answers 202 instead of 404); support attaches the transfer ID, the normal reconciliation runs and `payment.completed` goes to the merchant's notification URL on completion. "API re-notify" on the transaction detail resends the completion notification, so the merchant side is updated by API rather than by hand
+- **Konbini payments** — a 13-digit receipt number, the store and a per-merchant deadline (default 3 days); the application list shows waiting slips in the same deadline lane as awaiting transfers. The store's payment notification `POST /api/demo/cvs-notify` runs the same reconciliation as a bank deposit, the hourly cron expires overdue slips and a daily notification reports them. The hosted payment page lets customers pick the store
+- **Receipt PDFs / invoices** — receipts for completed transactions (monthly sequence `RC-YYYYMM-00001`, editable addressee, re-issue count stamped on the PDF) issued from the dashboard, plus a signed 30-day download link for payment-link customers. Confirmed settlement batches export a qualified invoice PDF for the fees (issuer registration number T + 13 digits, tax computed per rate on tax-inclusive fees, configurable rounding). PDFs use pdf-lib with a bundled Noto Sans JP subset — no headless browser
 - **In-app manual** — 19 chapters, table of contents on the left and the chapter on the right, rendered from `content/manual/{ja,en}/*.md` by a small in-house Markdown renderer and linked to the UI language. Every page header has a "?" that opens its chapter. Notification parameters, signature verification, the merchant API and settlement cycles are documented at integrator precision, and the introduction carries the permission matrix.
 
 ## Architecture

@@ -103,10 +103,11 @@ export const TRANSITIONS: Record<PaymentAction, Transition> = {
     from: ["pending", "awaiting_transfer"],
     to: "expired",
   },
-  // 入金消込 — bank transfer only. Lands on captured when the deposits cover
-  // the amount, otherwise stays awaiting_transfer with depositDiff = short.
+  // 入金消込 — bank transfer (awaiting_transfer) and the konbini payment
+  // notification (pending, Phase K). Lands on captured when the deposits cover
+  // the amount, otherwise stays put with depositDiff = short.
   deposit: {
-    from: ["awaiting_transfer"],
+    from: ["awaiting_transfer", "pending"],
     to: "captured",
     stampField: "capturedAt",
   },

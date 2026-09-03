@@ -27,7 +27,7 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 // Own authentication: PSP webhook signatures, merchant API keys.
 const SIGNATURE_AUTH_PREFIXES = ["/api/webhooks/", "/api/merchant-api/"];
 // Bearer secrets: cron / demo endpoints.
-const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify", "/api/cron/expire-transfers", "/api/cron/webhook-retry", "/api/cron/subscriptions"];
+const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify", "/api/demo/cvs-notify", "/api/cron/expire-transfers", "/api/cron/webhook-retry", "/api/cron/subscriptions"];
 // Public demo endpoints without authentication (the webhook receiver is only an echo).
 const PUBLIC_PATHS = ["/api/demo/webhook-receiver"];
 // Hosted checkout (payment links): public, CSRF-protected by the same-origin rules below.

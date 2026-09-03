@@ -12,7 +12,7 @@ import type { PrismaClient } from "@prisma/client";
 import { ApiError } from "@/lib/api/handler";
 import { recordAudit, type AuditContext } from "@/lib/audit";
 import { DEMO_LIMITS } from "@/lib/demo";
-import { notifyTransferIssued } from "@/lib/email/hooks";
+import { notifyCvsIssued, notifyTransferIssued } from "@/lib/email/hooks";
 import { isUniqueViolation } from "@/lib/ids";
 import { emitNotification } from "@/lib/notifications/emit";
 import { checkLimit, limitFailureReason } from "@/lib/merchants/limits";
@@ -20,6 +20,7 @@ import { assertMethodAvailable } from "@/lib/payments/method-controls";
 import { toPaymentMethod } from "@/lib/payments/methods";
 import { initialStatus } from "@/lib/payments/transitions";
 import { DEFAULT_TRANSFER_ID_DIGITS, generateTransferId, isTransferIdDigits, transferDueDate } from "@/lib/payments/transfer";
+import { CVS_BRANDS, DEFAULT_CVS_BRAND, cvsDueDate, generateCvsReceiptNo } from "@/lib/payments/konbini";
 import { blockedFailureReason, cardFingerprint, checkBlacklist, detectRepeatedFailures } from "@/lib/risk/service";
 import { cardInputSchema } from "@/lib/risk/types";
 import { emitPaymentWebhook } from "@/lib/webhooks/deliver";
@@ -42,6 +43,8 @@ export const createTransactionSchema = z.object({
   idempotencyKey: z.string().min(8).max(128).optional(),
   // Demo card details (Phase F): only a fingerprint and the last 4 digits are stored.
   card: cardInputSchema.optional(),
+  // Konbini (Phase K-1): which store chain the customer will pay at.
+  cvsBrand: z.enum(CVS_BRANDS).optional(),
 });
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 
@@ -60,6 +63,8 @@ export interface CreatedTransaction {
   externalId: string | null;
   transferId: string | null;
   transferDueAt: Date | null;
+  cvsBrand: string | null;
+  cvsReceiptNo: string | null;
   status: string;
   failureReason: string | null;
   replayed: boolean;
@@ -76,7 +81,7 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
   const idempotencyKey = body.idempotencyKey;
   // Idempotent replay: same key → same result, no second payment.
   if (idempotencyKey) {
-    const existing = await prisma.payment.findUnique({ where: { idempotencyKey }, select: { id: true, externalId: true, transferId: true, transferDueAt: true, status: true, failureReason: true } });
+    const existing = await prisma.payment.findUnique({ where: { idempotencyKey }, select: { id: true, externalId: true, transferId: true, transferDueAt: true, cvsBrand: true, cvsReceiptNo: true, status: true, failureReason: true } });
     if (existing) return { ...existing, replayed: true };
   }
 
@@ -86,11 +91,13 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
 
   let transferDigits = DEFAULT_TRANSFER_ID_DIGITS;
   let transferDueDays: number | undefined;
+  let cvsDueDays: number | undefined;
   if (body.merchantId) {
-    const merchant = await prisma.merchant.findUnique({ where: { id: body.merchantId }, select: { id: true, transferIdDigits: true, transferDueDays: true } });
+    const merchant = await prisma.merchant.findUnique({ where: { id: body.merchantId }, select: { id: true, transferIdDigits: true, transferDueDays: true, cvsDueDays: true } });
     if (!merchant) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: { merchantId: "invalid" } });
     if (isTransferIdDigits(merchant.transferIdDigits)) transferDigits = merchant.transferIdDigits;
     transferDueDays = merchant.transferDueDays;
+    cvsDueDays = merchant.cvsDueDays;
   }
 
   const count = await prisma.payment.count();
@@ -115,10 +122,12 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
   const failureReason = blocked ? blockedFailureReason(blocked.kind) : limit.ok ? null : limitFailureReason(limit.reason);
   const status = failureReason ? "failed" : initialStatus(provider.category, body.autoCapture);
   const isBank = method === "bank" && !failureReason;
+  // Konbini slips (Phase K-1) get a 13-digit receipt number and the merchant's counter deadline.
+  const isCvs = method === "convenience" && !failureReason;
   const actor = opts.source === "subscription" ? "system" : "dashboard";
 
-  // A random transfer id can collide with an existing one; the unique
-  // constraint rejects it and we draw a new one once.
+  // A random transfer id / receipt number can collide with an existing one;
+  // the unique constraint rejects it and we draw a new one once.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const payment = await prisma.payment.create({
@@ -147,7 +156,9 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
           createdAt: now,
           capturedAt: status === "captured" ? now : null,
           transferId: isBank ? generateTransferId(transferDigits) : null,
-          transferDueAt: isBank ? transferDueDate(now, transferDueDays) : null,
+          transferDueAt: isBank ? transferDueDate(now, transferDueDays) : isCvs ? cvsDueDate(now, cvsDueDays) : null,
+          cvsBrand: isCvs ? (body.cvsBrand ?? DEFAULT_CVS_BRAND) : null,
+          cvsReceiptNo: isCvs ? generateCvsReceiptNo() : null,
           events: {
             create: [
               { type: "created", fromStatus: null, toStatus: status === "captured" ? "authorized" : status === "failed" ? "pending" : status, amount: body.amount, actor },
@@ -156,7 +167,7 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
             ],
           },
         },
-        select: { id: true, externalId: true, transferId: true, transferDueAt: true, status: true, failureReason: true },
+        select: { id: true, externalId: true, transferId: true, transferDueAt: true, cvsBrand: true, cvsReceiptNo: true, status: true, failureReason: true },
       });
       await recordAudit(prisma, opts.audit, {
         action: "payment.create",
@@ -173,15 +184,16 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
       if (status === "captured" && body.merchantId && opts.source !== "subscription") {
         await emitPaymentWebhook(prisma, payment.id, "payment.completed");
       }
-      // Bank transfer instructions to the customer (Phase G-2).
+      // Bank transfer / konbini payment instructions to the customer (Phase G-2 / K-1).
       if (isBank) await notifyTransferIssued(prisma, payment.id);
+      if (isCvs) await notifyCvsIssued(prisma, payment.id);
       // Repeated failures from the same card / IP / email become blacklist candidates (F-2).
       if (status === "failed") {
         await detectRepeatedFailures(prisma, { cardHash, clientIp, email: body.customerEmail }, now).catch((e) => console.error("[risk] detect failed", e));
       }
       return { ...payment, replayed: false };
     } catch (err) {
-      if (attempt === 0 && isBank && isUniqueViolation(err)) continue;
+      if (attempt === 0 && (isBank || isCvs) && isUniqueViolation(err)) continue;
       throw err;
     }
   }

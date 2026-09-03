@@ -1,4 +1,7 @@
-// Merchant deadline settings (B-3): transfer deadline days and refund window
-// days. Ranges are shared by the API schema and the form.
+// Merchant deadline settings (B-3, K-1): transfer deadline days, konbini
+// payment deadline days and refund window days. Ranges are shared by the API
+// schema and the form.
 
-export const TERMS_LIMITS = { transferDueDays: { min: 1, max: 60 }, refundWindowDays: { min: 0, max: 365 } } as const;
+import { CVS_DUE_LIMITS } from "@/lib/payments/konbini";
+
+export const TERMS_LIMITS = { transferDueDays: { min: 1, max: 60 }, cvsDueDays: CVS_DUE_LIMITS, refundWindowDays: { min: 0, max: 365 } } as const;
