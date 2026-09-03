@@ -44,7 +44,7 @@ Every change is written to the **status history** with the previous and new stat
 
 ## Actions (master role)
 
-Actions on the detail screen require the master role (toggle in the header); the general role is read-only. The server enforces the check.
+Actions on the detail screen require an account with the master role; the general role is read-only. The server enforces the check.
 
 | Method | Button | Behavior |
 |---|---|---|

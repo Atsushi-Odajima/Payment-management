@@ -6,12 +6,13 @@ import {
   encryptMerchantPassword,
   generateMerchantPassword,
 } from "@/lib/merchants/secrets";
+import { recordAudit, requestIp } from "@/lib/audit";
 
 type Ctx = { params: { id: string } };
 
 /** GET — reveal the merchant password (master role only). */
 export const GET = withApiHandler<Ctx>(async (req, { params }) => {
-  requireMaster(req);
+  await requireMaster(req);
   const m = await prisma.merchant.findUnique({ where: { id: params.id }, select: { passwordEnc: true } });
   if (!m) throw new ApiError(404, "not_found", "errors.notFound");
   // DecryptionError → 422 "undecryptable" via withApiHandler.
@@ -20,13 +21,13 @@ export const GET = withApiHandler<Ctx>(async (req, { params }) => {
 
 /** POST — regenerate the password (master role only); returns the new value once. */
 export const POST = withApiHandler<Ctx>(async (req, { params }) => {
-  requireMaster(req);
+  const actor = await requireMaster(req);
   const exists = await prisma.merchant.findUnique({ where: { id: params.id }, select: { id: true } });
   if (!exists) throw new ApiError(404, "not_found", "errors.notFound");
   const password = generateMerchantPassword();
-  await prisma.merchant.update({
-    where: { id: params.id },
-    data: { passwordEnc: encryptMerchantPassword(password) },
+  await prisma.$transaction(async (tx) => {
+    await tx.merchant.update({ where: { id: params.id }, data: { passwordEnc: encryptMerchantPassword(password) } });
+    await recordAudit(tx, { actor: { type: "admin", id: actor.id }, ip: requestIp(req) }, { action: "merchant.password_regenerate", targetType: "merchant", targetId: params.id });
   });
   return ok({ password });
 });

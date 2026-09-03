@@ -4,7 +4,7 @@
 //   1. rate limit (per IP, best-effort — see lib/rate-limit.ts)
 //   2. CSRF: same-origin Origin/Referer + X-Requested-With: fetch
 //   3. DEMO_READONLY: refuse destructive operations on the public demo
-//   4. session cookie (only when ADMIN_PASSWORD is configured)
+//   4. session cookie (signature + expiry; route handlers re-check the user)
 //
 // Reads (GET/HEAD) stay public so the demo can be browsed without logging in.
 // Webhooks authenticate with an HMAC signature, the demo reset endpoint with
@@ -15,7 +15,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isLang, type Lang } from "@/lib/i18n";
 import { failResponse } from "@/lib/api/envelope";
-import { SESSION_COOKIE, isAuthConfigured, verifySessionToken } from "@/lib/auth";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { isDemoReadonly } from "@/lib/demo";
 
@@ -26,7 +26,8 @@ export const config = {
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const SIGNATURE_AUTH_PREFIXES = ["/api/webhooks/"];
 const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify"];
-const LOGIN_PATH = "/api/auth/login";
+// The two login steps authenticate by themselves (password / 2FA token).
+const LOGIN_PATHS = ["/api/auth/login", "/api/auth/2fa"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -50,7 +51,7 @@ export async function middleware(req: NextRequest) {
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     req.headers.get("x-real-ip") ||
     "unknown";
-  const isLogin = pathname === LOGIN_PATH;
+  const isLogin = LOGIN_PATHS.includes(pathname);
   const rl = rateLimit(`${isLogin ? "login" : "mutate"}:${ip}`, {
     limit: isLogin ? 10 : 60,
     windowMs: 60_000,
@@ -85,11 +86,9 @@ export async function middleware(req: NextRequest) {
   }
 
   // 4. Session
-  if (isAuthConfigured()) {
-    const token = req.cookies.get(SESSION_COOKIE)?.value;
-    if (!(await verifySessionToken(token))) {
-      return failResponse(lang, 401, "unauthorized", "errors.unauthorized");
-    }
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  if (!(await verifySessionToken(token))) {
+    return failResponse(lang, 401, "unauthorized", "errors.unauthorized");
   }
 
   return NextResponse.next();

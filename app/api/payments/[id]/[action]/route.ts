@@ -4,6 +4,7 @@ import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { requireMaster } from "@/lib/api/role-guard";
 import { applyPaymentAction } from "@/lib/payments/actions";
 import { MASTER_ACTIONS, UI_ACTIONS, isPaymentAction } from "@/lib/payments/transitions";
+import { auditContextFromRequest } from "@/lib/audit";
 
 const RefundBody = z.object({
   amount: z.number().int().positive().optional(),
@@ -27,7 +28,7 @@ export const POST = withApiHandler<{ params: { id: string; action: string } }>(
     if (!isPaymentAction(params.action) || !UI_ACTIONS.includes(params.action)) {
       throw new ApiError(404, "invalid_action", "errors.invalidAction");
     }
-    if (MASTER_ACTIONS.includes(params.action)) requireMaster(req);
+    if (MASTER_ACTIONS.includes(params.action)) await requireMaster(req);
 
     let amount: number | undefined;
     let reason: string | null = null;
@@ -45,6 +46,7 @@ export const POST = withApiHandler<{ params: { id: string; action: string } }>(
       amount,
       reason,
       actor: "dashboard",
+      audit: await auditContextFromRequest(req),
     });
     return ok(result);
   },

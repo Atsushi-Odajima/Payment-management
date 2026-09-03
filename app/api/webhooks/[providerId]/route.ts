@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { ApiError, ok, withApiHandler } from "@/lib/api/handler";
 import { readCredentialsForUse } from "@/lib/providers/credentials";
 import { applyPaymentAction } from "@/lib/payments/actions";
+import { requestIp, systemAuditContext } from "@/lib/audit";
 import { verifyWebhookSignature } from "@/lib/webhooks/verify";
 import {
   EVENT_TO_ACTION,
@@ -98,6 +99,7 @@ export const POST = withApiHandler<{ params: { providerId: string } }>(
         action: EVENT_TO_ACTION[event.type],
         amount: event.data.amount,
         actor: "webhook",
+        audit: systemAuditContext("webhook", requestIp(req)),
       });
       await prisma.webhookEvent.update({
         where: { id: stored.id },

@@ -5,6 +5,7 @@ import { nextAgentCode } from "@/lib/agents/ids";
 import { isUniqueViolation } from "@/lib/ids";
 import { DEMO_LIMITS } from "@/lib/demo";
 import { AGENT_SELECT } from "./select";
+import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 
 export const GET = withApiHandler(async () => {
   const agents = await prisma.agent.findMany({
@@ -22,11 +23,14 @@ export const POST = withApiHandler(async (req) => {
   if (count >= DEMO_LIMITS.agents) {
     throw new ApiError(403, "demo_limit", "errors.demoLimit", { limit: DEMO_LIMITS.agents });
   }
+  const audit = await auditContextFromRequest(req);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const created = await prisma.$transaction(async (tx) => {
         const agentCode = await nextAgentCode(tx);
-        return tx.agent.create({ data: { ...v.data, agentCode }, select: AGENT_SELECT });
+        const row = await tx.agent.create({ data: { ...v.data, agentCode }, select: AGENT_SELECT });
+        await recordAudit(tx, audit, { action: "agent.create", targetType: "agent", targetId: row.id, after: row });
+        return row;
       });
       return ok(created, { status: 201 });
     } catch (err) {

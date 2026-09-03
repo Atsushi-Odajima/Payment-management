@@ -1,7 +1,8 @@
 "use client";
 
-// Application chrome: top header (all sizes), sidebar (desktop), bottom tab
-// bar (mobile), demo / auth banners, and the confirm/toast providers.
+// Application chrome: top header (search, account, language), grouped
+// sidebar (desktop), bottom tab bar (mobile), demo banner, and the
+// confirm/toast providers. Navigation comes from lib/nav.ts.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,44 +10,34 @@ import { useState } from "react";
 import { NavLink } from "./nav-link";
 import { WirePayIcon } from "./wire-pay-icon";
 import { LanguageToggle } from "./language-toggle";
-import { RoleToggle } from "./role-toggle";
+import { SearchBox } from "./search-box";
 import { ConfirmProvider } from "./confirm-dialog";
 import { ToastProvider } from "./toast";
 import { Icon, type IconName } from "./icons";
 import { useApiJson, useT } from "./language-provider";
+import { useSession } from "./session-provider";
+import { MOBILE_TABS, visibleNavGroups } from "@/lib/nav";
+import type { MessageKey } from "@/lib/i18n";
 
-export interface AppShellProps {
-  children: React.ReactNode;
-  /** ADMIN_PASSWORD is configured (mutations require login). */
-  authConfigured: boolean;
-  /** The current request carries a valid session cookie. */
-  authenticated: boolean;
-}
-
-export function AppShell({ children, authConfigured, authenticated }: AppShellProps) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   const t = useT();
-  // The six top-level features (mirrored by the dashboard cards).
-  const primary: Array<{ href: string; label: string; icon: IconName; exact?: boolean }> = [
-    { href: "/merchants", label: t("nav.merchants"), icon: "store" },
-    { href: "/agents", label: t("nav.agents"), icon: "users" },
-    { href: "/payments", label: t("nav.payments"), icon: "list" },
-    { href: "/applications", label: t("nav.applications"), icon: "inbox" },
-    { href: "/ip-restrictions", label: t("nav.ipRestrictions"), icon: "shield" },
-    { href: "/manual", label: t("nav.manual"), icon: "book" },
-  ];
+  const { isMaster } = useSession();
+  const groups = visibleNavGroups(isMaster);
 
   return (
     <ConfirmProvider>
       <ToastProvider>
         <div className="flex min-h-screen flex-col">
-          <header className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur md:px-6">
-            <Link href="/" className="flex items-center gap-2 md:invisible" aria-label="Wire Pay">
+          <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur md:px-6">
+            <Link href="/" className="flex shrink-0 items-center gap-2 md:invisible md:w-0" aria-label="Wire Pay">
               <WirePayIcon className="h-7 w-7 shrink-0 rounded-md shadow-sm" />
-              <span className="text-sm font-semibold text-slate-900">Wire Pay</span>
+              <span className="text-sm font-semibold text-slate-900 md:hidden">Wire Pay</span>
             </Link>
+            <div className="hidden flex-1 justify-center sm:flex">
+              <SearchBox />
+            </div>
             <div className="flex items-center gap-2">
-              <AuthControl configured={authConfigured} authenticated={authenticated} />
-              <RoleToggle />
+              <AccountMenu />
               <LanguageToggle />
             </div>
           </header>
@@ -60,24 +51,24 @@ export function AppShell({ children, authConfigured, authenticated }: AppShellPr
                 </Link>
                 <p className="mt-1 text-xs text-slate-500">{t("brand.tagline")}</p>
               </div>
-              <nav aria-label={t("nav.main")} className="flex-1 space-y-1 px-3 py-4 text-sm">
+              <nav aria-label={t("nav.main")} className="flex-1 overflow-y-auto px-3 py-4 text-sm">
                 <NavLink href="/" exact>
                   <Icon name="home" className="h-4 w-4" />
                   <span>{t("nav.dashboard")}</span>
                 </NavLink>
-                {primary.map((item) => (
-                  <NavLink key={item.href} href={item.href}>
-                    <Icon name={item.icon} className="h-4 w-4" />
-                    <span>{item.label}</span>
-                  </NavLink>
+                {groups.map((g) => (
+                  <div key={g.key} className="mt-3">
+                    <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{t(`nav.groups.${g.key}` as MessageKey)}</p>
+                    <div className="space-y-0.5">
+                      {g.items.map((item) => (
+                        <NavLink key={item.key} href={item.href}>
+                          <Icon name={item.icon} className="h-4 w-4" />
+                          <span>{t(`nav.items.${item.key}` as MessageKey)}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  </div>
                 ))}
-                <p className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                  {t("nav.settings")}
-                </p>
-                <NavLink href="/providers">
-                  <Icon name="plug" className="h-4 w-4" />
-                  <span>{t("nav.providers")}</span>
-                </NavLink>
               </nav>
               <div className="border-t border-slate-200 px-6 py-4 text-xs text-slate-500">
                 <p className="font-medium text-slate-700">{t("nav.demoMode")}</p>
@@ -86,27 +77,20 @@ export function AppShell({ children, authConfigured, authenticated }: AppShellPr
             </aside>
 
             <main className="min-w-0 flex-1">
-              {!authConfigured && (
-                <div role="note" className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900 md:px-8">
-                  {t("nav.authUnconfigured")}
-                </div>
-              )}
               <div className="border-b border-slate-200 bg-slate-100 px-4 py-2 text-xs text-slate-600 md:hidden">
                 <span className="font-medium text-slate-700">{t("nav.demoMode")}</span> — {t("nav.demoModeNote")}
+              </div>
+              <div className="px-4 pt-3 sm:hidden">
+                <SearchBox id="global-search-mobile" />
               </div>
               <div className="mx-auto max-w-6xl px-4 py-8 pb-24 md:px-8 md:pb-8">{children}</div>
             </main>
           </div>
 
-          <nav
-            aria-label={t("nav.main")}
-            className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden"
-          >
-            <TabLink href="/" exact label={t("nav.tabDashboard")} icon="home" />
-            <TabLink href="/merchants" label={t("nav.tabMerchants")} icon="store" />
-            <TabLink href="/payments" label={t("nav.tabPayments")} icon="list" />
-            <TabLink href="/applications" label={t("nav.tabApplications")} icon="inbox" />
-            <TabLink href="/manual" label={t("nav.tabManual")} icon="book" />
+          <nav aria-label={t("nav.main")} className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden">
+            {MOBILE_TABS.map((tab) => (
+              <TabLink key={tab.key} href={tab.href} exact={tab.exact} label={t(`nav.tabs.${tab.key}` as MessageKey)} icon={tab.icon} />
+            ))}
           </nav>
         </div>
       </ToastProvider>
@@ -114,13 +98,13 @@ export function AppShell({ children, authConfigured, authenticated }: AppShellPr
   );
 }
 
-function AuthControl({ configured, authenticated }: { configured: boolean; authenticated: boolean }) {
+function AccountMenu() {
   const t = useT();
   const router = useRouter();
   const apiJson = useApiJson();
+  const { user } = useSession();
   const [busy, setBusy] = useState(false);
-  if (!configured) return null;
-  if (!authenticated) {
+  if (!user) {
     return (
       <Link href="/login" className="btn-secondary px-3 py-1.5 text-xs">
         {t("nav.login")}
@@ -128,31 +112,35 @@ function AuthControl({ configured, authenticated }: { configured: boolean; authe
     );
   }
   return (
-    <button
-      type="button"
-      className="btn-secondary px-3 py-1.5 text-xs"
-      disabled={busy}
-      onClick={async () => {
-        setBusy(true);
-        await apiJson("/api/auth/logout", { method: "POST" });
-        setBusy(false);
-        router.refresh();
-      }}
-    >
-      {t("nav.logout")}
-    </button>
+    <div className="flex items-center gap-1.5">
+      <Link href="/account" className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-100" title={t("nav.account")}>
+        <Icon name="user" className="h-4 w-4 text-slate-500" />
+        <span className="hidden max-w-[10rem] truncate sm:inline">{user.name}</span>
+        <span className="badge bg-slate-800 text-white ring-slate-700">{t(`role.${user.role}`)}</span>
+      </Link>
+      <button
+        type="button"
+        className="btn-secondary px-2.5 py-1.5 text-xs"
+        disabled={busy}
+        aria-label={t("nav.logout")}
+        title={t("nav.logout")}
+        onClick={async () => {
+          setBusy(true);
+          await apiJson("/api/auth/logout", { method: "POST" });
+          setBusy(false);
+          router.push("/login");
+          router.refresh();
+        }}
+      >
+        <Icon name="logout" className="h-4 w-4" />
+      </button>
+    </div>
   );
 }
 
 function TabLink({ href, exact, label, icon }: { href: string; exact?: boolean; label: string; icon: IconName }) {
   return (
-    <NavLink
-      href={href}
-      exact={exact}
-      className="flex flex-col items-center gap-0.5 px-2 py-2 text-[11px] font-medium"
-      activeClassName="text-brand-700"
-      inactiveClassName="text-slate-500"
-    >
+    <NavLink href={href} exact={exact} className="flex flex-col items-center gap-0.5 px-2 py-2 text-[11px] font-medium" activeClassName="text-brand-700" inactiveClassName="text-slate-500">
       <Icon name={icon} className="h-5 w-5" />
       <span>{label}</span>
     </NavLink>

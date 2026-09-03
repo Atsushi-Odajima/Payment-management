@@ -28,7 +28,9 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - 決済（取引）の状態遷移は `lib/payments/transitions.ts` の `TRANSITIONS` が唯一の定義。ステータスは `pending`（申請中）/ `awaiting_transfer`（振込待ち）/ `authorized`（与信済）/ `captured`（完了）/ `partially_refunded` / `refunded` / `cancelled` / `failed` / `expired`、アクションは `capture | cancel | refund | fail | expire | deposit`。**決済申請一覧 = `APPLICATION_STATUSES`、決済一覧 = `SALES_STATUSES`** の同一テーブル・フィルタ違い（ローダは `lib/payments/list.ts` / `detail.ts` を両画面で共用）。API/UI/Webhook は全てここから導出し、更新は `lib/payments/actions.ts` の `applyPaymentAction`（status 条件付き `updateMany` + `PaymentEvent` 記録）を通す。route に if 文で遷移ルールを書かない。`refund` 以外のアクション（`MASTER_ACTIONS`）は `requireMaster`
 - 銀行振込は `lib/payments/transfer.ts`（振込ID採番 `generateTransferId`・期限 `TRANSFER_DUE_DAYS`・消込 `reconcileDeposit`）。`deposit` は入金累計で判定し、一致 → `captured`、不足 → `awaiting_transfer` のまま `depositDiff="short"`、超過 → `captured` + `"excess"`。`expire` は `transferDueAt` 超過時のみ。`POST /api/demo/deposit-notify`（`DEPOSIT_NOTIFY_SECRET`）は同じ `applyPaymentAction` を actor `bank` で呼ぶ
 - API レスポンスは `{ ok: true, data }` / `{ ok: false, error: { code, message } }` に統一（`lib/api/handler.ts` の `withApiHandler` でラップ）。client は `useApiJson()` を使う
-- `/api/*` の非 GET は `middleware.ts` で rate limit → CSRF（Origin + `X-Requested-With: fetch`）→ `DEMO_READONLY` → セッション、の順に検査。Webhook（署名）と `/api/demo/reset`（`CRON_SECRET`）は独自認証
+- `/api/*` の非 GET は `middleware.ts` で rate limit → CSRF（Origin + `X-Requested-With: fetch`）→ `DEMO_READONLY` → セッション（署名と期限のみ）、の順に検査。Webhook（署名）、`/api/demo/reset`（`CRON_SECRET`）、`/api/demo/deposit-notify` は独自認証。route 側は `lib/admin/current.ts` でユーザー行を再確認する（無効化の即時反映）
+- **データを変更する処理は必ず `lib/audit.ts` の `recordAudit` を同一トランザクション内で呼ぶ**（actor は `auditContextFromRequest(req)` / `systemAuditContext("webhook"|"bank"|"cron")`）。新しい操作は `AUDIT_ACTIONS` と辞書 `auditEnums.action.*`（`.` を `_` に置換）に追加する。機微な列は `redactForAudit` が `[redacted]` にする
+- 一覧画面は `components/data-table.tsx`（列定義・ソート・ページング・CSV）を使う。並び替えは `lib/query.ts` の `parseSort` でクエリ駆動、CSV は各 API の `?format=csv`（`lib/csv.ts`、上限 `CSV_MAX_ROWS`）。既存一覧（取引・加盟店・代理店・IP制限）は順次移行する
 - 決済履歴は帳簿として扱う: プロバイダの `onDelete: Restrict`、決済を持つプロバイダは削除ではなく無効化。`livemode` は作成時にスナップショット
 
 ## 加盟店（Merchant）データと権限
@@ -37,12 +39,33 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - 語彙と型ガードは `lib/merchants/types.ts`、検証は `lib/merchants/schema.ts`（フォームと API で同じ Zod。エラーは `merchantForm.errors.*` のコード）、採番は `lib/merchants/ids.ts`、パスワード生成/暗号化は `lib/merchants/secrets.ts`（`lib/crypto` を import してよい2つ目のモジュール）
 - 通知サンプルは `lib/merchants/notification.ts` の `buildNotificationSample` が唯一の定義。README の仕様と一致させること
 - `agentId`（任意）で担当代理店（`Agent`）を参照（`onDelete: SetNull`）。`enabledMethods` は利用可能な決済手段の JSON 配列（`lib/payments/methods.ts` の `PAYMENT_METHODS`、フォームのチェックボックスで編集）、`transferIdDigits`（7 | 8）は銀行振込の振込IDの桁数。`app/api/merchants/select.ts` の `toMerchantData` / `serialize` で JSON ⇄ 配列を変換する
-- **権限（デモ用）**: `wirepay.role` cookie に `master | general`（`lib/role.ts`）。ヘッダーの `RoleToggle` で切替、`RoleProvider` で client に配布。マスター限定 API は **`lib/api/role-guard.ts` の `requireMaster(req)` を route の先頭で呼ぶ**（403 `role_required`）。対象: パスワードの表示・再発行（`/api/merchants/:id/password`）と取引の状態変更（`/api/payments/:id/:action` の `MASTER_ACTIONS`: capture / cancel / fail / expire / deposit。refund は対象外）。UI 側の出し分けは `useRole().isMaster` による補助であり、権限判定の正はサーバー。route に `roleFromRequest` を直接書かない
-- 本番ではこのトグルをユーザーのセッション由来のロールに置き換える（`lib/role.ts` と `RoleProvider` のみ変更すればよい）
+- **権限**: ロールは `AdminUser.role`（`master | general`）で、セッション Cookie（`lib/auth.ts`、HMAC 署名、`{ sub, role, purpose, exp }`）から `lib/admin/current.ts` が解決する。自己申告トグルは廃止済み。client には `components/session-provider.tsx` の `useSession()` / `useRole().isMaster` で配布（UI の出し分け専用）。マスター限定 API は **`lib/api/role-guard.ts` の `await requireMaster(req)`**（403 `role_required`）、ログイン必須は `await requireAdmin(req)`（401）。ページ側は `lib/admin/page-guard.ts` の `requireAdminPage` / `requireMasterPage`。対象: パスワードの表示・再発行、取引の状態変更（`MASTER_ACTIONS`、refund は対象外）、管理者管理。route に cookie 解析を直接書かない
+
+## 管理者・監査ログ・検索・ナビ（フェーズA）
+
+- **AdminUser**: `loginId`（@unique・小文字正規化・変更不可）, `name`, `email`（@unique）, `role`, `status`（`active | disabled | invited`。招待直後は invited、初回ログインで active）, `passwordHash`（scrypt、`lib/admin/password.ts`）, `totpSecretEnc`（AES-GCM、`lib/admin/secrets.ts` が `lib/crypto` を import してよい3つ目のモジュール）, `totpEnabled`, `lastLoginAt`。Zod は `lib/admin/schema.ts`、client に渡す列は `lib/admin/select.ts` の `ADMIN_SELECT`（ハッシュ・シークレットは絶対に返さない）
+- **ログイン**: `POST /api/auth/login`（ID + パスワード）→ 2FA 有効なら `wirepay.2fa` Cookie（5 分、purpose `2fa`）を返し `POST /api/auth/2fa` で 6 桁コード → `lib/admin/session.ts` の `issueSession` がセッション Cookie（12 時間）と `auth.login` の監査を書く。TOTP は `otpauth`（RFC 6238、±1 ステップ許容）、QR は `uqr`（SVG）。`/account` で本人がパスワード変更・2FA 登録/解除、`/admins`（マスター）で招待（初期パスワードを 1 回だけ返す）・編集・仮パスワード再発行・2FA 解除。`lib/admin/guards.ts`: 自分自身の権限/ステータス変更と最後のマスターの無効化・降格を拒否
+- **デモアカウント**は `prisma/seed-accounts.ts`（master `kuromaru` / general `general`）。`DEMO_LOGIN_HINT` を設定するとログイン画面に表示。`ADMIN_PASSWORD` は使わなくなった
+- **AuditLog**: `actorType`（`admin | system | webhook | bank | cron | seed`）, `actorId?`, `action`, `targetType`, `targetId`, `before` / `after`（redact 済み JSON 文字列）, `ip`。一覧 `/audit-logs`（`lib/audit-list.ts`、絞り込み: 操作者・操作種別・対象種別・期間、CSV）、詳細は変更前後を並べて差分強調
+- **横断検索**: `lib/search.ts` の `searchAll` を `GET /api/search`（ヘッダーの `SearchBox`、Ctrl/Cmd+K）と `/search` ページで共用。管理者はマスターのみ検索対象。カード下4桁はフェーズFで追加
+- **ナビ**: `lib/nav.ts` の `NAV_GROUPS`（取引 / 加盟店 / 精算 / リスク / レポート / 配信 / 設定）が唯一の定義。サイドバー・モバイルタブ（`MOBILE_TABS`）・トップページのカードはここから生成し、`implemented: false` の項目は非表示。新フェーズで画面を実装したら該当項目を `implemented: true` にし、`dashboard.cards.<key>` の説明と KPI（`components/views/dashboard-view.tsx` の `figure`）を足す。ラベルは `nav.groups.*` / `nav.items.*`
+- トップページ（`app/page.tsx`）は未ログインなら `/login` にリダイレクト（ログインを求めるのはこの入口だけ。他画面の閲覧は従来どおり公開、更新はセッション必須）。各画面の `PageHeader` には `helpHref="/manual/<chapter>"` で該当章への「?」リンクを付ける。
+
+### 権限マトリクス
+
+| 機能 | master | general | 未ログイン |
+|---|---|---|---|
+| 閲覧（全画面） | ○ | ○ | ○（トップは要ログイン） |
+| 加盟店・代理店・IP制限・プロバイダの作成/更新/削除 | ○ | ○ | × |
+| 加盟店パスワードの表示・再発行 | ○ | × | × |
+| 取引の作成・返金 | ○ | ○ | × |
+| 取引の完了・失敗・キャンセル・期限切れ・入金消込 | ○ | × | × |
+| 管理者の招待・編集・仮パスワード・2FA 解除 | ○ | × | × |
+| 自分のパスワード変更・2FA 登録 | ○ | ○ | × |
+| 操作ログの閲覧・CSV | ○ | ○ | × |
+| 横断検索 | ○ | ○（管理者は除く） | ○（管理者は除く） |
 
 ## 代理店・決済申請・IP制限・マニュアル
-
-トップページ（`app/page.tsx`）は 6 枚のカード（加盟店 / 代理店 / 決済一覧 / 決済申請 / IP制限 / マニュアル）で、決済一覧は `/payments` に移動済み。サイドバー（`components/app-shell.tsx`）も同じ 6 項目 + 「設定」のプロバイダ。各画面の `PageHeader` には `helpHref="/manual/<chapter>"` で該当章への「?」リンクを付ける。
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
 - **決済申請 = `Payment` テーブルの未完了取引**（新テーブルは作らない）。加盟店サイトで決済方法が選択された時点で生成される取引で、列は `merchantId?`（SetNull）, `method`（`credit | qr | convenience | bank | other`、作成時に provider.category をスナップショット）, `productName`, `customerId`（ユーザーID）, `capturedAt`（完了日時）, 銀行振込専用の `transferId`（@unique・7/8 桁）, `transferDueAt`, `depositAmount`（累計）, `depositDiff`（`short | excess`）。一覧の並びは `lib/payments/list.ts` の `compareApplications`（振込待ちを期限順に先頭、期限超過は `overdue` フラグで赤表示）。旧 `PaymentApplication` テーブルは削除済み（migration `drop_payment_application`）
@@ -84,9 +107,21 @@ UIは日本語/英語対応。ヘッダーの「EN / 日本語」トグルで切
 
 ## 決済用語の対訳（変更しないこと）
 
+管理者=Admin user / マスター=Master / 一般=General / 操作ログ=Audit log / 二段階認証=Two-factor (TOTP) / 招待=Invite /
 加盟店=Merchant / 決済代行=PSP / 返金=Refund / 入金=Deposit・Payout /
 加盟店ID=Merchant ID / 売上確定=Capture / 与信=Authorization /
 取消=Void（DB値は `cancelled`、アクション名は `cancel`。UI のステータス表示は「キャンセル / Cancelled」） / チャージバック=Chargeback / コンビニ決済=Konbini Payments /
 代理店=Agent / 決済申請=Payment Application（取引 = Transaction） / 申請中=Applied（DB値 `pending`） / 振込待ち=Awaiting transfer / 与信済=Authorized / 完了=Completed（DB値 `captured`） / 期限切れ=Expired /
 振込ID=Transfer ID / 振込期限=Transfer deadline / 入金消込=Deposit reconciliation / 不足=Short / 超過=Excess / 入金通知=Deposit notification /
 IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 許可リスト=Allow list / 手数料率=Fee rate
+
+## 進捗（PSP 実運用機能の追加）
+
+次のセッションはここから再開する。各フェーズの仕様は依頼文（フェーズA〜H + 仕上げ）を正とする。
+
+- [x] **フェーズA 基盤**（完了）: AdminUser ログイン + TOTP 二段階認証、`RoleToggle` 廃止、AuditLog + `recordAudit` を全更新系に適用、横断検索（Ctrl+K）、`lib/nav.ts` によるグループ化ナビとトップカード、共通 `DataTable`（管理者一覧・操作ログで使用）
+- [ ] **フェーズB 加盟店設定の拡張**（未着手。次はここ）: 加盟店詳細のタブ化、手数料率/契約プラン、限度額、振込期限・返金可能期限、APIキー、test/live モード
+- [ ] フェーズC 返金・取消管理 / [ ] フェーズD 精算管理 / [ ] フェーズE Webhook 送信ログと再送 / [ ] フェーズF 不正・リスク対策 / [ ] フェーズG レポート・通知 / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
+- 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
+- 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズB以降で順次行う
+- 検索対象「カード下4桁」はフェーズF（カードハッシュ列）で追加する

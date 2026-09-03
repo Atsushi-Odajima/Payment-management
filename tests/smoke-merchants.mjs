@@ -1,12 +1,12 @@
 // Manual end-to-end smoke for the merchant screens (not part of `npm test`).
-//   ADMIN_PASSWORD=demo1234 npx next start -p 3010 &
-//   BASE=http://localhost:3010 PASSWORD=demo1234 node tests/smoke-merchants.mjs
+//   DEMO_LOGIN_HINT=1 npx next start -p 3010 &
+//   BASE=http://localhost:3010 node tests/smoke-merchants.mjs
 
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 
 const BASE = process.env.BASE ?? "http://localhost:3010";
-const PASSWORD = process.env.PASSWORD ?? "demo1234";
+const PASSWORD = process.env.PASSWORD ?? "atusi0130";
 const OUT = "docs/screenshots";
 mkdirSync(OUT, { recursive: true });
 
@@ -24,8 +24,9 @@ const page = await ctx.newPage();
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(e.message));
 
-// Login
+// Login (master)
 await page.goto(BASE + "/login", { waitUntil: "networkidle" });
+await page.fill("#loginId", "kuromaru");
 await page.fill("#password", PASSWORD);
 await page.getByRole("button", { name: "Log in" }).click();
 await page.waitForURL(BASE + "/");
@@ -82,12 +83,8 @@ await page.getByText("has been created").waitFor({ timeout: 5000 });
 check("created and redirected to detail with toast", (await page.locator("h1").textContent()) === "Smoke Test Shop");
 check("detail shows assigned code MER-00004", (await page.textContent("body")).includes("MER-00004"));
 
-// Password masking + role
-const eye = page.getByRole("button", { name: "Show password" }).first();
+// Password masking + role (master session)
 check("password masked", (await page.textContent("body")).includes("********"));
-check("eye disabled for general role", await eye.isDisabled());
-await page.getByRole("button", { name: "Master" }).click();
-await page.waitForTimeout(600);
 const eye2 = page.getByRole("button", { name: "Show password" }).first();
 check("eye enabled for master role", await eye2.isEnabled());
 await eye2.click();
@@ -105,15 +102,26 @@ await page.getByText("Merchant updated.").waitFor({ timeout: 8000 });
 await page.waitForTimeout(400);
 check("update → toast + back to read-only with new name", (await page.locator("h1").textContent()) === "Smoke Test Shop v2" && (await page.getByRole("button", { name: "Edit" }).isVisible()));
 
-// General role cannot fetch the password via API even with the UI bypassed
-await page.getByRole("button", { name: "General" }).click();
-await page.waitForTimeout(400);
-const status = await page.evaluate(async () => {
-  const id = location.pathname.split("/").pop();
-  const r = await fetch(`/api/merchants/${id}/password`, { headers: { "x-requested-with": "fetch" } });
-  return r.status;
-});
-check("API refuses password for general role (403)", status === 403, String(status));
+// A general-role session sees the mask only and the API refuses the reveal
+const merchantUrl = page.url();
+{
+  const gctx = await browser.newContext({ viewport: { width: 1280, height: 1000 }, locale: "en-US" });
+  const gp = await gctx.newPage();
+  await gp.goto(BASE + "/login", { waitUntil: "networkidle" });
+  await gp.fill("#loginId", "general");
+  await gp.fill("#password", process.env.GENERAL_PASSWORD ?? "general1234");
+  await gp.getByRole("button", { name: "Log in" }).click();
+  await gp.waitForURL(BASE + "/");
+  await gp.goto(merchantUrl, { waitUntil: "networkidle" });
+  check("eye disabled for general role", await gp.getByRole("button", { name: "Show password" }).first().isDisabled());
+  const status = await gp.evaluate(async () => {
+    const id = location.pathname.split("/").pop();
+    const r = await fetch(`/api/merchants/${id}/password`, { headers: { "x-requested-with": "fetch" } });
+    return r.status;
+  });
+  check("API refuses password for general role (403)", status === 403, String(status));
+  await gctx.close();
+}
 check("no page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 200));
 
 await browser.close();
