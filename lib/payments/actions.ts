@@ -15,6 +15,8 @@ import {
 } from "./transitions";
 import { reconcileDeposit, type DepositDiff } from "./transfer";
 import { recordAudit, type AuditContext } from "@/lib/audit";
+import { emitPaymentWebhook } from "@/lib/webhooks/deliver";
+import type { MerchantWebhookEvent } from "@/lib/webhooks/events";
 
 export const PAYMENT_ACTORS = ["dashboard", "webhook", "bank", "system", "seed"] as const;
 export type PaymentActor = (typeof PAYMENT_ACTORS)[number];
@@ -168,6 +170,10 @@ export async function applyPaymentAction(
     return after;
   });
 
+  // Merchant notification (Phase E) after the commit; never fails the action.
+  const event = webhookEventFor(action, toPaymentStatus(result.status));
+  if (event && payment.merchantId) await emitPaymentWebhook(prisma, paymentId, event);
+
   return {
     id: result.id,
     status: toPaymentStatus(result.status),
@@ -175,4 +181,24 @@ export async function applyPaymentAction(
     depositAmount: result.depositAmount,
     depositDiff: result.depositDiff === "short" || result.depositDiff === "excess" ? result.depositDiff : null,
   };
+}
+
+/** Which merchant webhook (if any) an applied action produces. */
+export function webhookEventFor(action: PaymentAction, status: PaymentStatus): MerchantWebhookEvent | null {
+  switch (action) {
+    case "capture":
+      return "payment.completed";
+    case "deposit":
+      return status === "captured" ? "payment.completed" : null;
+    case "fail":
+      return "payment.failed";
+    case "expire":
+      return "payment.expired";
+    case "cancel":
+      return "payment.cancelled";
+    case "refund":
+      return "refund.completed";
+    default:
+      return null;
+  }
 }

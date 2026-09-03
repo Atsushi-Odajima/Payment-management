@@ -119,6 +119,37 @@ async function login(loginId, password) {
   await ctx.close();
 }
 
+// ── Webhook log (Phase E) ──────────────────────────────────────────────
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  await page.goto(BASE + "/webhook-logs", { waitUntil: "networkidle" });
+  const first = await page.locator("tbody tr").first().textContent();
+  check("webhook log: abandoned delivery listed first", first.includes("Abandoned"));
+  check("webhook log: failed badge in header", (await page.textContent("body")).includes("failed / retrying"));
+  await page.locator("tbody tr").filter({ hasText: "Retrying" }).first().click();
+  await page.waitForURL(/\/webhook-logs\/[a-z0-9_]+$/);
+  check("webhook detail shows request headers with signature", (await page.textContent("body")).includes("X-Signature"));
+  await page.getByRole("button", { name: "Resend now" }).click();
+  await page.getByText(/Resent/).waitFor({ timeout: 15000 });
+  await page.waitForTimeout(500);
+  check("manual resend adds an attempt (demo receiver answers 500)", (await page.locator("section[aria-labelledby=wh-attempts] li").count()) === 3);
+  await page.screenshot({ path: `${OUT}/webhook-detail-en.png` });
+  // Completing a transaction emits a delivery to the demo receiver (result=ok → success).
+  await page.goto(BASE + "/applications", { waitUntil: "networkidle" });
+  await page.getByText("ORD-DEMO-003").first().click();
+  await page.waitForURL(/\/applications\/[a-z0-9_]+$/);
+  await page.getByRole("button", { name: "Mark completed" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "Mark completed" }).click();
+  // The success notice (role=status) appears once the action — and its webhook attempt — finished.
+  await page.locator("aside [role=status]").first().waitFor({ timeout: 20000 });
+  await page.waitForTimeout(500);
+  // ORD-DEMO-003 belongs to merchant2 whose demo receiver answers 500 → the new delivery is retrying.
+  await page.goto(BASE + "/webhook-logs?event=payment.completed", { waitUntil: "networkidle" });
+  check("capture emitted a payment.completed delivery", (await page.locator("tbody tr").filter({ hasText: "payment.completed" }).count()) >= 3);
+  check("delivery to the failing receiver is retrying", (await page.locator("tbody tr").filter({ hasText: "Retrying" }).count()) >= 1);
+  await ctx.close();
+}
+
 check("no page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 200));
 await browser.close();
 const failed = results.filter((r) => !r.ok);

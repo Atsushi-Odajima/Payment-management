@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/api/role-guard";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { API_KEY_SELECT, MAX_ROTATION_GRACE_DAYS, ROTATION_GRACE_DAYS, apiKeyUsable, isApiKeyKind, isApiKeyMode, toApiKeyView } from "@/lib/merchants/api-keys";
 import { generateApiKey, hashApiKey } from "@/lib/merchants/api-keys-server";
+import { encryptSigningSecret } from "@/lib/merchants/secrets";
 
 type Ctx = { params: { id: string; keyId: string } };
 
@@ -29,7 +30,7 @@ export const POST = withApiHandler<Ctx>(async (req, { params }) => {
   const created = await prisma.$transaction(async (tx) => {
     await tx.apiKey.update({ where: { id: old.id }, data: { expiresAt } });
     const row = await tx.apiKey.create({
-      data: { merchantId: params.id, mode, kind, label: old.label, keyPrefix, keyHash: hashApiKey(plaintext) },
+      data: { merchantId: params.id, mode, kind, label: old.label, keyPrefix, keyHash: hashApiKey(plaintext), secretEnc: kind === "signing_secret" ? encryptSigningSecret(plaintext) : null },
       select: API_KEY_SELECT,
     });
     await recordAudit(tx, audit, {

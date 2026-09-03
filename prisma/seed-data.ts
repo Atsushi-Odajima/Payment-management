@@ -15,6 +15,7 @@ import { hashPassword } from "../lib/admin/password";
 import { PLAN_DEFAULT_RATES } from "../lib/merchants/fees";
 import { displayPrefix } from "../lib/merchants/api-keys";
 import { hashApiKey } from "../lib/merchants/api-keys-server";
+import { encryptSigningSecret } from "../lib/merchants/secrets";
 import { DEMO_ADMIN_ACCOUNTS } from "./seed-accounts";
 
 export const SEED_IDS = {
@@ -56,6 +57,9 @@ export const SEED_IDS = {
   refund2: "ref_demo_002",
   settlement1: "stl_demo_001",
   settlement2: "stl_demo_002",
+  webhook1: "whd_demo_001",
+  webhook2: "whd_demo_002",
+  webhook3: "whd_demo_003",
 } as const;
 
 /**
@@ -209,7 +213,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       contactName: "小鳥 遊",
       email: "info@kotori.example.jp",
       statementEmail: "billing@kotori.example.jp",
-      notifyUrl: "https://kotori.example.jp/wirepay/notify",
+      notifyUrl: "/api/demo/webhook-receiver?result=ok",
       notifyFormat: "json_post",
       notifyParamSet: "standard",
       notifyIdFormat: "payment_id",
@@ -236,7 +240,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       contactName: "佐倉 花",
       email: "shop@sakura-cha.example.jp",
       statementEmail: "shop@sakura-cha.example.jp",
-      notifyUrl: "https://sakura-cha.example.jp/api/payment/callback",
+      notifyUrl: "/api/demo/webhook-receiver?result=error",
       notifyFormat: "form_post",
       notifyParamSet: "full",
       notifyIdFormat: "both",
@@ -255,7 +259,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       contactName: "築地 太郎",
       email: "order@tsukiji-maguro.example.jp",
       statementEmail: "accounting@tsukiji-maguro.example.jp",
-      notifyUrl: "https://tsukiji-maguro.example.jp/notify",
+      notifyUrl: "/api/demo/webhook-receiver?result=ok",
       notifyFormat: "query_get",
       notifyParamSet: "minimal",
       notifyIdFormat: "transaction_id",
@@ -486,7 +490,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
   ];
   for (const k of apiKeys) {
     const plaintext = SEED_API_KEYS[k.id as keyof typeof SEED_API_KEYS];
-    await prisma.apiKey.upsert({ where: { id: k.id }, update: {}, create: { ...k, keyPrefix: displayPrefix(plaintext), keyHash: hashApiKey(plaintext) } });
+    await prisma.apiKey.upsert({ where: { id: k.id }, update: {}, create: { ...k, keyPrefix: displayPrefix(plaintext), keyHash: hashApiKey(plaintext), secretEnc: k.kind === "signing_secret" ? encryptSigningSecret(plaintext) : null } });
   }
 
   // ── IP restrictions ───────────────────────────────────────────────────
@@ -614,6 +618,77 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     await prisma.settlementBatch.upsert({ where: { id: b.id }, update: {}, create: { ...b, lines: { create: lines } } });
   }
 
+  // ── Webhook deliveries (Phase E) ──────────────────────────────────────
+  // A successful delivery, one retrying after a 500, and one abandoned after
+  // five timeouts, each with its attempt history.
+  const whHeaders = (ts: number) =>
+    JSON.stringify({ "Content-Type": "application/json", "X-Signature": "v1=3f0c9c5d8f2b1a7e6d4c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e", "X-Timestamp": String(ts), "User-Agent": "WirePay-Notify/1.0" });
+  const whBody = (paymentId: string, event: string, amount: number, status: string) =>
+    JSON.stringify({ payment_id: paymentId, event, merchant_id: "MER-00001", amount, currency: "JPY", paid_at: hoursAgo(6).toISOString(), status, payment_method: "credit", user_id: "u_10021", product_id: "SKU-DEMO" });
+  const deliveries = [
+    {
+      id: SEED_IDS.webhook1,
+      merchantId: SEED_IDS.merchant1,
+      paymentId: SEED_IDS.payment1,
+      livemode: false,
+      event: "payment.completed",
+      url: "/api/demo/webhook-receiver?result=ok",
+      method: "POST",
+      requestHeaders: whHeaders(Math.floor(hoursAgo(6).getTime() / 1000)),
+      requestBody: whBody(SEED_IDS.payment1, "payment.completed", 4980, "captured"),
+      responseStatus: 200,
+      responseBody: JSON.stringify({ ok: true, data: { received: true } }),
+      attempts: 1,
+      status: "success",
+      lastSentAt: hoursAgo(6),
+      createdAt: hoursAgo(6),
+      attemptLog: [{ attemptNo: 1, sentAt: hoursAgo(6), responseStatus: 200, responseBody: JSON.stringify({ ok: true, data: { received: true } }), durationMs: 143, trigger: "system" }],
+    },
+    {
+      id: SEED_IDS.webhook2,
+      merchantId: SEED_IDS.merchant2,
+      paymentId: SEED_IDS.payment6,
+      livemode: false,
+      event: "payment.failed",
+      url: "/api/demo/webhook-receiver?result=error",
+      method: "POST",
+      requestHeaders: whHeaders(Math.floor(daysAgo(2).getTime() / 1000)),
+      requestBody: whBody(SEED_IDS.payment6, "payment.failed", 15800, "failed"),
+      responseStatus: 500,
+      responseBody: JSON.stringify({ ok: false, error: { code: "demo_receiver_error", message: "simulated failure" } }),
+      attempts: 2,
+      status: "retrying",
+      nextRetryAt: new Date(now.getTime() + 30 * 60_000),
+      lastSentAt: hoursAgo(1),
+      createdAt: daysAgo(2),
+      attemptLog: [
+        { attemptNo: 1, sentAt: daysAgo(2), responseStatus: 500, responseBody: "simulated failure", durationMs: 210, trigger: "system" },
+        { attemptNo: 2, sentAt: hoursAgo(1), responseStatus: 500, responseBody: "simulated failure", durationMs: 188, trigger: "cron" },
+      ],
+    },
+    {
+      id: SEED_IDS.webhook3,
+      merchantId: SEED_IDS.merchant2,
+      paymentId: SEED_IDS.payment3,
+      livemode: false,
+      event: "payment.completed",
+      url: "https://sakura-cha.example.jp/api/wirepay",
+      method: "POST",
+      requestHeaders: whHeaders(Math.floor(daysAgo(4).getTime() / 1000)),
+      requestBody: whBody(SEED_IDS.payment3, "payment.completed", 3200, "captured"),
+      responseStatus: null,
+      responseBody: "error: timeout",
+      attempts: 5,
+      status: "abandoned",
+      lastSentAt: daysAgo(3),
+      createdAt: daysAgo(4),
+      attemptLog: [1, 2, 3, 4, 5].map((n) => ({ attemptNo: n, sentAt: new Date(daysAgo(4).getTime() + n * 3_600_000), responseStatus: null, responseBody: null, error: "timeout", durationMs: 10_000, trigger: n === 1 ? "system" : "cron" })),
+    },
+  ];
+  for (const { attemptLog, ...d } of deliveries) {
+    await prisma.webhookDelivery.upsert({ where: { id: d.id }, update: {}, create: { ...d, attemptLog: { create: attemptLog } } });
+  }
+
   // ── Audit log samples ─────────────────────────────────────────────────
   const audits = [
     {
@@ -677,6 +752,8 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.adminUser.deleteMany();
   await prisma.ipRestriction.deleteMany();
   await prisma.webhookEvent.deleteMany();
+  await prisma.webhookAttempt.deleteMany();
+  await prisma.webhookDelivery.deleteMany();
   await prisma.settlementLine.deleteMany();
   await prisma.settlementBatch.deleteMany();
   await prisma.chargeback.deleteMany();
