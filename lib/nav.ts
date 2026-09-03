@@ -71,6 +71,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     key: "notices",
     items: [
+      { key: "notifications", href: "/notifications", icon: "bell", implemented: true },
       { key: "announcements", href: "/announcements", icon: "bell", implemented: true },
       { key: "emailTemplates", href: "/email-templates", icon: "mail", implemented: true },
     ],

@@ -14,6 +14,7 @@ import { Prisma } from "@prisma/client";
 import { DecryptionError, EncryptionKeyError } from "@/lib/crypto";
 import { langFromRequest, type Lang, type MessageParams } from "@/lib/i18n";
 import { assertCsvExportAllowed } from "@/lib/settings/csv-guard";
+import { dispatchPendingNotifications } from "@/lib/notifications/deliver";
 import { checkAdminAccess } from "@/lib/ip-restrictions/enforce";
 import { failBody, type ApiFail, type ApiOk, type ErrorKey } from "./envelope";
 
@@ -74,7 +75,10 @@ export function withApiHandler<Ctx = unknown>(handler: Handler<Ctx>, options: Ha
         }
       }
       if (new URL(req.url).searchParams.get("format") === "csv") await assertCsvExportAllowed(req);
-      return await handler(req, ctx);
+      const res = await handler(req, ctx);
+      // Notifications raised inside a transaction during this request are fanned out once it committed (Phase J).
+      if (req.method !== "GET" && res.status < 400) await dispatchPendingNotifications().catch((e) => console.error("[notifications] dispatch failed", e));
+      return res;
     } catch (err) {
       return errorToResponse(err, lang);
     }

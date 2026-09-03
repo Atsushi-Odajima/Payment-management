@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { emitNotification } from "@/lib/notifications/emit";
 import { requirePermission } from "@/lib/api/role-guard";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateMerchantInput } from "@/lib/merchants/schema";
@@ -54,6 +55,7 @@ export const POST = withApiHandler(async (req) => {
           select: MERCHANT_SELECT,
         });
         await recordAudit(tx, audit, { action: "merchant.create", targetType: "merchant", targetId: row.id, after: row });
+        await emitNotification(tx, { kind: "merchant.created", title: `New merchant: ${merchantCode} ${row.siteName}`, body: `${row.companyName} was registered.`, href: `/merchants/${row.id}`, roles: ["admin", "accounting", "cs"], targetType: "merchant", targetId: row.id });
         return row;
       });
       return ok(serialize(created), { status: 201 });

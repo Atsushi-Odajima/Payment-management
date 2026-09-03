@@ -14,6 +14,7 @@ import { SearchBox } from "./search-box";
 import { ModeToggle } from "./mode-provider";
 import { AnnouncementBanner, type BannerItem } from "./announcement-banner";
 import { MethodBanner } from "./method-banner";
+import { NotificationBell } from "./notification-bell";
 import { ConfirmProvider } from "./confirm-dialog";
 import { ToastProvider } from "./toast";
 import { Icon, type IconName } from "./icons";
@@ -55,6 +56,7 @@ export function AppShell({ children, banner = [], suspendedMethods = [] }: { chi
             </div>
             <div className="flex items-center gap-2">
               <ModeToggle />
+              <NotificationBell />
               <AccountMenu />
               <LanguageToggle />
             </div>

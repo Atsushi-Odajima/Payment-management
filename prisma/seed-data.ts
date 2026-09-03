@@ -83,6 +83,9 @@ export const SEED_IDS = {
   note1: "note_demo_001",
   note2: "note_demo_002",
   methodControl1: "pmc_demo_001",
+  notification1: "ntf_demo_001",
+  notification2: "ntf_demo_002",
+  notification3: "ntf_demo_003",
 } as const;
 
 /** Fixed token of the seeded payment link (the hosted page is /pay/<token>). */
@@ -1027,6 +1030,17 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     create: { id: SEED_IDS.methodControl1, scope: "merchant", merchantId: SEED_IDS.merchant2, method: "qr", suspended: true, reason: "QR 決済事業者側の障害対応中（加盟店からの依頼）", suspendedById: DEMO_ADMIN_ACCOUNTS.cs.id, suspendedAt: hoursAgo(5), createdAt: hoursAgo(5) },
   });
 
+  // ── Phase J: notification centre samples ──────────────────────────────
+  const notifications = [
+    { id: SEED_IDS.notification1, kind: "webhook.abandoned", severity: "critical", title: "Webhook abandoned: payment.completed → MER-00002", body: "5 attempts failed for /api/demo/webhook-receiver?result=timeout. Resend it from the delivery log once the merchant endpoint is back.", href: `/webhook-logs/${SEED_IDS.webhook3}`, roles: JSON.stringify(["admin", "developer"]), targetType: "webhook_delivery", targetId: SEED_IDS.webhook3, createdAt: hoursAgo(26), dispatchedAt: hoursAgo(26) },
+    { id: SEED_IDS.notification2, kind: "refund.requested", severity: "info", title: "Refund requested: ¥500", body: "partial refund (defect) awaiting a decision.", href: `/refunds/${SEED_IDS.refund1}`, roles: JSON.stringify(["admin", "accounting"]), targetType: "refund", targetId: SEED_IDS.refund1, createdAt: hoursAgo(2), dispatchedAt: hoursAgo(2) },
+    { id: SEED_IDS.notification3, kind: "payment_method.suspended", severity: "warning", title: "Merchant payment method suspended: qr", body: "QR 決済事業者側の障害対応中（加盟店からの依頼）", href: `/merchants/${SEED_IDS.merchant2}?tab=methods`, roles: JSON.stringify(["admin", "cs"]), targetType: "payment_method_control", targetId: SEED_IDS.methodControl1, createdAt: hoursAgo(5), dispatchedAt: hoursAgo(5) },
+  ];
+  for (const n of notifications) {
+    await prisma.notification.upsert({ where: { id: n.id }, update: {}, create: n });
+  }
+  await prisma.notificationPreference.upsert({ where: { adminUserId_kind: { adminUserId: DEMO_ADMIN_ACCOUNTS.admin.id, kind: "payment_method.suspended" } }, update: {}, create: { adminUserId: DEMO_ADMIN_ACCOUNTS.admin.id, kind: "payment_method.suspended", email: true, slack: false } });
+
   // ── Audit log samples ─────────────────────────────────────────────────
   const audits = [
     {
@@ -1087,6 +1101,8 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
 /** Remove all demo data (used by the demo reset endpoint and tests). */
 export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.auditLog.deleteMany();
+  await prisma.slackLog.deleteMany();
+  await prisma.notificationPreference.deleteMany();
   await prisma.notificationRead.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.transactionNote.deleteMany();

@@ -358,6 +358,7 @@ model ApiKey {
 // status: active | disabled | invited (invited = created, never logged in).
 model AdminUser {
   notes         TransactionNote[]
+  notificationPreferences NotificationPreference[]
   id            String    @id @default(cuid())
   loginId       String    @unique
   name          String
@@ -808,7 +809,10 @@ model Notification {
   targetType String?
   targetId   String?
   createdAt  DateTime @default(now())
+  /// When the e-mail / Slack fan-out ran (null = pending).
+  dispatchedAt DateTime?
   reads      NotificationRead[]
+  slackLogs  SlackLog[]
 
   @@index([kind])
   @@index([severity])
@@ -833,5 +837,38 @@ model GlobalSetting {
   id              String   @id @default("global")
   /// Whether the viewer role may export CSV.
   viewerCsvExport Boolean  @default(false)
+  /// Slack Incoming Webhook URL for notification fan-out (Phase J).
+  slackWebhookUrl String?
   updatedAt       DateTime @updatedAt
+}
+
+/// Per-admin channel choice per notification kind (Phase J). In-app is
+/// always on; email / slack are opt-in. Missing row = in-app only.
+model NotificationPreference {
+  id          String    @id @default(cuid())
+  adminUserId String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  kind        String
+  email       Boolean   @default(false)
+  slack       Boolean   @default(false)
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([adminUserId, kind])
+}
+
+/// Slack Incoming Webhook send log (Phase J): one row per attempt series.
+model SlackLog {
+  id             String        @id @default(cuid())
+  notificationId String?
+  notification   Notification? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+  /// sent | failed | demo
+  status         String
+  attempts       Int           @default(1)
+  responseStatus Int?
+  error          String?
+  text           String
+  createdAt      DateTime      @default(now())
+
+  @@index([createdAt])
+  @@index([status])
 }
