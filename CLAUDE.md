@@ -65,6 +65,15 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 | 操作ログの閲覧・CSV | ○ | ○ | × |
 | 横断検索 | ○ | ○（管理者は除く） | ○（管理者は除く） |
 
+## 加盟店設定の拡張（フェーズB）
+
+- **加盟店詳細はタブ**（`lib/merchants/detail.ts` の `MERCHANT_TABS`: basic / contract / limits / apikeys / notify、`?tab=` で切替）。basic / notify は従来の `MerchantForm`（編集モード）、他は `components/merchant-tabs/*` の専用フォーム。データは `loadMerchantContract` / `loadMerchantLimits(id, mode)` / `loadMerchantApiKeys` で page.tsx が取得
+- **契約・手数料**: `MerchantFeeSchedule`（`plan` standard | premium | custom、`rates` は `lib/merchants/fees.ts` の `FeeRates` を JSON 文字列で保存、`effectiveFrom`）。適用中は `currentScheduleIndex`（`effectiveFrom <= now` の最新）、履歴は削除しない。`POST /api/merchants/[id]/fees` で追加（監査 `merchant.fee_update`）。手数料計算は `calculateFee`（フェーズDの精算で使う）
+- **限度額**: `MerchantLimit`（`@@unique([merchantId, method])`、`perTransaction` / `daily` / `monthly` は null = 無制限）。`PUT /api/merchants/[id]/limits` は全置換（監査 `merchant.limit_update`）。判定は `lib/merchants/limits.ts` の `checkLimit`（`COUNTED_STATUSES` の当日 / 当月合計、モード別）で **`POST /api/payments` の作成時に実行**。超過は取引を `failed` + `Payment.failureReason = "limit_exceeded:<per_transaction|daily|monthly>"` で記録（イベント created → fail、actor system）。UI は `paymentDetail.failure_limit_*` / `transactions.limitExceeded`
+- **期限**: `Merchant.transferDueDays`（既定 7、1〜60）が `transferDueDate(now, days)` に渡り、`Merchant.refundWindowDays`（既定 180、0〜365）から `loadTransactionDetail` が `refundDeadlineAt` を導出（表示のみ。返金の強制はフェーズC）。`PATCH /api/merchants/[id]/terms`（監査 `merchant.terms_update`）。期限超過の振込待ちは `GET/POST /api/cron/expire-transfers`（`CRON_SECRET`、`vercel.json` で毎時）が `applyPaymentAction(expire, actor "system", audit cron)` で期限切れにする
+- **APIキー**: `ApiKey`（`mode` test | live、`kind` api_key | signing_secret、`keyPrefix` 表示用、`keyHash` SHA-256 @unique、`expiresAt` / `revokedAt` / `lastUsedAt`）。平文は `generateApiKey`（`wp_<mode>_<ak|ss>_<32 文字>`）で発行時に 1 回だけ返し **保存しない**。`POST .../api-keys`（`api_key.issue`）、`POST .../api-keys/[keyId]/rotate`（旧キーに `expiresAt` = 猶予 `ROTATION_GRACE_DAYS`、`api_key.rotate`）、`.../revoke`（`api_key.revoke`）。加盟店向け認証は `app/api/merchant-api/ping/route.ts`（Bearer → `hashApiKey` で検索 → `apiKeyUsable` → `merchant_api` の IP ルール → `lastUsedAt`）。`/api/merchant-api/*` は middleware の `SIGNATURE_AUTH_PREFIXES`（セッション不要）。seed の固定平文は `SEED_API_KEYS`
+- **テスト / 本番モード**: `lib/mode.ts`（Cookie `wirepay.mode`、既定 test、`modeFromCookieStore(cookies())`）。ヘッダーの `ModeToggle`（`components/mode-provider.tsx`）が Cookie を書いて `router.refresh()`。決済一覧・申請一覧・ダッシュボード・限度額の利用状況は **常に `livemode` で絞る**（旧 `?mode=all` チップは廃止）。seed に本番モードの取引（payment8 / payment9）あり
+
 ## 代理店・決済申請・IP制限・マニュアル
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
@@ -120,8 +129,9 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 次のセッションはここから再開する。各フェーズの仕様は依頼文（フェーズA〜H + 仕上げ）を正とする。
 
 - [x] **フェーズA 基盤**（完了）: AdminUser ログイン + TOTP 二段階認証、`RoleToggle` 廃止、AuditLog + `recordAudit` を全更新系に適用、横断検索（Ctrl+K）、`lib/nav.ts` によるグループ化ナビとトップカード、共通 `DataTable`（管理者一覧・操作ログで使用）
-- [ ] **フェーズB 加盟店設定の拡張**（未着手。次はここ）: 加盟店詳細のタブ化、手数料率/契約プラン、限度額、振込期限・返金可能期限、APIキー、test/live モード
-- [ ] フェーズC 返金・取消管理 / [ ] フェーズD 精算管理 / [ ] フェーズE Webhook 送信ログと再送 / [ ] フェーズF 不正・リスク対策 / [ ] フェーズG レポート・通知 / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
+- [x] **フェーズB 加盟店設定の拡張**（完了）: 加盟店詳細のタブ化、契約プラン / 手数料率の履歴、限度額（作成時判定 + 失敗理由）、振込期限（毎時 cron で期限切れ）・返金可能期限（表示）、API キー / 署名シークレット（発行・ローテーション・失効・`/api/merchant-api/ping`）、ヘッダーの test / live スイッチ
+- [ ] **フェーズC 返金・取消管理**（未着手。次はここ）: 返金可能期限の強制（`refundDeadlineAt` を `applyPaymentAction(refund)` で検査）、返金理由・返金一覧、取消（void）の整理
+- [ ] フェーズD 精算管理（`calculateFee` と `MerchantFeeSchedule` を使う） / [ ] フェーズE Webhook 送信ログと再送（限度額超過の加盟店通知もここ） / [ ] フェーズF 不正・リスク対策 / [ ] フェーズG レポート・通知 / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
-- 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズB以降で順次行う
+- 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う
 - 検索対象「カード下4桁」はフェーズF（カードハッシュ列）で追加する

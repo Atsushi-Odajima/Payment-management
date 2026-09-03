@@ -7,6 +7,7 @@ import { DEFAULT_TRANSFER_ID_DIGITS, generateTransferId, isTransferIdDigits, tra
 import { isUniqueViolation } from "@/lib/ids";
 import { DEMO_LIMITS } from "@/lib/demo";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
+import { checkLimit, limitFailureReason } from "@/lib/merchants/limits";
 
 const CreateSchema = z.object({
   providerId: z.string().min(1),
@@ -56,15 +57,17 @@ export const POST = withApiHandler(async (req) => {
   }
 
   let transferDigits = DEFAULT_TRANSFER_ID_DIGITS;
+  let transferDueDays: number | undefined;
   if (body.merchantId) {
     const merchant = await prisma.merchant.findUnique({
       where: { id: body.merchantId },
-      select: { id: true, transferIdDigits: true },
+      select: { id: true, transferIdDigits: true, transferDueDays: true },
     });
     if (!merchant) {
       throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: { merchantId: "invalid" } });
     }
     if (isTransferIdDigits(merchant.transferIdDigits)) transferDigits = merchant.transferIdDigits;
+    transferDueDays = merchant.transferDueDays;
   }
 
   const count = await prisma.payment.count();
@@ -73,10 +76,16 @@ export const POST = withApiHandler(async (req) => {
   }
 
   const method = toPaymentMethod(provider.category);
-  const status = initialStatus(provider.category, body.autoCapture);
   const now = new Date();
   const externalId = generateDemoExternalId(provider.providerKey);
-  const isBank = method === "bank";
+  const livemode = !provider.testMode;
+
+  // Merchant limits (B-2): an exceeding transaction is still recorded — as
+  // failed with the reason — so the merchant sees why the checkout stopped.
+  const limit = body.merchantId ? await checkLimit(prisma, { merchantId: body.merchantId, method, amount: body.amount, livemode, now }) : { ok: true as const };
+  const failureReason = limit.ok ? null : limitFailureReason(limit.reason);
+  const status = limit.ok ? initialStatus(provider.category, body.autoCapture) : "failed";
+  const isBank = method === "bank" && limit.ok;
 
   // A random transfer id can collide with an existing one; the unique
   // constraint rejects it and we draw a new one once.
@@ -97,21 +106,25 @@ export const POST = withApiHandler(async (req) => {
           description: body.description ?? null,
           externalId,
           status,
-          livemode: !provider.testMode,
+          failureReason,
+          livemode,
           idempotencyKey: idempotencyKey ?? null,
           createdAt: now,
           capturedAt: status === "captured" ? now : null,
           transferId: isBank ? generateTransferId(transferDigits) : null,
-          transferDueAt: isBank ? transferDueDate(now) : null,
+          transferDueAt: isBank ? transferDueDate(now, transferDueDays) : null,
           events: {
             create: [
               {
                 type: "created",
                 fromStatus: null,
-                toStatus: status === "captured" ? "authorized" : status,
+                toStatus: status === "captured" ? "authorized" : status === "failed" ? "pending" : status,
                 amount: body.amount,
                 actor: "dashboard",
               },
+              ...(status === "failed"
+                ? [{ type: "fail", fromStatus: "pending", toStatus: "failed", amount: body.amount, actor: "system" as const }]
+                : []),
               ...(status === "captured"
                 ? [
                     {
@@ -126,13 +139,13 @@ export const POST = withApiHandler(async (req) => {
             ],
           },
         },
-        select: { id: true, externalId: true, transferId: true, transferDueAt: true, status: true },
+        select: { id: true, externalId: true, transferId: true, transferDueAt: true, status: true, failureReason: true },
       });
       await recordAudit(prisma, await auditContextFromRequest(req), {
         action: "payment.create",
         targetType: "payment",
         targetId: payment.id,
-        after: { ...payment, merchantId: body.merchantId ?? null, orderNumber: body.orderNumber, amount: body.amount, method },
+        after: { ...payment, merchantId: body.merchantId ?? null, orderNumber: body.orderNumber, amount: body.amount, method, livemode },
       });
       return ok({ ...payment, replayed: false }, { status: 201 });
     } catch (err) {

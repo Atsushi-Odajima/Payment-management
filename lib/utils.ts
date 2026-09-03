@@ -44,11 +44,3 @@ export function toProviderStatus(value: string): ProviderStatus {
   if (!isProviderStatus(value)) throw new Error(`Unknown provider status: ${value}`);
   return value;
 }
-
-/** Test/live filter used by the dashboard and payment list. */
-export const MODE_FILTERS = ["all", "test", "live"] as const;
-export type ModeFilter = (typeof MODE_FILTERS)[number];
-
-export function toModeFilter(value: string | undefined): ModeFilter {
-  return value === "test" || value === "live" ? value : "all";
-}

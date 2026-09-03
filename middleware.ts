@@ -24,8 +24,10 @@ export const config = {
 };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const SIGNATURE_AUTH_PREFIXES = ["/api/webhooks/"];
-const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify"];
+// Own authentication: PSP webhook signatures, merchant API keys.
+const SIGNATURE_AUTH_PREFIXES = ["/api/webhooks/", "/api/merchant-api/"];
+// Bearer secrets: cron / demo endpoints.
+const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify", "/api/cron/expire-transfers"];
 // The two login steps authenticate by themselves (password / 2FA token).
 const LOGIN_PATHS = ["/api/auth/login", "/api/auth/2fa"];
 
