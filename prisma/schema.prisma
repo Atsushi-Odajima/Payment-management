@@ -89,6 +89,14 @@ model Payment {
   // Why a transaction was recorded as failed at creation, e.g.
   // "limit_exceeded:daily" (lib/merchants/limits.ts) or "blocked" (Phase F).
   failureReason     String?
+  // Risk (Phase F): pseudo card fingerprint (sha256 of brand|last4|expiry),
+  // the visible last 4 digits and the checkout's source IP.
+  cardHash          String?
+  cardLast4         String?
+  clientIp          String?
+  // Follow-up state of a short / excess deposit: open | refund_arranged |
+  // notified | resolved (lib/risk/deposit-diffs.ts).
+  depositDiffStatus String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   // Completion time (完了日時): stamped when the status becomes captured.
@@ -107,6 +115,9 @@ model Payment {
   @@index([createdAt])
   @@index([transferDueAt])
   @@index([livemode])
+  @@index([cardHash])
+  @@index([clientIp])
+  @@index([depositDiffStatus])
 }
 
 // One row per refund request (Phase C). A general operator files a request
@@ -515,4 +526,31 @@ model WebhookAttempt {
   trigger        String          @default("system")
 
   @@index([deliveryId, attemptNo])
+}
+
+// Global fraud-detection thresholds (single row, id "global"): M failures
+// from the same card / IP / email within N minutes create a blacklist candidate.
+model RiskSetting {
+  id            String   @id @default("global")
+  windowMinutes Int      @default(10)
+  maxFailures   Int      @default(3)
+  updatedAt     DateTime @updatedAt
+}
+
+// Blacklist (Phase F). kind: card | ip | email; source: auto | manual;
+// status: candidate | active | disabled | rejected. Active entries block
+// matching transactions at creation (failureReason "blocked:<kind>").
+model Blacklist {
+  id          String   @id @default(cuid())
+  kind        String
+  value       String
+  reason      String?
+  source      String   @default("manual")
+  status      String   @default("active")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([kind, value])
+  @@index([status, kind])
 }

@@ -60,6 +60,11 @@ export const SEED_IDS = {
   webhook1: "whd_demo_001",
   webhook2: "whd_demo_002",
   webhook3: "whd_demo_003",
+  payment10: "pay_demo_010",
+  payment11: "pay_demo_011",
+  chargeback1: "cb_demo_001",
+  blacklist1: "bl_demo_001",
+  blacklist2: "bl_demo_002",
 } as const;
 
 /**
@@ -86,6 +91,8 @@ export const SEED_TRANSFER_IDS = {
   [SEED_IDS.payment5]: "7301256", // merchant3 issues 7-digit ids
   [SEED_IDS.payment7]: "5120983",
   [SEED_IDS.payment9]: "6642019",
+  [SEED_IDS.payment10]: "7788120",
+  [SEED_IDS.payment11]: "7788121",
 } as const;
 
 export interface SeedOptions {
@@ -450,6 +457,55 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       createdAt: daysAgo(1),
       events: [ev("created", null, "awaiting_transfer", 6800, "seed", daysAgo(1))],
     },
+    // Deposit differences (Phase F-3, live mode): a short deposit still awaiting
+    // the balance and an excess deposit that completed the transaction.
+    {
+      id: SEED_IDS.payment10,
+      providerId: bank.id,
+      merchantId: SEED_IDS.merchant3,
+      method: "bank",
+      orderNumber: "ORD-LIVE-003",
+      productName: "海鮮丼セット",
+      amount: 9800,
+      status: "awaiting_transfer",
+      externalId: "va_live_003",
+      customerName: "斎藤 由美",
+      customerId: "u_30640",
+      customerEmail: "yumi@example.com",
+      description: "海鮮丼セット x 2",
+      livemode: true,
+      transferId: SEED_TRANSFER_IDS[SEED_IDS.payment10],
+      transferDueAt: transferDueDate(daysAgo(2)),
+      depositAmount: 8800,
+      depositDiff: "short",
+      depositDiffStatus: "open",
+      createdAt: daysAgo(2),
+      events: [ev("created", null, "awaiting_transfer", 9800, "seed", daysAgo(2)), ev("deposit", "awaiting_transfer", "awaiting_transfer", 8800, "bank", daysAgo(1))],
+    },
+    {
+      id: SEED_IDS.payment11,
+      providerId: bank.id,
+      merchantId: SEED_IDS.merchant3,
+      method: "bank",
+      orderNumber: "ORD-LIVE-004",
+      productName: "本まぐろ中トロ 500g",
+      amount: 7500,
+      status: "captured",
+      externalId: "va_live_004",
+      customerName: "渡辺 大",
+      customerId: "u_30655",
+      customerEmail: "dai@example.com",
+      description: "本まぐろ中トロ 500g x 1",
+      livemode: true,
+      transferId: SEED_TRANSFER_IDS[SEED_IDS.payment11],
+      transferDueAt: transferDueDate(daysAgo(3)),
+      depositAmount: 8000,
+      depositDiff: "excess",
+      depositDiffStatus: "open",
+      createdAt: daysAgo(3),
+      capturedAt: daysAgo(1),
+      events: [ev("created", null, "awaiting_transfer", 7500, "seed", daysAgo(3)), ev("deposit", "awaiting_transfer", "captured", 8000, "bank", daysAgo(1))],
+    },
   ];
   for (const { events, livemode, ...p } of payments as Array<(typeof payments)[number] & { livemode?: boolean }>) {
     await prisma.payment.upsert({
@@ -689,6 +745,32 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     await prisma.webhookDelivery.upsert({ where: { id: d.id }, update: {}, create: { ...d, attemptLog: { create: attemptLog } } });
   }
 
+  // ── Risk (Phase F) ────────────────────────────────────────────────────
+  await prisma.riskSetting.upsert({ where: { id: "global" }, update: {}, create: { id: "global", windowMinutes: 10, maxFailures: 3 } });
+  const blacklist = [
+    { id: SEED_IDS.blacklist1, kind: "ip", value: "198.51.100.77", reason: "複数加盟店で不正利用の報告", source: "manual", status: "active", createdById: DEMO_ADMIN_ACCOUNTS.master.id, createdAt: daysAgo(12) },
+    { id: SEED_IDS.blacklist2, kind: "card", value: "9c1185a5c5e9fc54612808977ee8f548b2258d31a4a6ea1a6ec0b0e4d0e6d6a1", reason: "auto: 3 failures in 10 min", source: "auto", status: "candidate", createdAt: hoursAgo(3) },
+  ];
+  for (const b of blacklist) {
+    await prisma.blacklist.upsert({ where: { id: b.id }, update: {}, create: b });
+  }
+  await prisma.chargeback.upsert({
+    where: { id: SEED_IDS.chargeback1 },
+    update: {},
+    create: {
+      id: SEED_IDS.chargeback1,
+      paymentId: SEED_IDS.payment2,
+      merchantId: SEED_IDS.merchant1,
+      livemode: false,
+      amount: 1280,
+      reasonCode: "not_received",
+      status: "received",
+      disputeDeadlineAt: daysAgo(-10),
+      occurredAt: hoursAgo(20),
+      createdAt: hoursAgo(20),
+    },
+  });
+
   // ── Audit log samples ─────────────────────────────────────────────────
   const audits = [
     {
@@ -757,6 +839,8 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.settlementLine.deleteMany();
   await prisma.settlementBatch.deleteMany();
   await prisma.chargeback.deleteMany();
+  await prisma.blacklist.deleteMany();
+  await prisma.riskSetting.deleteMany();
   await prisma.paymentEvent.deleteMany();
   await prisma.refund.deleteMany();
   await prisma.payment.deleteMany();

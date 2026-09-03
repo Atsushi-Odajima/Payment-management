@@ -31,7 +31,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { key: "applications", href: "/applications", icon: "inbox", implemented: true },
       { key: "payments", href: "/payments", icon: "list", implemented: true },
       { key: "refunds", href: "/refunds", icon: "refund", implemented: true },
-      { key: "depositDiffs", href: "/deposit-diffs", icon: "bank", implemented: false },
+      { key: "depositDiffs", href: "/deposit-diffs", icon: "bank", implemented: true },
     ],
   },
   {
@@ -53,8 +53,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     key: "risk",
     items: [
-      { key: "chargebacks", href: "/chargebacks", icon: "alert", implemented: false },
-      { key: "blacklist", href: "/blacklist", icon: "shield", implemented: false },
+      { key: "chargebacks", href: "/chargebacks", icon: "alert", implemented: true },
+      { key: "blacklist", href: "/blacklist", icon: "shield", implemented: true },
     ],
   },
   {

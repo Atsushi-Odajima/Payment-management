@@ -28,6 +28,7 @@ export const PAYMENT_STATUS_COLOR: Record<PaymentStatus, string> = {
   cancelled: "bg-slate-200 text-slate-700 ring-slate-300",
   failed: "bg-rose-100 text-rose-800 ring-rose-200",
   expired: "bg-orange-100 text-orange-800 ring-orange-200",
+  chargeback: "bg-rose-600 text-white ring-rose-700",
 };
 
 export const PROVIDER_STATUSES = ["active", "disabled"] as const;

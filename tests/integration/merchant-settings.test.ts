@@ -236,11 +236,11 @@ describe("transfer expiry cron", () => {
     // Make every awaiting transfer overdue; seed dates are relative to NOW and may not be yet.
     await prisma.payment.updateMany({ where: { status: "awaiting_transfer" }, data: { transferDueAt: new Date("2026-01-01T00:00:00Z") } });
     const result = await expireOverdueTransfers();
-    expect(result).toEqual({ expired: 3, skipped: 0 }); // payment4, payment5 and the live payment9
-    const rows = await prisma.payment.findMany({ where: { id: { in: [SEED_IDS.payment4, SEED_IDS.payment5, SEED_IDS.payment9] } }, select: { status: true } });
+    expect(result).toEqual({ expired: 4, skipped: 0 }); // payment4, payment5 and the live payment9 / payment10
+    const rows = await prisma.payment.findMany({ where: { id: { in: [SEED_IDS.payment4, SEED_IDS.payment5, SEED_IDS.payment9, SEED_IDS.payment10] } }, select: { status: true } });
     expect(rows.every((r) => r.status === "expired")).toBe(true);
-    expect(await prisma.auditLog.count({ where: { action: "payment.expire", actorType: "cron" } })).toBe(3);
-    expect(await prisma.paymentEvent.count({ where: { type: "expire", actor: "system" } })).toBe(3);
+    expect(await prisma.auditLog.count({ where: { action: "payment.expire", actorType: "cron" } })).toBe(4);
+    expect(await prisma.paymentEvent.count({ where: { type: "expire", actor: "system" } })).toBe(4);
     expect(await expireOverdueTransfers()).toEqual({ expired: 0, skipped: 0 });
   });
 
@@ -261,8 +261,8 @@ describe("test / live mode", () => {
     const test = await loadTransactions({ allowedStatuses: SALES_STATUSES, filters: parseTransactionFilters({}, SALES_STATUSES, "test"), page: 1, pageSize: 50, order: "sales", now: NOW });
     expect(test.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment1, SEED_IDS.payment2, SEED_IDS.payment7].sort());
     const live = await loadTransactions({ allowedStatuses: SALES_STATUSES, filters: parseTransactionFilters({}, SALES_STATUSES, "live"), page: 1, pageSize: 50, order: "sales", now: NOW });
-    expect(live.items.map((i) => i.id)).toEqual([SEED_IDS.payment8]);
+    expect(live.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment8, SEED_IDS.payment11].sort());
     const liveOpen = await loadTransactions({ allowedStatuses: APPLICATION_STATUSES, filters: parseTransactionFilters({}, APPLICATION_STATUSES, "live"), page: 1, pageSize: 50, order: "applications", now: NOW });
-    expect(liveOpen.items.map((i) => i.id)).toEqual([SEED_IDS.payment9]);
+    expect(liveOpen.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment9, SEED_IDS.payment10].sort());
   });
 });
