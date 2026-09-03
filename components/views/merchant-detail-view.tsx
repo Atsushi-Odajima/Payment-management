@@ -17,8 +17,9 @@ import { useToast } from "@/components/toast";
 import { ContractTab } from "@/components/merchant-tabs/contract-tab";
 import { LimitsTab } from "@/components/merchant-tabs/limits-tab";
 import { ApiKeysTab } from "@/components/merchant-tabs/api-keys-tab";
+import { SettlementTab } from "@/components/merchant-tabs/settlement-tab";
 import type { AgentOption, MerchantView } from "@/lib/merchants/types";
-import { MERCHANT_TABS, type MerchantContract, type MerchantLimits, type MerchantTab } from "@/lib/merchants/tabs";
+import { MERCHANT_TABS, type MerchantContract, type MerchantLimits, type MerchantSettlement, type MerchantTab } from "@/lib/merchants/tabs";
 import type { ApiKeyView } from "@/lib/merchants/api-keys";
 import type { DataMode } from "@/lib/mode";
 import { CATEGORIES } from "@/lib/providers/registry";
@@ -32,10 +33,11 @@ export interface MerchantDetailProps {
   contract: MerchantContract;
   limits: MerchantLimits;
   apiKeys: ApiKeyView[];
+  settlement: MerchantSettlement;
   mode: DataMode;
 }
 
-export function MerchantDetailView({ merchant: initial, agents, tab, contract, limits, apiKeys, mode }: MerchantDetailProps) {
+export function MerchantDetailView({ merchant: initial, agents, tab, contract, limits, apiKeys, settlement, mode }: MerchantDetailProps) {
   const t = useT();
   const { lang } = useLang();
   const router = useRouter();
@@ -180,6 +182,8 @@ export function MerchantDetailView({ merchant: initial, agents, tab, contract, l
         <LimitsTab merchantId={merchant.id} data={limits} mode={mode} />
       ) : tab === "apikeys" ? (
         <ApiKeysTab merchantId={merchant.id} merchantCode={merchant.merchantCode} keys={apiKeys} />
+      ) : tab === "settlement" ? (
+        <SettlementTab merchantId={merchant.id} data={settlement} />
       ) : (
         <section className="card" aria-labelledby="sec-notify">
           <div className="divide-y divide-slate-100">

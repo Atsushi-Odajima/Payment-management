@@ -3,8 +3,15 @@
 
 import type { FeeScheduleView } from "./fees";
 import type { LimitInput, LimitUsage } from "./limits";
+import type { SettlementRow } from "@/lib/settlements/list";
+import type { SettlementSettingsInput } from "@/lib/settlements/types";
 
-export const MERCHANT_TABS = ["basic", "contract", "limits", "apikeys", "notify"] as const;
+export const MERCHANT_TABS = ["basic", "contract", "limits", "apikeys", "notify", "settlement"] as const;
+
+export interface MerchantSettlement {
+  settings: SettlementSettingsInput;
+  batches: SettlementRow[];
+}
 export type MerchantTab = (typeof MERCHANT_TABS)[number];
 
 export function isMerchantTab(v: unknown): v is MerchantTab {

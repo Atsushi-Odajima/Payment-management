@@ -96,8 +96,9 @@ model Payment {
   cancelledAt       DateTime?
   refundedAt        DateTime?
 
-  refunds Refund[]
-  events  PaymentEvent[]
+  refunds     Refund[]
+  events      PaymentEvent[]
+  chargebacks Chargeback[]
 
   @@unique([providerId, externalId])
   @@index([providerId])
@@ -199,6 +200,19 @@ model Merchant {
   // requested (返金可能期限).
   transferDueDays   Int      @default(7)
   refundWindowDays  Int      @default(180)
+  // ── Settlement settings (Phase D, lib/settlements/types.ts) ─────────────
+  // monthly | semimonthly | weekly
+  settlementCycle   String   @default("monthly")
+  // next_month_end | next_month_15 | month_after_next_15 | next_week
+  payoutTerm        String   @default("next_month_end")
+  bankName          String?
+  bankBranch        String?
+  // ordinary | current
+  bankAccountType   String?
+  bankAccountNumber String?
+  bankAccountHolder String?
+  // Transfer fee deducted from every payout (yen).
+  settlementFee     Int      @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -207,6 +221,7 @@ model Merchant {
   feeSchedules   MerchantFeeSchedule[]
   limits         MerchantLimit[]
   apiKeys        ApiKey[]
+  settlements    SettlementBatch[]
 
   @@index([createdAt])
   @@index([agentId])
@@ -367,4 +382,84 @@ model WebhookEvent {
 
   @@unique([providerId, externalEventId])
   @@index([receivedAt])
+}
+
+// Settlement batch (精算バッチ, Phase D): one payout per merchant and period.
+// Amounts are aggregated from the lines when the batch is generated
+// (lib/settlements/service.ts). status: collecting | confirmed | scheduled |
+// paid | held. Test-mode batches are marked livemode=false and are never paid
+// in production; they exist so the demo can show the flow.
+model SettlementBatch {
+  id               String   @id @default(cuid())
+  merchantId       String
+  merchant         Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  livemode         Boolean  @default(false)
+  periodFrom       DateTime
+  // Exclusive end of the period.
+  periodTo         DateTime
+  grossAmount      Int      @default(0)
+  feeAmount        Int      @default(0)
+  refundAmount     Int      @default(0)
+  chargebackAmount Int      @default(0)
+  settlementFee    Int      @default(0)
+  netAmount        Int      @default(0)
+  status           String   @default("collecting")
+  scheduledAt      DateTime?
+  paidAt           DateTime?
+  holdReason       String?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  lines SettlementLine[]
+
+  @@unique([merchantId, livemode, periodFrom, periodTo])
+  @@index([status, scheduledAt])
+  @@index([merchantId, createdAt])
+}
+
+// Line of a settlement batch: a completed payment (positive amount + fee), a
+// completed refund or a lost chargeback (negative amount). kind: payment |
+// refund | chargeback. Source ids are plain strings so a deleted source
+// never breaks the ledger.
+model SettlementLine {
+  id           String          @id @default(cuid())
+  batchId      String
+  batch        SettlementBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  kind         String
+  paymentId    String?
+  refundId     String?
+  chargebackId String?
+  method       String?
+  description  String?
+  amount       Int
+  fee          Int             @default(0)
+  occurredAt   DateTime
+
+  @@index([batchId])
+}
+
+// Chargeback (Phase F; the table exists from Phase D so settlements can
+// deduct lost / confirmed chargebacks). reasonCode: fraud | not_received |
+// not_as_described | duplicate | other. status: received | disputed | won |
+// lost | confirmed.
+model Chargeback {
+  id                String    @id @default(cuid())
+  paymentId         String
+  payment           Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  merchantId        String?
+  livemode          Boolean   @default(false)
+  amount            Int
+  reasonCode        String    @default("other")
+  status            String    @default("received")
+  disputeDeadlineAt DateTime?
+  evidenceNote      String?
+  occurredAt        DateTime  @default(now())
+  resolvedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([paymentId])
+  @@index([status, disputeDeadlineAt])
+  @@index([merchantId])
 }

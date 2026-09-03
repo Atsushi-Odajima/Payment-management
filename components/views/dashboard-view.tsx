@@ -14,6 +14,8 @@ import { formatYen } from "@/lib/utils";
 
 export interface DashboardStats {
   pendingRefundCount: number;
+  settlementOpenCount: number;
+  settlementScheduledAmount: number;
   merchantCount: number;
   agentCount: number;
   todayPaymentCount: number;
@@ -46,6 +48,8 @@ export function DashboardView({ stats }: { stats: DashboardStats }) {
           value: t("dashboard.valuePendingRefunds", { count: stats.pendingRefundCount }),
           badge: stats.pendingRefundCount > 0 ? t("dashboard.reviewBadge") : undefined,
         };
+      case "settlements":
+        return { value: t("dashboard.valueSettlements", { count: stats.settlementOpenCount, amount: formatYen(stats.settlementScheduledAmount) }) };
       case "merchants":
         return { value: t("dashboard.valueCount", { count: stats.merchantCount }) };
       case "agents":

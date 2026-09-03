@@ -6,9 +6,34 @@ import { FEE_METHODS, toFeeScheduleViews } from "./fees";
 import { limitsView, usageFor } from "./limits";
 import { API_KEY_SELECT, toApiKeyView, type ApiKeyView } from "./api-keys";
 import type { DataMode } from "@/lib/mode";
-import type { MerchantContract, MerchantLimits } from "./tabs";
+import type { MerchantContract, MerchantLimits, MerchantSettlement } from "./tabs";
+import { loadMerchantSettlements } from "@/lib/settlements/list";
+import { isBankAccountType, isPayoutTerm, isSettlementCycle } from "@/lib/settlements/types";
 
 export { MERCHANT_TABS, isMerchantTab, type MerchantTab, type MerchantContract, type MerchantLimits } from "./tabs";
+
+/** Settlement settings + recent batches for the merchant's settlement tab (D). */
+export async function loadMerchantSettlement(merchantId: string, mode: DataMode): Promise<MerchantSettlement | null> {
+  const m = await prisma.merchant.findUnique({
+    where: { id: merchantId },
+    select: { settlementCycle: true, payoutTerm: true, bankName: true, bankBranch: true, bankAccountType: true, bankAccountNumber: true, bankAccountHolder: true, settlementFee: true },
+  });
+  if (!m) return null;
+  const batches = await loadMerchantSettlements(merchantId, mode);
+  return {
+    settings: {
+      settlementCycle: isSettlementCycle(m.settlementCycle) ? m.settlementCycle : "monthly",
+      payoutTerm: isPayoutTerm(m.payoutTerm) ? m.payoutTerm : "next_month_end",
+      bankName: m.bankName ?? "",
+      bankBranch: m.bankBranch ?? "",
+      bankAccountType: isBankAccountType(m.bankAccountType) ? m.bankAccountType : null,
+      bankAccountNumber: m.bankAccountNumber ?? "",
+      bankAccountHolder: m.bankAccountHolder ?? "",
+      settlementFee: m.settlementFee,
+    },
+    batches,
+  };
+}
 
 export async function loadMerchantContract(merchantId: string, now: Date = new Date()): Promise<MerchantContract | null> {
   const [merchant, rows] = await Promise.all([
