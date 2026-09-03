@@ -51,10 +51,16 @@ export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 export interface CreateTransactionOptions {
   clientIp: string | null;
   audit: AuditContext;
-  /** Origin of the checkout: dashboard (default) | payment_link | subscription. */
-  source?: "dashboard" | "payment_link" | "subscription";
+  /** Origin of the checkout: dashboard (default) | payment_link | subscription | api (public API, Phase L). */
+  source?: "dashboard" | "payment_link" | "subscription" | "api";
   paymentLinkId?: string | null;
   subscriptionId?: string | null;
+  /**
+   * Public API test cards (Phase L-3): a declined / errored scenario records
+   * the transaction as failed with this reason (like a limit hit) instead of
+   * going through the normal flow.
+   */
+  forcedFailure?: string | null;
   now?: Date;
 }
 
@@ -119,12 +125,12 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
   // Merchant limits (B-2): an exceeding transaction is still recorded — as
   // failed with the reason — so the merchant sees why the checkout stopped.
   const limit = !blocked && body.merchantId ? await checkLimit(prisma, { merchantId: body.merchantId, method, amount: body.amount, livemode, now }) : { ok: true as const };
-  const failureReason = blocked ? blockedFailureReason(blocked.kind) : limit.ok ? null : limitFailureReason(limit.reason);
+  const failureReason = blocked ? blockedFailureReason(blocked.kind) : !limit.ok ? limitFailureReason(limit.reason) : opts.forcedFailure || null;
   const status = failureReason ? "failed" : initialStatus(provider.category, body.autoCapture);
   const isBank = method === "bank" && !failureReason;
   // Konbini slips (Phase K-1) get a 13-digit receipt number and the merchant's counter deadline.
   const isCvs = method === "convenience" && !failureReason;
-  const actor = opts.source === "subscription" ? "system" : "dashboard";
+  const actor = opts.source === "subscription" ? "system" : opts.source === "api" ? "api" : "dashboard";
 
   // A random transfer id / receipt number can collide with an existing one;
   // the unique constraint rejects it and we draw a new one once.

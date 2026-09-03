@@ -12,7 +12,8 @@ import { applyPaymentAction } from "@/lib/payments/actions";
 import { PENDING_REFUND_STATUSES, type RefundRequestInput } from "./types";
 
 export interface RefundActor {
-  id: string;
+  /** AdminUser id; null when a merchant requests through the public API / portal (Phase L). */
+  id: string | null;
   role: Role;
 }
 

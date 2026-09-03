@@ -282,6 +282,8 @@ function actorLabelKey(actor: string): MessageKey {
       return "paymentDetail.actorBank";
     case "cvs":
       return "paymentDetail.actorCvs";
+    case "api":
+      return "paymentDetail.actorApi";
     case "seed":
       return "paymentDetail.actorSeed";
     case "system":
