@@ -38,7 +38,7 @@
 
 ## タブ構成
 
-詳細画面は 5 つのタブに分かれています。**基本情報** と **通知設定** は右上の「編集」で加盟店フォームを開き、他のタブはそれぞれ専用の入力欄を持ちます。
+詳細画面は 7 つのタブに分かれています。**基本情報** と **通知設定** は右上の「編集」で加盟店フォームを開き、他のタブはそれぞれ専用の入力欄を持ちます。
 
 | タブ | 内容 |
 |---|---|
@@ -47,6 +47,8 @@
 | 限度額 | 決済手段ごとの 1 回 / 1 日 / 1 か月の限度額と、本日・今月の利用状況 |
 | APIキー | 加盟店サイトが決済 API を呼ぶための API キーと、通知の署名シークレット |
 | 通知設定 | システム通知先 URL・通知の型・パラメータセット・識別子と通知サンプル |
+| 精算設定 | 締めサイクル・支払サイト・振込先口座・精算手数料と、この加盟店の精算バッチ（[精算管理](/manual/settlements)） |
+| Webhook送信ログ | この加盟店への直近の通知と結果（[Webhook 送信ログ](/manual/webhooks)） |
 
 ## 契約・手数料
 
@@ -82,3 +84,36 @@
 ## テスト / 本番の切替
 
 ヘッダーの **テスト / 本番** スイッチは、決済一覧・決済申請一覧・ダッシュボード・限度額の利用状況が参照するデータモードを切り替えます（選択は Cookie に保存）。取引はプロバイダのモードを作成時にスナップショットしており、テストモードでは本番の取引は表示されません。
+
+## 加盟店 API リファレンス
+
+加盟店サイトが Wire Pay を呼ぶ **加盟店 API**（`/api/merchant-api/*`）の共通仕様です。管理画面のセッションは不要で、API キーで認証します。
+
+| 項目 | 内容 |
+|---|---|
+| 認証 | `Authorization: Bearer wp_<test または live>_ak_<32 文字>`（API キー。署名シークレット `wp_…_ss_…` は通知の検証専用で、認証には使えません） |
+| キーの判定 | SHA-256 ハッシュで検索し、失効済み・期限切れ（ローテーション猶予の終了）は拒否。成功すると最終利用日時を更新 |
+| モード | キーのモード（テスト / 本番）がそのまま応答データのモードになります |
+| IP 制限 | その加盟店向けの [IP制限](/manual/ip-restrictions)（対象 = 加盟店 API・ブロック）に一致すると拒否 |
+| 応答形式 | 成功 `{ "ok": true, "data": … }` / 失敗 `{ "ok": false, "error": { "code", "message" } }`。`message` は `Accept-Language` または `x-lang` ヘッダーの言語 |
+| レート制限 | IP 単位。超過時は 429（`rate_limited`） |
+
+| エラー | HTTP | 意味 |
+|---|---|---|
+| `invalid_api_key` | 401 | ヘッダーが無い・形式が違う・不明・失効・期限切れ |
+| `ip_blocked` | 403 | 加盟店 API 向けのブロックルールに一致 |
+| `not_found` | 404 | 他社のリソース、別モードのリソース、存在しない ID |
+| `rate_limited` | 429 | 短時間に多すぎるリクエスト |
+
+| エンドポイント | 用途 | 応答 `data` |
+|---|---|---|
+| `GET /api/merchant-api/ping` | 疎通確認・キーの検証 | `{ merchantCode, siteName, mode, kind, keyPrefix, status }` |
+| `GET /api/merchant-api/settlements[?id=]` | 精算バッチの一覧 / 明細（[精算管理](/manual/settlements)） | 一覧: `{ merchantCode, mode, settlements: [...] }` / 1 件: `{ batch, lines }` |
+| `GET /api/merchant-api/announcements` | 自分が対象のお知らせ（[お知らせ配信](/manual/announcements)） | `{ merchantCode, announcements: [ { id, kind, title, body, publishFrom, publishUntil, updates } ] }` |
+
+```
+curl https://<host>/api/merchant-api/ping \
+  -H 'Authorization: Bearer wp_test_ak_KotoriDemoTestKey000000000000001'
+```
+
+seed の加盟店 `MER-00001` には上記のテストキーが発行済みです。決済の作成 API（加盟店サイトからの決済申請）はデモでは管理画面の「決済を作成」と `POST /api/payments`（管理者セッション）で代替しており、加盟店キーによる決済作成 API は未実装です（残課題）。

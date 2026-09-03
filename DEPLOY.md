@@ -21,14 +21,44 @@ Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Ve
 | `DEMO_GENERAL_PASSWORD` | 任意 | seed が作る一般権限アカウント `general` のパスワード（既定 `general1234`） |
 | `SESSION_SECRET` | 任意 | セッション Cookie の HMAC 鍵。未設定時は `ENCRYPTION_KEY` を流用 |
 | `DEMO_READONLY` | 任意 | `1` で DELETE とプロバイダの PATCH を 403 に（デモ荒らし対策） |
-| `CRON_SECRET` | 任意 | 設定すると `GET/POST /api/demo/reset` と `GET/POST /api/cron/expire-transfers` が有効になり、Vercel Cron がデモデータの初期化（毎日 03:00 JST）と期限超過の振込待ちの期限切れ処理（毎時）を実行 |
+| `CRON_SECRET` | 本番は ✅ | 設定すると `/api/demo/reset` と `/api/cron/*`（下表）が `Authorization: Bearer <CRON_SECRET>` で有効になる。Vercel Cron はこのヘッダーを自動で付ける。未設定だと cron 系はすべて 404 になり、**振込期限切れ・Webhook 再送・定期課金の課金が動かない** |
 | `DEPOSIT_NOTIFY_SECRET` | 任意 | `POST /api/demo/deposit-notify`（銀行の入金通知を模した消込 API）の Bearer トークン。未設定時は本番で 404、開発では認証なし |
+| `APP_URL` | 本番は推奨 | 公開 URL（例 `https://wire-pay.example.com`）。加盟店の相対 `notifyUrl`（seed の `/api/demo/webhook-receiver`）を絶対 URL に解決する。未設定時は `VERCEL_PROJECT_PRODUCTION_URL` → `VERCEL_URL` → `http://localhost:3000` |
+| `EMAIL_PROVIDER` | 任意 | `log`（既定。送信せず `EmailLog` に「デモ」として記録）/ `console`（記録 + 標準出力）。実サービスは `lib/email/send.ts` に `EmailProvider` を追加する |
+| `EMAIL_DEFAULT_LANG` | 任意 | 顧客向けメール（振込案内・決済完了・返金完了・追加入金案内・定期課金）の言語。`ja`（既定）/ `en` |
+| `WEBHOOK_DELIVERY` | 任意 | `queue` にすると Webhook を即時送信せずキューに積み、毎時 30 分の `/api/cron/webhook-retry` がまとめて送る（既定は即時送信 + 失敗時リトライ） |
+
+### Cron（`vercel.json`。他の PaaS では同等のスケジューラから `Authorization: Bearer <CRON_SECRET>` 付きで呼ぶ）
+
+| パス | スケジュール（UTC） | 処理 |
+|---|---|---|
+| `/api/demo/reset` | `0 18 * * *`（03:00 JST） | デモデータを全削除して seed し直す（公開デモ専用。実データの環境では **登録しない**） |
+| `/api/cron/expire-transfers` | `0 * * * *` | 振込期限を過ぎた振込待ちの取引を期限切れにし、Webhook `payment.expired` を送る |
+| `/api/cron/webhook-retry` | `30 * * * *` | 再送時刻が来た Webhook（リトライ待ち / 送信待ち）を送信する |
+| `/api/cron/subscriptions` | `15 * * * *` | 次回課金日を過ぎた定期課金を課金する（失敗は 3 日 / 7 日後に再試行、3 回で停止） |
+
+すべて `GET` / `POST` の両方を受け付け、`CRON_SECRET` 未設定時は 404 を返します。
 
 鍵の生成:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
+
+---
+
+## 本番デプロイ手順（チェックリスト）
+
+デモではなく実データで運用する場合の最短手順です。
+
+1. **DB を用意**: Neon（Postgres）でプロジェクトを作り、Pooled connection の URL を `DATABASE_URL` に設定する
+2. **環境変数**: `ENCRYPTION_KEY`（base64 32 バイト、**一度決めたら変えない**）、`SESSION_SECRET`（別鍵を推奨）、`CRON_SECRET`、`DEPOSIT_NOTIFY_SECRET`、`APP_URL`（公開 URL）、必要なら `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`。`DEMO_LOGIN_HINT` と `DEMO_READONLY` は **設定しない**
+3. **スキーマ適用**: `vercel.json` の buildCommand は `prisma db push --accept-data-loss` を実行する。実データを持つ DB では **このフラグを外す** か、Docker 経路と同じく `prisma migrate deploy`（`prisma/migrations` の履歴）に切り替える。スキーマ変更は常に「追加のみ」（nullable か `@default` 付き）で行い、列の削除・型変更をしない
+4. **初期データ**: ビルド末尾の `tsx prisma/seed.ts` はテーブル単位の upsert で、**デモ加盟店・取引・管理者（`kuromaru` / `general`）を投入する**。実運用では seed をビルドから外し（`vercel.json` の `&& tsx prisma/seed.ts` を削除）、管理者は `scripts/` から手動で作るか、初回のみ seed → 不要な行を削除 → デモ管理者のパスワードを変更する
+5. **Cron**: 上表の `/api/cron/expire-transfers`・`/api/cron/webhook-retry`・`/api/cron/subscriptions` を登録し、`/api/demo/reset` は **登録しない**（Vercel は `vercel.json` の `crons` から該当行を削除）
+6. **加盟店の設定**: 各加盟店の通知先 URL（https）と署名シークレット（APIキータブ）を発行し、加盟店側で `X-Signature` の検証を実装してもらう（マニュアル「通知パラメータ仕様」）
+7. **動作確認**: `GET /api/merchant-api/ping` をテストキーで呼ぶ → 200、`/api/cron/subscriptions` を `Authorization: Bearer <CRON_SECRET>` で呼ぶ → 200、未設定のヘッダーでは 401 を確認する
+8. **運用上の前提**: 決済プロバイダの実 API・実メール送信・実際の銀行入金連携は未接続（README の「残課題」参照）。`lib/providers/*` にプロバイダごとのアダプタ、`lib/email/send.ts` に `EmailProvider`、`/api/demo/deposit-notify` に銀行連携を差し込む
 
 ---
 
