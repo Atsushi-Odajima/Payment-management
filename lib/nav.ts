@@ -46,7 +46,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     key: "settlement",
     items: [
-      { key: "settlements", href: "/settlements", icon: "bank", implemented: false },
+      { key: "settlements", href: "/settlements", icon: "bank", implemented: true },
       { key: "agentFees", href: "/agent-fees", icon: "chart", implemented: false },
     ],
   },

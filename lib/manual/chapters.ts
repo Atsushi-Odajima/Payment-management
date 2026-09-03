@@ -9,6 +9,7 @@ export const MANUAL_CHAPTERS = [
   "payments",
   "applications",
   "refunds",
+  "settlements",
   "ip-restrictions",
   "notification-spec",
   "admins",
