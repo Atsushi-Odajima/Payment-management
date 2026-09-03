@@ -70,8 +70,9 @@
 - **コンビニ決済** — 13 桁の受付番号・支払店舗・加盟店ごとの支払期限（既定 3 日）を発行し、申請一覧では振込待ちと同じレーンで期限順に表示。店頭支払いの通知 `POST /api/demo/cvs-notify` は銀行振込と同じ入金消込を通り、期限切れは毎時の cron、期限超過は日次通知。決済リンクページでも店舗を選択可能
 - **公開 API v1 と API ドキュメント** — `POST/GET /api/v1/transactions`、`GET /api/v1/transactions/{id}`、`POST /api/v1/refunds`、`POST /api/v1/payment-links` を Bearer API キーで提供。加盟店 × 環境ごとに 60 リクエスト / 分のレート制限（429 + Retry-After）、テストカード番号によるシナリオ再現、OpenAPI 3（`/api/v1/openapi.json`）を Zod から生成し、公開ドキュメント `/docs/api` に手書きガイドと自動生成リファレンスを掲載
 - **加盟店管理画面** — `/merchant/login`（加盟店ID + パスワード、5 回失敗で 15 分ロック、管理者とは別セッション）から、取引・返金申請・Webhook 送信ログと再送・精算と請求書 PDF・API キー（テストキーの自己ローテーション）・決済手段の状態・お知らせ・実 API を呼ぶサンドボックスを利用可能
+- **顧客管理と個人情報保護** — 加盟店 × ユーザーID の顧客マスタと保存カード（ブランド・下 4 桁・有効期限のみ）を取引作成時に自動作成。管理画面では氏名（姓のみ）・メール・電話・接続元 IP をマスク表示し、マスク解除は admin / cs のみで 1 回ごとに操作ログへ記録。CSV の個人情報は全体設定で「マスク / フル」を選択。手動匿名化（admin・理由必須）と、保持期間（既定 24 か月）を過ぎた顧客の日次匿名化・操作ログの保持期間（既定 7 年）削除。加盟店管理画面では自社の顧客をそのまま閲覧
 - **領収書 PDF / インボイス** — 完了取引の領収書（月次連番 `RC-YYYYMM-00001`、宛名編集、再発行回数を PDF に表示）を管理画面から発行し、決済リンクの購入者には署名付き URL（30 日）でダウンロードを提供。確定以降の精算バッチからは決済手数料の適格請求書 PDF（発行者登録番号 T + 13 桁、税区分ごとの内税計算、端数処理の設定）。PDF は pdf-lib + Noto Sans JP サブセット同梱でヘッドレスブラウザ不要
-- **管理画面マニュアル** — 左に目次・右に本文の 19 章構成。`content/manual/{ja,en}/*.md` を自前の Markdown レンダラで描画し、表示言語に連動。各画面ヘッダーの「?」から該当章へ。通知パラメータ・署名検証・加盟店 API・精算サイクルは開発者向けの精度で記載し、「はじめに」に権限マトリクス
+- **管理画面マニュアル** — 左に目次・右に本文の 27 章構成。`content/manual/{ja,en}/*.md` を自前の Markdown レンダラで描画し、表示言語に連動。各画面ヘッダーの「?」から該当章へ。通知パラメータ・署名検証・加盟店 API・精算サイクルは開発者向けの精度で記載し、「はじめに」に権限マトリクス
 
 ## アーキテクチャ
 
@@ -246,7 +247,7 @@ tests/integration/           Route Handler の統合テスト
 2. 環境変数: `ENCRYPTION_KEY`（base64 32 バイト・変更不可）、`SESSION_SECRET`、`CRON_SECRET`、`DEPOSIT_NOTIFY_SECRET`、`APP_URL`、任意で `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`。`DEMO_LOGIN_HINT` / `DEMO_READONLY` は設定しない
 3. スキーマ: `vercel.json` の `prisma db push --accept-data-loss` は使い捨てのデモ DB 向け。実データでは `prisma migrate deploy` に切り替える（スキーマ変更は追加のみ）
 4. seed（デモ加盟店・取引・管理者 `kuromaru` / `general`）をビルドから外し、管理者を自分で作る
-5. cron を登録: `/api/cron/expire-transfers`（毎時 0 分）・`/api/cron/webhook-retry`（毎時 30 分）・`/api/cron/subscriptions`（毎時 15 分）。`/api/demo/reset` は登録しない
+5. cron を登録: `/api/cron/expire-transfers`（毎時 0 分）・`/api/cron/webhook-retry`（毎時 30 分）・`/api/cron/subscriptions`（毎時 15 分）・`/api/cron/payment-method-controls`（毎時 45 分）・`/api/cron/notifications`（毎時 50 分）・`/api/cron/anonymize`（毎日 19:00 UTC）。`/api/demo/reset` は登録しない
 6. 加盟店ごとに通知先 URL と署名シークレットを発行し、`X-Signature` の検証を実装してもらう（マニュアル「通知パラメータ仕様」）
 
 ### 残課題（デモの範囲で未実装・簡略化しているもの）
@@ -254,7 +255,6 @@ tests/integration/           Route Handler の統合テスト
 | 項目 | 現状 | 理由 / 差し込み口 |
 |---|---|---|
 | 決済プロバイダの実 API | 未接続。決済・返金は DB 上の状態遷移のみ | ベンダーごとの SDK と Webhook アダプタが必要。`lib/providers/registry.ts` にデータ定義、`lib/webhooks/events.ts` の `EVENT_TO_ACTION` が受け口 |
-| 加盟店キーによる決済作成 API | 未実装。決済作成は管理画面と `POST /api/payments`（管理者セッション） | `lib/payments/create.ts` の `createTransaction` を `authenticateMerchantApiKey` 付きの route から呼べば追加できる |
 | メールの実送信 | `EMAIL_PROVIDER=log|console` で記録のみ | `lib/email/send.ts` に `EmailProvider`（SES / SendGrid 等）を追加 |
 | 銀行の入金連携 | `POST /api/demo/deposit-notify`（Bearer）で通知を模擬 | 銀行 API のポーリング / Webhook から同じ `applyPaymentAction(deposit)` を呼ぶ |
 | 定期課金の実課金 | デモ用の失敗率で成否を決める | プロバイダの継続課金 API を `chargeSubscription` に接続 |
@@ -263,7 +263,8 @@ tests/integration/           Route Handler の統合テスト
 | チャージバックの取引操作 | `chargeback` 遷移は UI アクションではなくチャージバック画面からのみ | 仕様どおり（`MASTER_ACTIONS` に含めない） |
 | レートリミット | インスタンス内メモリ | Upstash Redis 等に置き換え |
 | Postgres の migration 履歴 | Vercel は `db push`（SQLite 用 schema を provider 書き換え） | Postgres 専用 migration に一本化 |
-| 加盟店ポータル | 加盟店向け画面は無く、加盟店 API（ping / settlements / announcements）で代替 | 必要なら加盟店ログインと専用画面を追加 |
+| カード情報の保管 | `PaymentToken` はブランド・下 4 桁・有効期限・ハッシュのみ（カード番号は扱わない） | 実運用ではプロバイダのトークン（PCI DSS 範囲外）を `PaymentToken` に紐づける |
+| 個人情報の暗号化 | 顧客の氏名・メール・電話は平文列（マスク表示と保持期間で保護） | 必要なら `lib/crypto.ts` の AES-GCM で列暗号化し検索をハッシュ列に切り替える |
 
 ## Roadmap
 
@@ -277,7 +278,9 @@ tests/integration/           Route Handler の統合テスト
 - [x] 加盟店管理（発行・編集・通知仕様プレビュー・権限別パスワード表示）
 - [x] 管理者アカウント（TOTP 二段階認証）・操作ログ・横断検索・グループ化ナビ
 - [x] 加盟店の契約プラン / 手数料率・限度額・振込期限 / 返金可能期限・API キー・テスト / 本番スイッチ
-- [x] 返金申請 / 承認・精算バッチ・Webhook 実送信と再送・チャージバック / ブラックリスト / 過不足入金・集計レポート・メールテンプレート / 送信ログ・お知らせ配信・定期課金・決済リンク・代理店手数料（Vitest 275 ケース + Playwright スモーク 52 チェック）
+- [x] 返金申請 / 承認・精算バッチ・Webhook 実送信と再送・チャージバック / ブラックリスト / 過不足入金・集計レポート・メールテンプレート / 送信ログ・お知らせ配信・定期課金・決済リンク・代理店手数料
+- [x] 5 ロール権限マトリクス・取引メモ・決済手段停止・通知センター・未消込入金 / API 再通知
+- [x] コンビニ決済・領収書 PDF / 適格請求書・公開 API v1 + OpenAPI + ドキュメント + サンドボックス・加盟店管理画面・顧客管理と個人情報保護（Vitest 334 ケース + Playwright スモーク 124 チェック）
 - [ ] Postgres 専用 migration 履歴への一本化（現在 Vercel は `db push`）
 - [ ] Next.js 15 へのアップグレード（`params` / `searchParams` の await 化）
 - [ ] レートリミットを Upstash Redis に（現在はインスタンス内メモリ）
@@ -343,8 +346,9 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 - **Konbini payments** — a 13-digit receipt number, the store and a per-merchant deadline (default 3 days); the application list shows waiting slips in the same deadline lane as awaiting transfers. The store's payment notification `POST /api/demo/cvs-notify` runs the same reconciliation as a bank deposit, the hourly cron expires overdue slips and a daily notification reports them. The hosted payment page lets customers pick the store
 - **Public API v1 and API docs** — `POST/GET /api/v1/transactions`, `GET /api/v1/transactions/{id}`, `POST /api/v1/refunds` and `POST /api/v1/payment-links` behind Bearer API keys, with a 60 requests / minute limit per merchant and environment (429 + Retry-After), test card numbers for scenarios, an OpenAPI 3 document (`/api/v1/openapi.json`) generated from the zod schemas, and public docs at `/docs/api` (hand-written guides plus the generated reference)
 - **Merchant portal** — `/merchant/login` (merchant ID + password, 15-minute lockout after 5 failures, a session separate from operators) with transactions, refund requests, the webhook log with resend, settlements with invoice PDFs, API keys (self-service rotation of test keys), payment-method status, announcements and a sandbox that calls the real API
+- **Customers and personal-data protection** — a customer master per merchant × customer id with stored cards (brand, last 4 and expiry only), created automatically when transactions are created. Operator screens mask names (family name only), e-mails, phones and source IPs; unmasking is limited to admin / cs and every reveal is written to the audit log. CSV exports follow a global "masked / full" setting. Manual anonymisation (admin, reason required) plus a daily job that anonymises customers past the retention period (default 24 months) and prunes audit rows past the audit retention (default 7 years). The merchant portal shows the merchant's own customers in full
 - **Receipt PDFs / invoices** — receipts for completed transactions (monthly sequence `RC-YYYYMM-00001`, editable addressee, re-issue count stamped on the PDF) issued from the dashboard, plus a signed 30-day download link for payment-link customers. Confirmed settlement batches export a qualified invoice PDF for the fees (issuer registration number T + 13 digits, tax computed per rate on tax-inclusive fees, configurable rounding). PDFs use pdf-lib with a bundled Noto Sans JP subset — no headless browser
-- **In-app manual** — 19 chapters, table of contents on the left and the chapter on the right, rendered from `content/manual/{ja,en}/*.md` by a small in-house Markdown renderer and linked to the UI language. Every page header has a "?" that opens its chapter. Notification parameters, signature verification, the merchant API and settlement cycles are documented at integrator precision, and the introduction carries the permission matrix.
+- **In-app manual** — 27 chapters, table of contents on the left and the chapter on the right, rendered from `content/manual/{ja,en}/*.md` by a small in-house Markdown renderer and linked to the UI language. Every page header has a "?" that opens its chapter. Notification parameters, signature verification, the merchant API and settlement cycles are documented at integrator precision, and the introduction carries the permission matrix.
 
 ## Architecture
 
@@ -389,7 +393,7 @@ See [`DEPLOY.md`](./DEPLOY.md): Vercel (Tokyo) + Neon for the public demo, or th
 2. Environment: `ENCRYPTION_KEY` (base64 32 bytes, never rotate casually), `SESSION_SECRET`, `CRON_SECRET`, `DEPOSIT_NOTIFY_SECRET`, `APP_URL`, optionally `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`. Do not set `DEMO_LOGIN_HINT` / `DEMO_READONLY`.
 3. Schema: the `prisma db push --accept-data-loss` in `vercel.json` is for the disposable demo DB; with real data switch to `prisma migrate deploy` (schema changes stay additive).
 4. Remove the seed (demo merchants, transactions and the `kuromaru` / `general` admins) from the build and create your own admin.
-5. Register the crons `/api/cron/expire-transfers` (hourly at :00), `/api/cron/webhook-retry` (:30) and `/api/cron/subscriptions` (:15); do not register `/api/demo/reset`.
+5. Register the crons `/api/cron/expire-transfers` (hourly at :00), `/api/cron/webhook-retry` (:30), `/api/cron/subscriptions` (:15), `/api/cron/payment-method-controls` (:45), `/api/cron/notifications` (:50) and `/api/cron/anonymize` (daily 19:00 UTC); do not register `/api/demo/reset`.
 6. Issue a notification URL and a signing secret per merchant and have them verify `X-Signature` (manual chapter "Notification parameter specification").
 
 ### Open items (not implemented or simplified in the demo)
@@ -397,7 +401,6 @@ See [`DEPLOY.md`](./DEPLOY.md): Vercel (Tokyo) + Neon for the public demo, or th
 | Item | Current state | Reason / where to plug in |
 |---|---|---|
 | Real PSP APIs | Not connected; payments and refunds are DB state transitions only | Needs per-vendor SDKs and webhook adapters. `lib/providers/registry.ts` holds the data, `EVENT_TO_ACTION` in `lib/webhooks/events.ts` is the entry point |
-| Merchant-key payment creation API | Not implemented; payments are created from the dashboard and `POST /api/payments` (admin session) | Call `createTransaction` in `lib/payments/create.ts` from a route guarded by `authenticateMerchantApiKey` |
 | Real e-mail delivery | `EMAIL_PROVIDER=log|console` only records | Add an `EmailProvider` (SES / SendGrid …) in `lib/email/send.ts` |
 | Bank deposit feed | Simulated by `POST /api/demo/deposit-notify` (Bearer) | Call the same `applyPaymentAction(deposit)` from a bank API poller / webhook |
 | Real subscription charging | Outcome decided by the demo failure rate | Connect the provider's recurring-charge API in `chargeSubscription` |
@@ -406,11 +409,12 @@ See [`DEPLOY.md`](./DEPLOY.md): Vercel (Tokyo) + Neon for the public demo, or th
 | Chargeback transaction action | The `chargeback` transition is only reachable from the chargeback screens, not the transaction actions | By design (kept out of `MASTER_ACTIONS`) |
 | Rate limiting | In-process memory | Replace with Upstash Redis or similar |
 | Postgres migration history | Vercel uses `db push` (SQLite schema with the provider rewritten) | Consolidate on Postgres-only migrations |
-| Merchant portal | No merchant-facing screens; the merchant API (ping / settlements / announcements) stands in | Add merchant login and screens if needed |
+| Card data at rest | `PaymentToken` keeps only brand, last 4, expiry and a hash (card numbers are never handled) | In production, link the provider's token (outside PCI DSS scope) to `PaymentToken` |
+| Personal-data encryption | Customer names, e-mails and phones are plain columns (protected by masking and retention) | Encrypt the columns with the AES-GCM helper in `lib/crypto.ts` and search on hash columns if required |
 
 ## Roadmap
 
-Done: transition table + atomic updates + idempotency · partial refunds + audit log · webhook verification + simulator · login / CSRF / rate limit / headers · fail-closed key · typed JA/EN i18n · admin accounts with TOTP, audit log, global search · merchant contracts / limits / deadlines / API keys and the test / live switch · refund requests, settlements, outbound webhooks with retries, chargebacks / blacklist / deposit differences, reports, e-mail templates and log, announcements, subscriptions, payment links, agent fees · 275 tests + a 52-check Playwright smoke + CI.
+Done: transition table + atomic updates + idempotency · partial refunds + audit log · webhook verification + simulator · login / CSRF / rate limit / headers · fail-closed key · typed JA/EN i18n · admin accounts with TOTP, audit log, global search · merchant contracts / limits / deadlines / API keys and the test / live switch · refund requests, settlements, outbound webhooks with retries, chargebacks / blacklist / deposit differences, reports, e-mail templates and log, announcements, subscriptions, payment links, agent fees · five-role permission matrix, transaction notes, method suspension, notification centre, unmatched deposits · konbini payments, receipt / invoice PDFs, public API v1 with OpenAPI docs and a sandbox, merchant portal, customer master with masking / anonymisation · 334 tests + a 124-check Playwright smoke + CI.
 Next: Postgres-only migration history (Vercel currently uses `db push`) · Next.js 15 · Upstash-backed rate limiting · real PSP SDKs (Stripe → PayPay → GMO PG) with per-vendor webhook adapters · KMS key rotation · payouts & disputes · Playwright E2E.
 
 ## How this was built

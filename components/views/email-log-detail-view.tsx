@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { DetailRow } from "@/components/ui/detail-row";
+import { PiiValue } from "@/components/pii-value";
 import { useFormatDateTime, useT } from "@/components/language-provider";
 import { EmailStatusBadge } from "@/components/views/email-logs-view";
 import type { EmailLogDetail } from "@/lib/email/list";
@@ -20,7 +21,7 @@ export function EmailLogDetailView({ log }: { log: EmailLogDetail }) {
             {t("emailLogs.sectionMeta")}
           </h2>
           <DetailRow label={t("emailLogs.thTo")}>
-            <span className="font-mono text-xs">{log.to}</span>
+            <PiiValue masked={log.to} target={{ type: "email_log", id: log.id }} field="to" className="font-mono text-xs" />
           </DetailRow>
           <DetailRow label={t("emailLogs.thTemplate")}>{t(`emailEnums.key.${log.templateKey}` as MessageKey)}</DetailRow>
           <DetailRow label={t("emailLogs.thLang")}>

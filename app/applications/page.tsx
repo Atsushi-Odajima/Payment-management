@@ -1,3 +1,4 @@
+import { maskCustomerFields } from "@/lib/pii/mask";
 import { cookies } from "next/headers";
 import { TransactionsView } from "@/components/views/transactions-view";
 import { modeFromCookieStore } from "@/lib/mode";
@@ -21,7 +22,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams?
   return (
     <TransactionsView
       kind="applications"
-      items={result.items}
+      items={result.items.map((i) => maskCustomerFields(i, "masked"))}
       total={result.total}
       page={page}
       pageSize={DEFAULT_PAGE_SIZE}

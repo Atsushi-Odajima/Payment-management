@@ -72,6 +72,7 @@ export const PERMISSIONS = {
   audit_log: { view: ALL },
   search_admin: { view: ADMIN },
   global_setting: { view: ADMIN, update: ADMIN },
+  customer: { view: ALL, anonymize: ADMIN },
   csv: { export: STAFF },
   pii: { unmask: ADMIN_CS },
   api_docs: { view: ALL },

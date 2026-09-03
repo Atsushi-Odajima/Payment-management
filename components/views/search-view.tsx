@@ -41,6 +41,20 @@ export function SearchView({ result }: { result: SearchResult }) {
               </Item>
             ))}
           </Group>
+          <Group title={t("search.groups.customers")} count={result.customers.length}>
+            {result.customers.map((c) => (
+              <Item key={c.id} href={`/customers/${c.id}`}>
+                <div>
+                  <p className="font-medium text-slate-900">{c.name ?? c.externalId}</p>
+                  <p className="text-xs text-slate-500">
+                    {c.externalId} · {c.merchantName}
+                    {c.email ? ` · ${c.email}` : ""}
+                  </p>
+                </div>
+                {c.anonymized && <span className="badge bg-slate-100 text-slate-600 ring-slate-200">{t("customers.anonymizedBadge")}</span>}
+              </Item>
+            ))}
+          </Group>
           <Group title={t("search.groups.merchants")} count={result.merchants.length}>
             {result.merchants.map((m) => (
               <Item key={m.id} href={`/merchants/${m.id}`}>

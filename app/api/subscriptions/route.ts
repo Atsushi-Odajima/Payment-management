@@ -1,3 +1,5 @@
+import { piiCsvMode } from "@/lib/pii/csv";
+import { maskEmail, maskName } from "@/lib/pii/mask";
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { requirePermission } from "@/lib/api/role-guard";
@@ -15,7 +17,10 @@ export const GET = withApiHandler(async (req) => {
   const filters = parseSubscriptionFilters(q, resolveMode(q.mode));
   const sort = parseSubscriptionSort(q);
   if (q.format === "csv") {
-    const { rows } = await loadSubscriptions({ filters, sort, page: 1, pageSize: CSV_MAX_ROWS });
+    const { rows: raw } = await loadSubscriptions({ filters, sort, page: 1, pageSize: CSV_MAX_ROWS });
+    // Personal data in exports follows the global setting (Phase M-2).
+    const mode = await piiCsvMode(req);
+    const rows = mode === "full" ? raw : raw.map((r) => ({ ...r, customerName: maskName(r.customerName) ?? "", customerEmail: maskEmail(r.customerEmail) }));
     return csvResponse(
       toCsv(rows, [
         { header: "subscriptionId", value: (r) => r.id },

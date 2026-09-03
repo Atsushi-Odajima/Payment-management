@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { DetailRow } from "@/components/ui/detail-row";
+import { PiiValue } from "@/components/pii-value";
 import { SubscriptionStatusBadge } from "@/components/subscription-badges";
 import { ModeBadge, PaymentStatusBadge } from "@/components/payment-status-badge";
 import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
@@ -85,7 +86,12 @@ export function SubscriptionDetailView({ subscription: s, charges }: { subscript
             <DetailRow label={t("subscriptions.customerId")}>
               <span className="font-mono text-xs">{s.customerId}</span>
             </DetailRow>
-            <DetailRow label={t("subscriptions.customerEmail")}>{s.customerEmail ?? "—"}</DetailRow>
+            <DetailRow label={t("subscriptions.customerEmail")}>
+              <PiiValue masked={s.customerEmail} target={{ type: "subscription", id: s.id }} field="customerEmail" />
+            </DetailRow>
+            <DetailRow label={t("subscriptions.customerName")}>
+              <PiiValue masked={s.customerName} target={{ type: "subscription", id: s.id }} field="customerName" />
+            </DetailRow>
             <DetailRow label={t("subscriptions.thStatus")}>
               <SubscriptionStatusBadge status={s.status} />
             </DetailRow>
