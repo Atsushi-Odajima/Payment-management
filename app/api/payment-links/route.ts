@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest } from "@/lib/audit";
 import { resolveMode } from "@/lib/mode";
 import { DEFAULT_PAGE_SIZE, parsePage } from "@/lib/pagination";
@@ -18,7 +18,7 @@ export const GET = withApiHandler(async (req) => {
 
 /** POST /api/payment-links — issue a link (mode from `?mode=` or the cookie). */
 export const POST = withApiHandler(async (req) => {
-  const admin = await requireAdmin(req);
+  const admin = await requirePermission(req, "payment_link", "create");
   const parsed = paymentLinkInputSchema.safeParse(await readJson(req));
   if (!parsed.success) {
     throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: Object.fromEntries(parsed.error.issues.map((i) => [i.path.join("."), i.message])) });

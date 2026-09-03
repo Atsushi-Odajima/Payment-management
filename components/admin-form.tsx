@@ -1,5 +1,8 @@
 "use client";
 
+import { ROLES, type Role } from "@/lib/role";
+import type { MessageKey } from "@/lib/i18n";
+
 // Admin account form (create = invite, edit = detail screen). Validation runs
 // client-side with the shared Zod schema and again on the server; server
 // field errors (e.g. "taken") land in the same inline slots.
@@ -109,15 +112,16 @@ export function AdminForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <SegmentedControl<"master" | "general">
-            label={t("adminForm.role")}
-            value={values.role}
-            onChange={(v) => set("role", v)}
-            options={[
-              { value: "master", label: t("role.master") },
-              { value: "general", label: t("role.general") },
-            ]}
-          />
+          <label htmlFor="admin-role" className="label">
+            {t("adminForm.role")}
+          </label>
+          <select id="admin-role" className="input" value={values.role} onChange={(e) => set("role", e.target.value as Role)}>
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {t(`role.${r}` as MessageKey)}
+              </option>
+            ))}
+          </select>
           <p className="mt-1 text-xs text-slate-500">{isSelf ? t("adminForm.selfLocked") : t("adminForm.roleHelp")}</p>
         </div>
         {mode === "edit" && values.status !== "invited" && (

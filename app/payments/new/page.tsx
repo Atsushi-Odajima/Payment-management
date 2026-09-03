@@ -4,7 +4,7 @@ import { NewPaymentView } from "@/components/views/new-payment-view";
 export const dynamic = "force-dynamic";
 
 export default async function NewPaymentPage() {
-  const [providers, merchants] = await Promise.all([
+  const [providers, merchants, controls] = await Promise.all([
     prisma.paymentProvider.findMany({
       where: { status: "active" },
       orderBy: { createdAt: "desc" },
@@ -14,7 +14,8 @@ export default async function NewPaymentPage() {
       orderBy: { merchantCode: "asc" },
       select: { id: true, merchantCode: true, siteName: true },
     }),
+    prisma.paymentMethodControl.findMany({ where: { suspended: true }, select: { scope: true, merchantId: true, method: true } }),
   ]);
 
-  return <NewPaymentView providers={providers} merchants={merchants} />;
+  return <NewPaymentView providers={providers} merchants={merchants} suspended={controls} />;
 }

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { ChargebackNewView } from "@/components/views/chargeback-new-view";
-import { requireMasterPage } from "@/lib/admin/page-guard";
+import { requirePermissionPage } from "@/lib/admin/page-guard";
 import { DISPUTE_DEADLINE_DAYS } from "@/lib/chargebacks/types";
 import { livemodeWhere, modeFromCookieStore } from "@/lib/mode";
 import { partsInTz, ymd } from "@/lib/settlements/schedule";
@@ -9,7 +9,7 @@ import { partsInTz, ymd } from "@/lib/settlements/schedule";
 export const dynamic = "force-dynamic";
 
 export default async function ChargebackNewPage({ searchParams }: { searchParams?: { paymentId?: string } }) {
-  await requireMasterPage();
+  await requirePermissionPage("chargeback", "create");
   const mode = modeFromCookieStore(cookies());
   const rows = await prisma.payment.findMany({
     where: { ...livemodeWhere(mode), status: { in: ["captured", "partially_refunded", "refunded"] }, chargebacks: { none: { status: { in: ["received", "disputed"] } } } },

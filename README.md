@@ -45,7 +45,7 @@
 - **冪等キー** — 決済作成 API は `Idempotency-Key` ヘッダを受け、同じキーの再送には同じ結果を返す
 - **監査ログ（PaymentEvent）** — 誰が（ダッシュボード / Webhook）いつ何をしたかを追記専用で記録し、詳細画面にタイムライン表示
 - **Webhook 受信** — Stripe 互換の HMAC-SHA256 署名検証（timestamp tolerance 付き）と、イベントIDによる重複排除。詳細画面から署名付き Webhook を自サーバーに送って挙動を確認できる
-- **管理者アカウント + 二段階認証 + CSRF + レートリミット + セキュリティヘッダ** — 管理者は `AdminUser`（ログインID + scrypt パスワード、TOTP / RFC 6238 の二段階認証、マスター / 一般ロール、招待・仮パスワード再発行・最後のマスター保護）。更新操作はセッション必須、Origin 検証と `X-Requested-With`、IP 単位の rate limit、CSP / HSTS / frame-ancestors
+- **管理者アカウント + 二段階認証 + CSRF + レートリミット + セキュリティヘッダ** — 管理者は `AdminUser`（ログインID + scrypt パスワード、TOTP / RFC 6238 の二段階認証、5 ロール（admin / accounting / cs / developer / viewer）、招待・仮パスワード再発行・最後の admin 保護）。更新操作はセッション必須、Origin 検証と `X-Requested-With`、IP 単位の rate limit、CSP / HSTS / frame-ancestors
 - **操作ログ（監査）** — 誰が・いつ・何を・何に対して・どこから変更したかを変更前後の JSON とともに記録。操作者 / 操作種別 / 対象 / 期間で絞り込み、差分表示、CSV 出力
 - **横断検索** — ヘッダーの検索ボックス（Ctrl+K）で取引ID・注文番号・振込ID・メール・加盟店・代理店・管理者をまとめて検索
 - **グループ化ナビ** — 取引 / 加盟店 / 精算 / リスク / レポート / 配信 / 設定のグループを `lib/nav.ts` で一元定義し、サイドバー・トップカード・モバイルタブを生成（未実装フェーズは非表示）
@@ -64,6 +64,7 @@
 - **リスク対策** — チャージバック（登録 → 異議申立て → 勝訴 / 敗訴 → 確定、取引ステータス `chargeback`、精算控除、Webhook）、カード識別ハッシュ / 接続元 IP による連続失敗検知（閾値設定）→ ブラックリスト候補 / 承認 / 手動追加 / 作成時ブロック、過不足入金の一覧と対応（差額返金申請・追加入金案内）
 - **レポート・通知** — 期間 / 加盟店 / 決済種別で絞る集計レポート（指標 7 種、推移 / 比率 / ランキングの自前 SVG グラフ、集計 / 明細 CSV）、メールテンプレート（8 キー × 2 言語、プレースホルダー、プレビュー）と送信ログ（デモは記録のみ、`EMAIL_PROVIDER` で差し替え）、お知らせ配信（下書き / 公開 / 終了、対象加盟店、障害の更新履歴、ヘッダーのバナー、加盟店 API）
 - **定期課金・決済リンク・代理店手数料** — 課金プランと定期課金（無料期間 → 有効、毎時 cron の課金、3 日 / 7 日の再試行と 3 回で停止、Webhook・メール、今すぐ課金 / 一時停止 / 再開 / 解約、デモ失敗率）、決済リンク（URL / QR、ログイン不要の決済ページ `/pay/<token>`、有効期限・最大利用回数、無効化）、代理店手数料（精算バッチ × 手数料率の月次集計、CSV）
+- **ロール細分化・取引メモ・決済手段の一時停止** — 5 ロール（admin / accounting / cs / developer / viewer）と `lib/role.ts` の権限マトリクス（リソース × 操作 × ロール。API・ページ・UI・CLAUDE.md・マニュアルの表はすべてここから）、取引の内部メモ（ステータス変更履歴と 1 本のタイムライン、ピン留め、削除だけ監査）、決済手段の全体 / 加盟店別の一時停止（理由必須、自動再開 cron、赤バナー、障害お知らせの下書き、全決済経路で 409）
 - **未消込入金と API 再通知（銀行振込のみ）** — 振込IDを付け忘れた入金を「未消込入金」として受け（入金通知 API は 404 ではなく 202 で記録）、サポートが振込IDを付与すると通常の入金消込が走り、完了時に加盟店の通知先へ `payment.completed` を送信。取引詳細の「API 再通知」で完了通知を再送でき、手動で加盟店側を更新せず API で反映できる
 - **管理画面マニュアル** — 左に目次・右に本文の 19 章構成。`content/manual/{ja,en}/*.md` を自前の Markdown レンダラで描画し、表示言語に連動。各画面ヘッダーの「?」から該当章へ。通知パラメータ・署名検証・加盟店 API・精算サイクルは開発者向けの精度で記載し、「はじめに」に権限マトリクス
 
@@ -148,7 +149,7 @@ npm install
 cp .env.example .env
 # ENCRYPTION_KEY を 32 バイトの base64 に置き換える:
 #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-# ログイン: kuromaru / atusi0130（マスター）, general / general1234（一般）— prisma/seed-accounts.ts
+# ログイン: kuromaru / atusi0130（admin）, general / general1234（cs）, accounting / accounting1234, developer / developer1234, viewer / viewer1234 — prisma/seed-accounts.ts
 
 npx prisma migrate deploy   # スキーマ適用
 npm run db:seed             # デモデータ（プロバイダ・決済・加盟店・代理店・申請・IP ルール）。テーブル単位の upsert で何度実行しても増えない
@@ -308,7 +309,7 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 - **Idempotency** — `POST /api/payments` honors an `Idempotency-Key` header and replays the original result.
 - **Audit trail (PaymentEvent)** — append-only record of who did what and when (dashboard vs. webhook), rendered as a timeline.
 - **Webhook ingestion** — Stripe-compatible HMAC-SHA256 signatures with a timestamp tolerance, plus deduplication on event id. The payment page can send itself a signed webhook to demonstrate the path end to end.
-- **Admin accounts with two-factor auth, CSRF, rate limiting, security headers** — operators are `AdminUser` rows (login ID + scrypt password, TOTP / RFC 6238 two-factor, master / general roles, invitations, temporary passwords, last-master protection). Mutations require a session; Origin check + `X-Requested-With`, per-IP limits, CSP / HSTS / `frame-ancestors 'none'`.
+- **Admin accounts with two-factor auth, CSRF, rate limiting, security headers** — operators are `AdminUser` rows (login ID + scrypt password, TOTP / RFC 6238 two-factor, five roles (admin / accounting / cs / developer / viewer), invitations, temporary passwords, last-admin protection). Mutations require a session; Origin check + `X-Requested-With`, per-IP limits, CSP / HSTS / `frame-ancestors 'none'`.
 - **Audit log** — who changed what, when, on which record and from which IP, with redacted before / after snapshots. Filter by actor / action / target / period, diff view, CSV export.
 - **Global search** — the header box (Ctrl+K) searches transaction IDs, order numbers, transfer IDs, emails, merchants, agents and admins at once.
 - **Grouped navigation** — Transactions / Merchants / Settlement / Risk / Reports / Notices / Settings are defined once in `lib/nav.ts` and drive the sidebar, the dashboard cards and the mobile tabs (unimplemented phases stay hidden).
@@ -327,6 +328,7 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 - **Risk** — chargebacks (register → dispute → won / lost → confirm, transaction status `chargeback`, settlement deduction, webhook), card fingerprint / client IP repeated-failure detection with a configurable threshold → blacklist candidates / approval / manual entries / blocking at creation, and short / excess deposit follow-up (difference refund, top-up notice).
 - **Reports and notices** — aggregated reports by period / merchant / method (seven KPIs, in-house SVG charts for series / share / ranking, summary and detail CSV), e-mail templates (8 keys × 2 languages, placeholders, preview) with a send log (demo only records; `EMAIL_PROVIDER` swaps the provider), and announcements (draft / publish / end, target merchants, incident timeline, header banner, merchant API).
 - **Subscriptions, payment links, agent fees** — billing plans and subscriptions (trial → active, hourly charging cron, retries after 3 / 7 days and suspension on the third failure, webhooks and e-mails, charge now / pause / resume / cancel, demo failure rate), payment links (URL / QR, public checkout page `/pay/<token>`, expiry and usage limit, disable), and monthly agent fees (settlement payout × fee rate, CSV).
+- **Fine-grained roles, transaction notes, payment-method suspension** — five roles (admin / accounting / cs / developer / viewer) driven by the permission matrix in `lib/role.ts` (resource × action × role; the API, pages, UI, CLAUDE.md and the manual tables all derive from it), internal transaction notes merged with the status history into one timeline (pins, audited deletion), and global / per-merchant payment-method suspension (reason required, auto-resume cron, red banner, incident-announcement draft, 409 on every checkout path)
 - **Unmatched deposits and API re-notify (bank transfers only)** — deposits that arrive without a transfer ID are kept as "unmatched" (the deposit notification API answers 202 instead of 404); support attaches the transfer ID, the normal reconciliation runs and `payment.completed` goes to the merchant's notification URL on completion. "API re-notify" on the transaction detail resends the completion notification, so the merchant side is updated by API rather than by hand
 - **In-app manual** — 19 chapters, table of contents on the left and the chapter on the right, rendered from `content/manual/{ja,en}/*.md` by a small in-house Markdown renderer and linked to the UI language. Every page header has a "?" that opens its chapter. Notification parameters, signature verification, the merchant API and settlement cycles are documented at integrator precision, and the introduction carries the permission matrix.
 

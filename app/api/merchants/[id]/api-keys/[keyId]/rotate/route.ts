@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { API_KEY_SELECT, MAX_ROTATION_GRACE_DAYS, ROTATION_GRACE_DAYS, apiKeyUsable, isApiKeyKind, isApiKeyMode, toApiKeyView } from "@/lib/merchants/api-keys";
 import { generateApiKey, hashApiKey } from "@/lib/merchants/api-keys-server";
@@ -16,7 +16,7 @@ const Body = z.object({ graceDays: z.number().int().min(0).max(MAX_ROTATION_GRAC
  * the same mode / kind / label; the old key keeps working for `graceDays`.
  */
 export const POST = withApiHandler<Ctx>(async (req, { params }) => {
-  await requireAdmin(req);
+  await requirePermission(req, "api_key", "rotate");
   const { graceDays } = Body.parse(await readJson(req));
   const old = await prisma.apiKey.findFirst({ where: { id: params.keyId, merchantId: params.id }, select: API_KEY_SELECT });
   if (!old) throw new ApiError(404, "not_found", "errors.notFound");

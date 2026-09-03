@@ -41,13 +41,13 @@ const m2 = SEED_IDS.merchant2;
 const ctx = (id: string, keyId?: string) => ({ params: keyId ? { id, keyId } : { id } }) as { params: { id: string; keyId: string } };
 
 async function create(body: Record<string, unknown>) {
-  return read(await createPayment(json("/api/payments", "POST", { orderNumber: `ORD-${Math.random().toString(36).slice(2, 8)}`, customerName: "Tester", customerId: "u_t", ...body }), {}));
+  return read(await createPayment(json("/api/payments", "POST", { orderNumber: `ORD-${Math.random().toString(36).slice(2, 8)}`, customerName: "Tester", customerId: "u_t", ...body }, ADMIN), {}));
 }
 
 beforeEach(async () => {
   await truncateAll(prisma);
   await seed(prisma, { now: NOW });
-  ADMIN = await sessionHeaders("general");
+  ADMIN = await sessionHeaders("admin");
 });
 afterEach(() => {
   vi.unstubAllEnvs();

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { currentScheduleIndex, feeScheduleInputSchema, ratesForPlan, toFeeScheduleViews } from "@/lib/merchants/fees";
 import { parseDateInTz, startOfDayInTz } from "@/lib/time";
@@ -21,7 +21,7 @@ export const GET = withApiHandler<Ctx>(async (_req, { params }) => {
  * as history; the change itself is audited.
  */
 export const POST = withApiHandler<Ctx>(async (req, { params }) => {
-  await requireAdmin(req);
+  await requirePermission(req, "merchant_contract", "update");
   const parsed = feeScheduleInputSchema.safeParse(await readJson(req));
   if (!parsed.success) {
     throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: Object.fromEntries(parsed.error.issues.map((i) => [i.path.join("."), i.message])) });

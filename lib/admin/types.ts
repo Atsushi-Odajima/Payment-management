@@ -1,7 +1,8 @@
 // Admin user (管理者) vocabulary. Role lives in lib/merchants/types (ROLES)
 // because the merchant screens used it first; re-exported here for clarity.
 
-export { ROLES, isRole, type Role } from "@/lib/merchants/types";
+export { ROLES, isRole, type Role } from "@/lib/role";
+import type { Role } from "@/lib/role";
 
 export const ADMIN_STATUSES = ["active", "disabled", "invited"] as const;
 export type AdminStatus = (typeof ADMIN_STATUSES)[number];
@@ -14,7 +15,7 @@ export function isAdminStatus(v: unknown): v is AdminStatus {
 export interface AdminInput {
   name: string;
   email: string;
-  role: "master" | "general";
+  role: Role;
   status: AdminStatus;
 }
 
@@ -39,7 +40,7 @@ export interface CurrentAdmin {
   loginId: string;
   name: string;
   email: string;
-  role: "master" | "general";
+  role: Role;
   status: AdminStatus;
   totpEnabled: boolean;
 }

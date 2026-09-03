@@ -11,6 +11,8 @@ import { SESSION_COOKIE } from "@/lib/auth";
 import { currentAdminFromToken } from "@/lib/admin/current";
 import { checkAdminAccess } from "@/lib/ip-restrictions/enforce";
 import { MODE_COOKIE, resolveMode } from "@/lib/mode";
+import { prisma } from "@/lib/db";
+import { loadGlobalControls } from "@/lib/payments/method-controls";
 import { loadActiveAnnouncements } from "@/lib/announcements/list";
 
 function requestLang(): Lang {
@@ -66,13 +68,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const banner = (await loadActiveAnnouncements().catch(() => []))
     .filter((a) => a.kind !== "notice")
     .map((a) => ({ id: a.id, kind: a.kind, title: a.title, latestPhase: a.updates.length ? a.updates[a.updates.length - 1].phase : null }));
+  // Globally suspended payment methods (Phase I-3) → red banner on every page.
+  const suspendedMethods = (await loadGlobalControls(prisma).catch(() => [])).filter((c) => c.suspended).map((c) => c.method);
   return (
     <html lang={lang}>
       <body>
         <LanguageProvider initialLang={lang}>
           <SessionProvider user={user}>
             <ModeProvider initialMode={mode}>
-              <AppShell banner={banner}>{children}</AppShell>
+              <AppShell banner={banner} suspendedMethods={suspendedMethods}>{children}</AppShell>
             </ModeProvider>
           </SessionProvider>
         </LanguageProvider>

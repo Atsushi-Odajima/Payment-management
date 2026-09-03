@@ -23,37 +23,101 @@ The **EN / 日本語** toggle switches the language; the choice is saved for the
 
 Roles (master / general) belong to the signed-in admin account and are enforced server-side (API and pages). Legend: **○** = master and general, **M** = master only, **—** = no such operation. Anonymous visitors can only view (the top page requires a login).
 
-| Feature | View | Create | Update | Approve / state change | Delete |
-|---|---|---|---|---|---|
-| Merchants (basic info, notification settings) | ○ | ○ | ○ | — | — |
-| Reveal / regenerate merchant password | M | — | M | — | — |
-| Contract & fees / limits / deadlines / settlement settings | ○ | ○ | ○ | — | — |
-| API keys and signing secrets (issue / rotate / revoke) | ○ | ○ | ○ | — | ○ (revoke) |
-| Agents | ○ | ○ | ○ | — | — (disable) |
-| Create transaction | ○ | ○ | — | — | — |
-| Complete / fail / cancel / expire / reconcile a transaction | ○ | — | — | M | — |
-| Refund requests | ○ | ○ | — | M (approve / reject) | — |
-| Settlement batches | ○ | ○ (generate) | — | M (confirm / schedule / pay / hold / release) | M (discard while collecting) |
-| Webhook deliveries | ○ | — | — | M (resend) | — |
-| Chargebacks | ○ | M | — | M (dispute / resolve / confirm) | — |
-| Blacklist and detection rule | ○ | M | M | M (approve / reject / disable) | — |
-| Deposit-difference follow-up | ○ | — | ○ (refund request / notify / resolve) | — | — |
-| Unmatched deposits (register / match by transfer ID / dismiss) | ○ | ○ | ○ (dismiss) | M (match) | — |
-| API re-notify (completed bank transfers) | ○ | — | — | M | — |
-| Reports and CSV | ○ | — | — | — | — |
-| E-mail templates | ○ | — | M | — | — |
-| E-mail log | ○ | — | — | — | — |
-| Announcements | ○ | ○ | ○ | ○ (publish / end / add update) | — |
-| Billing plans | ○ | ○ | ○ | — | — (disable) |
-| Subscriptions | ○ | ○ | — | M (charge / pause / resume / cancel) | — |
-| Demo charge failure rate | ○ | — | M | — | — |
-| Payment links | ○ | ○ | — | ○ (disable) | — |
-| Agent fees | ○ | — | — | — | — |
-| IP restrictions | ○ | ○ | ○ | — | ○ |
-| Payment providers | ○ | ○ | ○ | — | ○ (disable when it has payments) |
-| Admin accounts | M | M (invite) | M | M (temporary password / two-factor reset) | — (disable) |
-| Own account (password, two-factor) | ○ | — | ○ | — | — |
-| Audit log and CSV | ○ | — | — | — | — |
-| Global search | ○ (admins only for M) | — | — | — | — |
+<!-- permissions:start -->
+| Feature | Action | admin | accounting | cs | developer | viewer |
+|---|---|---|---|---|---|---|
+| Merchants | View | ○ | ○ | ○ | ○ | ○ |
+| Merchants | Create | ○ |  | ○ |  |  |
+| Merchants | Update | ○ |  | ○ |  |  |
+| Merchants | Reveal password | ○ |  |  |  |  |
+| Merchants | Regenerate password | ○ |  |  |  |  |
+| Contract & fees / limits / deadlines / settlement settings | View | ○ | ○ | ○ | ○ | ○ |
+| Contract & fees / limits / deadlines / settlement settings | Update | ○ | ○ |  |  |  |
+| API keys and signing secrets | View | ○ | ○ | ○ | ○ | ○ |
+| API keys and signing secrets | Issue | ○ |  |  | ○ |  |
+| API keys and signing secrets | Rotate | ○ |  |  | ○ |  |
+| API keys and signing secrets | Revoke | ○ |  |  | ○ |  |
+| Agents | View | ○ | ○ | ○ | ○ | ○ |
+| Agents | Create | ○ |  | ○ |  |  |
+| Agents | Update | ○ |  | ○ |  |  |
+| Transactions | View | ○ | ○ | ○ | ○ | ○ |
+| Transactions | Create | ○ |  | ○ |  |  |
+| Transactions | Complete / fail / cancel / expire | ○ |  |  |  |  |
+| Transactions | Reconcile deposit | ○ | ○ |  |  |  |
+| Transactions | API re-notify | ○ |  | ○ | ○ |  |
+| Transactions | Simulate webhook | ○ |  |  | ○ |  |
+| Transaction notes | View | ○ | ○ | ○ | ○ | ○ |
+| Transaction notes | Create | ○ | ○ | ○ | ○ |  |
+| Transaction notes | Edit own notes | ○ | ○ | ○ | ○ |  |
+| Transaction notes | Delete | ○ |  |  |  |  |
+| Transaction notes | Pin | ○ |  | ○ |  |  |
+| Unmatched deposits | View | ○ | ○ | ○ | ○ | ○ |
+| Unmatched deposits | Register | ○ | ○ | ○ |  |  |
+| Unmatched deposits | Match | ○ | ○ |  |  |  |
+| Unmatched deposits | Dismiss | ○ | ○ | ○ |  |  |
+| Deposit differences | View | ○ | ○ | ○ | ○ | ○ |
+| Deposit differences | Update | ○ | ○ | ○ |  |  |
+| Refunds | View | ○ | ○ | ○ | ○ | ○ |
+| Refunds | Request | ○ |  | ○ |  |  |
+| Refunds | Force past the window | ○ |  |  |  |  |
+| Refunds | Approve / reject | ○ | ○ |  |  |  |
+| Settlement batches | View | ○ | ○ | ○ | ○ | ○ |
+| Settlement batches | Generate | ○ | ○ |  |  |  |
+| Settlement batches | Confirm / schedule / pay / hold / release | ○ | ○ |  |  |  |
+| Settlement batches | Delete | ○ | ○ |  |  |  |
+| Agent fees | View | ○ | ○ | ○ | ○ | ○ |
+| Reports | View | ○ | ○ | ○ | ○ | ○ |
+| Webhook deliveries | View | ○ | ○ | ○ | ○ | ○ |
+| Webhook deliveries | Resend | ○ |  |  | ○ |  |
+| Chargebacks | View | ○ | ○ | ○ | ○ | ○ |
+| Chargebacks | Create | ○ | ○ |  |  |  |
+| Chargebacks | Update | ○ | ○ |  |  |  |
+| Blacklist | View | ○ | ○ | ○ | ○ | ○ |
+| Blacklist | Create | ○ |  | ○ |  |  |
+| Blacklist | Update | ○ |  | ○ |  |  |
+| Detection rule | View | ○ | ○ | ○ | ○ | ○ |
+| Detection rule | Update | ○ |  | ○ |  |  |
+| E-mail templates | View | ○ | ○ | ○ | ○ | ○ |
+| E-mail templates | Update | ○ |  |  | ○ |  |
+| E-mail log | View | ○ | ○ | ○ | ○ | ○ |
+| Announcements | View | ○ | ○ | ○ | ○ | ○ |
+| Announcements | Create | ○ |  | ○ |  |  |
+| Announcements | Update | ○ |  | ○ |  |  |
+| Announcements | Publish / end / add update | ○ |  | ○ |  |  |
+| Billing plans | View | ○ | ○ | ○ | ○ | ○ |
+| Billing plans | Create | ○ |  | ○ |  |  |
+| Billing plans | Update | ○ |  | ○ |  |  |
+| Subscriptions | View | ○ | ○ | ○ | ○ | ○ |
+| Subscriptions | Create | ○ |  | ○ |  |  |
+| Subscriptions | Charge / pause / resume / cancel | ○ |  | ○ |  |  |
+| Demo charge failure rate | View | ○ | ○ | ○ | ○ | ○ |
+| Demo charge failure rate | Update | ○ |  |  | ○ |  |
+| Payment links | View | ○ | ○ | ○ | ○ | ○ |
+| Payment links | Create | ○ |  | ○ |  |  |
+| Payment links | Disable | ○ |  | ○ |  |  |
+| IP restrictions | View | ○ | ○ | ○ | ○ | ○ |
+| IP restrictions | Create | ○ |  |  | ○ |  |
+| IP restrictions | Update | ○ |  |  | ○ |  |
+| IP restrictions | Delete | ○ |  |  | ○ |  |
+| Payment providers | View | ○ | ○ | ○ | ○ | ○ |
+| Payment providers | Create | ○ |  |  | ○ |  |
+| Payment providers | Update | ○ |  |  | ○ |  |
+| Payment providers | Delete | ○ |  |  | ○ |  |
+| Payment providers | Connection test | ○ |  |  | ○ |  |
+| Payment method suspension | View | ○ | ○ | ○ | ○ | ○ |
+| Payment method suspension | Suspend globally | ○ |  |  |  |  |
+| Payment method suspension | Suspend per merchant | ○ |  | ○ |  |  |
+| Admin accounts | View | ○ |  |  |  |  |
+| Admin accounts | Create | ○ |  |  |  |  |
+| Admin accounts | Update | ○ |  |  |  |  |
+| Admin accounts | Temporary password / 2FA reset | ○ |  |  |  |  |
+| Own account | Update | ○ | ○ | ○ | ○ | ○ |
+| Audit log | View | ○ | ○ | ○ | ○ | ○ |
+| Global search (admins) | View | ○ |  |  |  |  |
+| Global settings | View | ○ |  |  |  |  |
+| Global settings | Update | ○ |  |  |  |  |
+| CSV export | Export | ○ | ○ | ○ | ○ |  |
+| Personal data | Unmask | ○ |  | ○ |  |  |
+<!-- permissions:end -->
 
 On the public demo `DEMO_READONLY=1` turns provider updates and every delete into 403, even for masters.

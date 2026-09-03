@@ -10,8 +10,7 @@ export default async function LoginPage() {
   // The seeded demo credentials are shown on the public demo only.
   const demo = process.env.DEMO_LOGIN_HINT
     ? {
-        master: { loginId: DEMO_ADMIN_ACCOUNTS.master.loginId, password: DEMO_ADMIN_ACCOUNTS.master.password },
-        general: { loginId: DEMO_ADMIN_ACCOUNTS.general.loginId, password: DEMO_ADMIN_ACCOUNTS.general.password },
+        accounts: Object.values(DEMO_ADMIN_ACCOUNTS).map((a) => ({ role: a.role, loginId: a.loginId, password: a.password })),
       }
     : undefined;
   return <LoginView demo={demo} />;

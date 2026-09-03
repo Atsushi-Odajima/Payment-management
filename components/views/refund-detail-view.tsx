@@ -12,7 +12,7 @@ import { RefundStatusBadge } from "@/components/refund-badges";
 import { ModeBadge } from "@/components/payment-status-badge";
 import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
 import { useConfirm } from "@/components/confirm-dialog";
-import { useRole } from "@/components/session-provider";
+import { useCan } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import type { RefundRow } from "@/lib/refunds/list";
 import type { MessageKey } from "@/lib/i18n";
@@ -24,7 +24,7 @@ export function RefundDetailView({ refund }: { refund: RefundRow }) {
   const apiJson = useApiJson();
   const toast = useToast();
   const { confirm } = useConfirm();
-  const { isMaster } = useRole();
+  const isMaster = useCan("refund", "decide");
   const formatDate = useFormatDateTime();
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [error, setError] = useState<string | null>(null);

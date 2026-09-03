@@ -15,6 +15,7 @@ import { DEMO_LIMITS } from "@/lib/demo";
 import { notifyTransferIssued } from "@/lib/email/hooks";
 import { isUniqueViolation } from "@/lib/ids";
 import { checkLimit, limitFailureReason } from "@/lib/merchants/limits";
+import { assertMethodAvailable } from "@/lib/payments/method-controls";
 import { toPaymentMethod } from "@/lib/payments/methods";
 import { initialStatus } from "@/lib/payments/transitions";
 import { DEFAULT_TRANSFER_ID_DIGITS, generateTransferId, isTransferIdDigits, transferDueDate } from "@/lib/payments/transfer";
@@ -95,6 +96,8 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
   if (count >= DEMO_LIMITS.payments) throw new ApiError(403, "demo_limit", "errors.demoLimit", { limit: DEMO_LIMITS.payments });
 
   const method = toPaymentMethod(provider.category);
+  // Phase I-3: a suspended method (global or per merchant) refuses the checkout before any row is written.
+  await assertMethodAvailable(prisma, { merchantId: body.merchantId ?? null, method });
   const now = opts.now ?? new Date();
   const externalId = generateDemoExternalId(provider.providerKey);
   const livemode = !provider.testMode;

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest } from "@/lib/audit";
 import { DEFAULT_PAGE_SIZE, parsePage } from "@/lib/pagination";
 import { loadActiveAnnouncements, loadAnnouncements, parseAnnouncementFilters, parseAnnouncementSort, toAnnouncementRow } from "@/lib/announcements/list";
@@ -18,7 +18,7 @@ export const GET = withApiHandler(async (req) => {
 
 /** POST /api/announcements — create a draft, or publish right away with `{ publish: true }`. */
 export const POST = withApiHandler(async (req) => {
-  const admin = await requireAdmin(req);
+  const admin = await requirePermission(req, "announcement", "create");
   const raw = (await readJson(req)) as Record<string, unknown>;
   const parsed = announcementInputSchema.safeParse(raw);
   if (!parsed.success) {

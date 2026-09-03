@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, withApiHandler } from "@/lib/api/handler";
-import { requireMaster } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest } from "@/lib/audit";
 import { loadSettlement } from "@/lib/settlements/list";
 import { deleteBatch } from "@/lib/settlements/service";
@@ -16,7 +16,7 @@ export const GET = withApiHandler<Ctx>(async (_req, { params }) => {
 
 /** DELETE /api/settlements/:id — discard a batch that is still collecting (master). */
 export const DELETE = withApiHandler<Ctx>(async (req, { params }) => {
-  await requireMaster(req);
+  await requirePermission(req, "settlement", "delete");
   await deleteBatch(prisma, { batchId: params.id, audit: await auditContextFromRequest(req) });
   return ok({ deleted: true });
 });

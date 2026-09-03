@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest } from "@/lib/audit";
 import { loadAnnouncement } from "@/lib/announcements/list";
 import { addAnnouncementUpdate, setAnnouncementStatus } from "@/lib/announcements/service";
@@ -8,7 +8,7 @@ import { announcementUpdateSchema } from "@/lib/announcements/types";
 
 /** POST /api/announcements/:id/publish | end | update ({ phase, body }). */
 export const POST = withApiHandler<{ params: { id: string; action: string } }>(async (req, { params }) => {
-  await requireAdmin(req);
+  await requirePermission(req, "announcement", "publish");
   const audit = await auditContextFromRequest(req);
   if (params.action === "publish" || params.action === "end") {
     await setAnnouncementStatus(prisma, { id: params.id, action: params.action, audit });

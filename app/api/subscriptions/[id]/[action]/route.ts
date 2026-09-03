@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireMaster } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest } from "@/lib/audit";
 import { loadSubscription } from "@/lib/subscriptions/list";
 import { applySubscriptionAction, chargeSubscription } from "@/lib/subscriptions/service";
@@ -12,7 +12,7 @@ import { isSubscriptionAction } from "@/lib/subscriptions/types";
  */
 export const POST = withApiHandler<{ params: { id: string; action: string } }>(async (req, { params }) => {
   if (!isSubscriptionAction(params.action)) throw new ApiError(404, "invalid_action", "errors.invalidAction");
-  await requireMaster(req);
+  await requirePermission(req, "subscription", "action");
   const audit = await auditContextFromRequest(req);
   if (params.action === "charge") {
     const body = ((await readJson(req)) ?? {}) as { outcome?: string };

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { requirePermission } from "@/lib/api/role-guard";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateIpRestrictionInput } from "@/lib/ip-restrictions/schema";
 import { assertNotSelfBlock } from "@/lib/ip-restrictions/self-block";
@@ -17,6 +18,7 @@ export const GET = withApiHandler(async () => {
 
 /** POST /api/ip-restrictions — add a rule (IPv4 or CIDR; deny blocks, allow is informational). */
 export const POST = withApiHandler(async (req) => {
+    await requirePermission(req, "ip_restriction", "create");
   const v = validateIpRestrictionInput(await readJson(req));
   if (!v.ok) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: v.errors });
   if (v.data.merchantId) {

@@ -34,6 +34,8 @@ export interface TransactionListItem {
   transferDueAt: Date | null;
   depositAmount: number | null;
   depositDiff: DepositDiff | null;
+  /** Number of pinned internal notes (Phase I-2). */
+  pinnedNotes: number;
   failureReason: string | null;
   /** awaiting_transfer with a deadline in the past. */
   overdue: boolean;
@@ -97,6 +99,7 @@ export const TRANSACTION_SELECT = {
   failureReason: true,
   provider: { select: { providerKey: true, displayName: true, category: true } },
   merchant: { select: { id: true, merchantCode: true, siteName: true } },
+  notes: { where: { pinned: true }, select: { id: true } },
 } as const;
 
 type Row = {
@@ -117,6 +120,7 @@ type Row = {
   transferDueAt: Date | null;
   depositAmount: number | null;
   depositDiff: string | null;
+  notes?: { id: string }[];
   failureReason: string | null;
   provider: { providerKey: string; displayName: string; category: string };
   merchant: { id: string; merchantCode: string; siteName: string } | null;
@@ -144,6 +148,7 @@ export function toTransactionListItem(p: Row, now: Date): TransactionListItem {
     transferDueAt: p.transferDueAt,
     depositAmount: p.depositAmount,
     depositDiff: isDepositDiff(p.depositDiff) ? p.depositDiff : null,
+    pinnedNotes: p.notes?.length ?? 0,
     failureReason: p.failureReason,
     overdue: isTransferOverdue(p, now),
   };

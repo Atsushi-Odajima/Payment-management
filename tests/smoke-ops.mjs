@@ -18,8 +18,11 @@ const check = (name, ok, extra = "") => {
 };
 const pageErrors = [];
 
+let loginSeq = 0;
 async function login(loginId, password) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 1000 }, locale: "en-US" });
+  // Each session gets its own client address so the per-IP login rate limit (10 / window) never trips across the smoke's logins.
+  loginSeq += 1;
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 1000 }, locale: "en-US", extraHTTPHeaders: { "x-forwarded-for": `10.99.${Math.floor(loginSeq / 250)}.${loginSeq % 250}` } });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => pageErrors.push(e.message));
   await page.goto(BASE + "/login", { waitUntil: "networkidle" });
@@ -335,6 +338,70 @@ async function login(loginId, password) {
   // Card payments never get the button.
   await page.goto(BASE + "/payments/pay_demo_001", { waitUntil: "networkidle" });
   check("no API re-notify on a card payment", (await page.getByRole("button", { name: "API re-notify" }).count()) === 0);
+  await ctx.close();
+}
+
+// ── Roles / notes / payment-method suspension (Phase I) ────────────────
+{
+  // viewer: read-only navigation, no action buttons, CSV refused.
+  const { ctx: vctx, page: vpage } = await login("viewer", "viewer1234");
+  await vpage.goto(BASE + "/refunds", { waitUntil: "networkidle" });
+  await vpage.locator("tbody tr").first().click();
+  await vpage.waitForURL(/\/refunds\/[a-z0-9_]+$/);
+  check("viewer: refund detail has no enabled Approve button", (await vpage.getByRole("button", { name: "Approve" }).filter({ hasNot: vpage.locator("[disabled]") }).count()) === 0 || (await vpage.getByRole("button", { name: "Approve" }).isDisabled()));
+  const sidebar = await vpage.locator("aside").first().textContent();
+  check("viewer: no Admin Users / Global Settings in the sidebar", !sidebar.includes("Admin Users") && !sidebar.includes("Global Settings"));
+  const csv = await vpage.request.get(BASE + "/api/merchants?format=csv");
+  check("viewer: CSV export refused (403)", csv.status() === 403);
+  await vctx.close();
+
+  // accounting: approves the seeded refund.
+  const { ctx: actx, page: apage } = await login("accounting", "accounting1234");
+  await apage.goto(BASE + "/refunds", { waitUntil: "networkidle" });
+  await apage.locator("tbody tr").filter({ hasText: "ORD-DEMO-002" }).first().click();
+  await apage.waitForURL(/\/refunds\/[a-z0-9_]+$/);
+  check("accounting: Approve button enabled", await apage.getByRole("button", { name: "Approve" }).isEnabled());
+  await actx.close();
+
+  // admin: roles list on the admin detail, note on the timeline, global suspension + banner.
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  await page.goto(BASE + "/admins", { waitUntil: "networkidle" });
+  check("admins list shows five roles", (await page.locator("tbody tr").count()) === 5);
+  await page.locator("tbody tr").filter({ hasText: "accounting" }).first().click();
+  await page.waitForURL(/\/admins\/[a-z0-9_]+$/);
+  check("admin detail lists what the role can do", (await page.textContent("body")).includes("What this role can do") && (await page.textContent("body")).includes("Settlement batches"));
+
+  await page.goto(BASE + "/payments/pay_demo_001", { waitUntil: "networkidle" });
+  await page.fill("#note-body", "Smoke note: customer confirmed by phone");
+  await page.getByLabel("Pin it (icon on the list row)").check();
+  await page.getByRole("button", { name: "Post", exact: true }).click();
+  await page.getByText("Note posted").waitFor({ timeout: 8000 });
+  await page.waitForTimeout(500);
+  check("note appears on the merged timeline", (await page.textContent("body")).includes("Smoke note: customer confirmed by phone"));
+  await page.screenshot({ path: `${OUT}/payment-timeline-en.png`, fullPage: true });
+  await page.goto(BASE + "/payments", { waitUntil: "networkidle" });
+  check("pinned note icon on the list row", (await page.locator("tbody tr").filter({ hasText: "ORD-DEMO-001" }).locator("svg[aria-label='Has pinned notes']").count()) === 1);
+
+  await page.goto(BASE + "/payment-method-controls", { waitUntil: "networkidle" });
+  await page.getByRole("switch", { name: "Accept Credit Card Payments" }).click();
+  await page.locator("dialog[open] #mc-reason").fill("Smoke: acquirer outage");
+  await page.locator("dialog[open]").getByRole("button", { name: "Suspend" }).click();
+  await page.getByText("suspended.").waitFor({ timeout: 8000 });
+  // Decline the announcement draft prompt.
+  await page.locator("dialog[open]").getByRole("button", { name: "Cancel" }).click();
+  await page.waitForTimeout(800);
+  check("red banner shows the globally suspended method", (await page.locator("[role=region][aria-label='Payment method suspension banner']").textContent()).includes("Credit Card"));
+  await page.screenshot({ path: `${OUT}/payment-method-controls-en.png`, fullPage: true });
+  await page.goto(BASE + "/payments/new", { waitUntil: "networkidle" });
+  check("new payment form hides the suspended method", !(await page.locator("#providerId").textContent()).includes("Stripe"));
+  await page.goto(BASE + "/payment-method-controls", { waitUntil: "networkidle" });
+  await page.getByRole("switch", { name: "Accept Credit Card Payments" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "Resume" }).click();
+  await page.getByText("resumed.").waitFor({ timeout: 8000 });
+  await page.waitForTimeout(500);
+  check("banner gone after resume", (await page.locator("[role=region][aria-label='Payment method suspension banner']").count()) === 0);
+  await page.goto(BASE + "/merchants/mer_demo_002?tab=methods", { waitUntil: "networkidle" });
+  check("merchant methods tab shows the seeded QR suspension", (await page.textContent("body")).includes("Not accepting"));
   await ctx.close();
 }
 

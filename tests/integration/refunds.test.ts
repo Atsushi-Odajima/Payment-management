@@ -94,7 +94,7 @@ describe("refund requests", () => {
     expect(list.status).toBe(200);
     expect(list.body.data.refunds[0].status).toBe("requested"); // seeded pending request
     expect(list.body.data.pendingCount).toBe(1);
-    const csv = await listRefunds(new Request(BASE + "/api/refunds?format=csv&status=rejected"), {});
+    const csv = await listRefunds(new Request(BASE + "/api/refunds?format=csv&status=rejected", { headers: MASTER }), {});
     expect(csv.headers.get("content-type")).toContain("text/csv");
     const text = await csv.text();
     expect(text.split("\r\n").filter(Boolean)).toHaveLength(2);

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { settlementSettingsSchema } from "@/lib/settlements/types";
 
@@ -17,7 +17,7 @@ const SELECT = {
 
 /** PATCH /api/merchants/:id/settlement — cycle, payout term, bank account, transfer fee. */
 export const PATCH = withApiHandler<{ params: { id: string } }>(async (req, { params }) => {
-  await requireAdmin(req);
+  await requirePermission(req, "merchant_contract", "update");
   const parsed = settlementSettingsSchema.safeParse(await readJson(req));
   if (!parsed.success) {
     throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: Object.fromEntries(parsed.error.issues.map((i) => [i.path.join("."), i.message])) });

@@ -11,7 +11,7 @@ import { useApiJson, useFormatDateTime, useT } from "./language-provider";
 import { useConfirm } from "./confirm-dialog";
 import { useRole } from "./session-provider";
 import { formatYen } from "@/lib/utils";
-import { MASTER_ACTIONS, canTransition, type PaymentAction, type PaymentStatus } from "@/lib/payments/transitions";
+import { canTransition, type PaymentAction, type PaymentStatus } from "@/lib/payments/transitions";
 import type { TransactionDetail } from "@/lib/payments/detail";
 import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from "@/lib/webhooks/events";
 import { popFlash, pushFlash } from "@/lib/flash";
@@ -24,7 +24,12 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
   const router = useRouter();
   const apiJson = useApiJson();
   const { confirm } = useConfirm();
-  const { isMaster } = useRole();
+  const { can } = useRole();
+  const canState = can("payment", "state");
+  const canDeposit = can("payment", "deposit");
+  const canRequestRefund = can("refund", "request");
+  const canForceRefund = can("refund", "force");
+  const canRenotify = can("payment", "renotify");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Survives the remount that router.refresh() can cause (see lib/flash.ts).
@@ -43,13 +48,14 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
   // Which actions this screen offers, in display order.
   const offered: PaymentAction[] = isBank ? ["deposit", "expire", "cancel", "refund"] : ["capture", "fail", "cancel", "refund"];
   const possible = (a: PaymentAction) =>
-    canTransition(status, a) && (a !== "expire" || payment.overdue) && (a !== "refund" || (remaining > 0 && (!deadlinePassed || isMaster)));
-  const allowed = (a: PaymentAction) => possible(a) && (isMaster || !MASTER_ACTIONS.includes(a));
+    canTransition(status, a) && (a !== "expire" || payment.overdue) && (a !== "refund" || (remaining > 0 && (!deadlinePassed || canForceRefund)));
+  const permitted = (a: PaymentAction) => (a === "refund" ? canRequestRefund : a === "deposit" ? canDeposit : canState);
+  const allowed = (a: PaymentAction) => possible(a) && permitted(a);
   const anyPossible = offered.some(possible);
-  const needsMaster = offered.some((a) => possible(a) && MASTER_ACTIONS.includes(a)) && !isMaster;
+  const needsMaster = offered.some((a) => possible(a) && !permitted(a));
   // API 再通知 (bank transfers only): re-send payment.completed to the merchant once the transfer is completed.
   const renotifyPossible = isBank && payment.merchant !== null && (status === "captured" || status === "partially_refunded" || status === "refunded");
-  const renotifyAllowed = renotifyPossible && isMaster;
+  const renotifyAllowed = renotifyPossible && canRenotify;
 
   async function renotify() {
     setError(null);
@@ -131,7 +137,7 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
         body: t("paymentActions.confirmRefundBody", { orderNumber, remaining: formatYen(remaining) }),
         confirmLabel: t("paymentActions.refund"),
         tone: "danger",
-        fields: <RefundFields remaining={remaining} deadlinePassed={deadlinePassed} isMaster={isMaster} valueRef={refundRef} />,
+        fields: <RefundFields remaining={remaining} deadlinePassed={deadlinePassed} isMaster={canForceRefund} valueRef={refundRef} />,
       });
       if (!ok) return;
       setBusy(action);

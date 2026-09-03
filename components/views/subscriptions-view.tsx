@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { DataTable, type DataColumn } from "@/components/data-table";
 import { SubscriptionStatusBadge } from "@/components/subscription-badges";
 import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
-import { useRole } from "@/components/session-provider";
+import { useCan } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import type { PlanRow, SubscriptionFilters, SubscriptionRow } from "@/lib/subscriptions/list";
 import { SUBSCRIPTION_STATUSES } from "@/lib/subscriptions/types";
@@ -166,7 +166,7 @@ function DemoSettingForm({ percent }: { percent: number }) {
   const router = useRouter();
   const apiJson = useApiJson();
   const toast = useToast();
-  const { isMaster } = useRole();
+  const isMaster = useCan("demo_setting", "update");
   const [value, setValue] = useState(String(percent));
   const [busy, setBusy] = useState(false);
 
