@@ -211,7 +211,7 @@ async function login(loginId, password) {
   await page.screenshot({ path: `${OUT}/reports-en.png`, fullPage: true });
 
   await page.goto(BASE + "/email-templates", { waitUntil: "networkidle" });
-  check("email templates: 12 rows", (await page.locator("tbody tr").count()) === 12);
+  check("email templates: 16 rows", (await page.locator("tbody tr").count()) === 16);
   await page.locator("tbody tr").first().getByRole("link").first().click();
   await page.waitForURL(/\/email-templates\/[a-z0-9_]+$/);
   await page.fill("#tpl-subject", "Smoke subject {{orderNumber}}");
@@ -240,6 +240,69 @@ async function login(loginId, password) {
   check("red incident banner visible", (await page.locator("[role=region][aria-label='Announcement banner']").textContent()).includes("Smoke incident"));
   await page.screenshot({ path: `${OUT}/announcement-detail-en.png` });
   await ctx.close();
+}
+
+// ── Subscriptions / payment links / agent fees (Phase H) ───────────────
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  await page.goto(BASE + "/subscriptions", { waitUntil: "networkidle" });
+  const subsBody = await page.textContent("body");
+  check("subscriptions: seeded rows and plans", (await page.locator("tbody tr").count()) >= 2 && subsBody.includes("Past due") && subsBody.includes("Billing plans"));
+  await page.screenshot({ path: `${OUT}/subscriptions-en.png`, fullPage: true });
+  await page.goto(BASE + "/subscriptions/sub_demo_001", { waitUntil: "networkidle" });
+  check("subscription detail shows the seeded charge", (await page.textContent("body")).includes("Charge history (1)"));
+  await page.getByRole("button", { name: "Charge now (success)" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "Charge now (success)" }).click();
+  await page.getByText("Charged.").waitFor({ timeout: 10000 });
+  await page.waitForTimeout(800);
+  check("charge now → history grows and stays active", (await page.textContent("body")).includes("Charge history (2)"));
+  await page.getByRole("button", { name: "Charge now (simulate failure)" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "Charge now (simulate failure)" }).click();
+  await page.getByText("Charge failure recorded.").waitFor({ timeout: 10000 });
+  await page.waitForTimeout(800);
+  check("simulated failure → past due with 1 failure", (await page.textContent("body")).includes("Past due"));
+  await page.screenshot({ path: `${OUT}/subscription-detail-en.png`, fullPage: true });
+
+  await page.goto(BASE + "/payment-links", { waitUntil: "networkidle" });
+  check("payment links: seeded rows", (await page.locator("tbody tr").count()) >= 2);
+  await page.goto(BASE + "/payment-links/plk_demo_001", { waitUntil: "networkidle" });
+  check("payment link detail: QR and URL", (await page.locator("img[alt='QR code of the checkout page']").count()) === 1 && (await page.textContent("body")).includes("/pay/kotoridemolinktoken00001"));
+  await page.screenshot({ path: `${OUT}/payment-link-detail-en.png`, fullPage: true });
+  await ctx.close();
+
+  // The hosted checkout is public: fresh context, no session.
+  const pub = await browser.newContext({ locale: "en-US", viewport: { width: 480, height: 900 } });
+  const pay = await pub.newPage();
+  pay.on("pageerror", (e) => pageErrors.push(`pay: ${e.message}`));
+  await pay.goto(BASE + "/pay/kotoridemolinktoken00001", { waitUntil: "networkidle" });
+  check("hosted checkout renders without admin chrome", (await pay.textContent("body")).includes("Payment method") && (await pay.locator("aside").count()) === 0);
+  await pay.screenshot({ path: `${OUT}/pay-page-en.png`, fullPage: true });
+  await pay.fill("#pay-name", "Smoke Customer");
+  await pay.getByRole("button", { name: /^Pay/ }).click();
+  await pay.getByRole("button", { name: "Complete payment (demo)" }).waitFor({ timeout: 10000 });
+  await pay.getByRole("button", { name: "Complete payment (demo)" }).click();
+  await pay.getByText("Payment completed").waitFor({ timeout: 10000 });
+  check("hosted checkout completes a demo payment", true);
+  await pay.screenshot({ path: `${OUT}/pay-page-done-en.png`, fullPage: true });
+  await pub.close();
+
+  const { ctx: ctx2, page: page2 } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  await page2.goto(BASE + "/payment-links/plk_demo_001", { waitUntil: "networkidle" });
+  check("payment link usage shows the new transaction", (await page2.textContent("body")).includes("Transactions from this link (2)"));
+  const d = new Date();
+  const lastMonth = `${d.getUTCMonth() === 0 ? d.getUTCFullYear() - 1 : d.getUTCFullYear()}-${String(d.getUTCMonth() === 0 ? 12 : d.getUTCMonth()).padStart(2, "0")}`;
+  await page2.goto(BASE + `/agent-fees?month=${lastMonth}`, { waitUntil: "networkidle" });
+  const feesBody = await page2.textContent("body");
+  check("agent fees: seeded paid settlement yields AGT-00001 fee", feesBody.includes("AGT-00001") && feesBody.includes("4,216"));
+  await page2.getByRole("button", { name: "Show breakdown" }).first().click();
+  check("agent fees breakdown lists the merchant", (await page2.textContent("body")).includes("MER-00001"));
+  await page2.screenshot({ path: `${OUT}/agent-fees-en.png`, fullPage: true });
+  await page2.goto(BASE + "/agents/agt_demo_001", { waitUntil: "networkidle" });
+  check("agent detail shows the fee summary", (await page2.textContent("body")).includes("Agent fees ("));
+  await page2.goto(BASE + "/", { waitUntil: "networkidle" });
+  const dash = await page2.textContent("body");
+  check("dashboard: Phase H cards", dash.includes("Subscriptions") && dash.includes("Payment Links") && dash.includes("Agent Fees") && dash.includes("This month"));
+  await ctx2.close();
 }
 
 check("no page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 200));

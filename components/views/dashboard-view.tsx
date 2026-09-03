@@ -13,6 +13,10 @@ import type { MessageKey } from "@/lib/i18n";
 import { formatYen } from "@/lib/utils";
 
 export interface DashboardStats {
+  subscriptionActiveCount: number;
+  subscriptionAttentionCount: number;
+  paymentLinkActiveCount: number;
+  agentFeeMonthAmount: number;
   pendingRefundCount: number;
   webhookFailedCount: number;
   chargebackOpenCount: number;
@@ -78,6 +82,12 @@ export function DashboardView({ stats }: { stats: DashboardStats }) {
           value: t("dashboard.valueWebhookFailed", { count: stats.webhookFailedCount }),
           badge: stats.webhookFailedCount > 0 ? t("dashboard.failedBadge") : undefined,
         };
+      case "subscriptions":
+        return { value: t("dashboard.valueSubscriptions", { count: stats.subscriptionActiveCount }), badge: stats.subscriptionAttentionCount > 0 ? t("dashboard.valuePastDue", { count: stats.subscriptionAttentionCount }) : undefined };
+      case "paymentLinks":
+        return { value: t("dashboard.valueLinks", { count: stats.paymentLinkActiveCount }) };
+      case "agentFees":
+        return { value: t("dashboard.valueAgentFees", { amount: formatYen(stats.agentFeeMonthAmount) }) };
       case "merchants":
         return { value: t("dashboard.valueCount", { count: stats.merchantCount }) };
       case "agents":
