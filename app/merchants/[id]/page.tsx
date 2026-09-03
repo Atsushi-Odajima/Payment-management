@@ -10,7 +10,7 @@ import {
   isNotifyParamSet,
   type MerchantView,
 } from "@/lib/merchants/types";
-import { isMerchantTab, loadMerchantApiKeys, loadMerchantContract, loadMerchantLimits } from "@/lib/merchants/detail";
+import { isMerchantTab, loadMerchantApiKeys, loadMerchantContract, loadMerchantLimits, loadMerchantSettlement } from "@/lib/merchants/detail";
 import { modeFromCookieStore } from "@/lib/mode";
 
 export const dynamic = "force-dynamic";
@@ -20,14 +20,15 @@ export default async function MerchantDetailPage({ params, searchParams }: { par
   const mode = modeFromCookieStore(cookies());
   // MERCHANT_SELECT excludes passwordEnc; the password is only reachable via
   // the role-gated API route.
-  const [row, agents, contract, limits, apiKeys] = await Promise.all([
+  const [row, agents, contract, limits, apiKeys, settlement] = await Promise.all([
     prisma.merchant.findUnique({ where: { id: params.id }, select: MERCHANT_SELECT }),
     prisma.agent.findMany({ orderBy: { agentCode: "asc" }, select: { id: true, agentCode: true, name: true, status: true } }),
     loadMerchantContract(params.id),
     loadMerchantLimits(params.id, mode),
     loadMerchantApiKeys(params.id),
+    loadMerchantSettlement(params.id, mode),
   ]);
-  if (!row || !contract) notFound();
+  if (!row || !contract || !settlement) notFound();
   const m = serialize(row);
 
   const merchant: MerchantView = {
@@ -40,5 +41,5 @@ export default async function MerchantDetailPage({ params, searchParams }: { par
 
   // Disabled agents stay selectable only when already assigned.
   const options = agents.filter((a) => a.status === "active" || a.id === merchant.agentId);
-  return <MerchantDetailView merchant={merchant} agents={options} tab={tab} contract={contract} limits={limits} apiKeys={apiKeys} mode={mode} />;
+  return <MerchantDetailView merchant={merchant} agents={options} tab={tab} contract={contract} limits={limits} apiKeys={apiKeys} settlement={settlement} mode={mode} />;
 }

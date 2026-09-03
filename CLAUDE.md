@@ -81,6 +81,14 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - 取引詳細の「返金申請」ダイアログ（`components/payment-actions.tsx`）は `/api/refunds` に POST する。旧 `POST /api/payments/[id]/refund` は Webhook / API 互換のため残し、`applyPaymentAction` が `refund` 指定なしのとき completed 行を直接作る
 - 一覧 `/refunds`（`lib/refunds/list.ts`、既定順 = requested 先頭、CSV `?format=csv`）と詳細 `/refunds/[id]`。取消（void）は既存の `cancel` アクション（UI 表示「キャンセル」）で、返金とは別ボタン
 
+## 精算管理（フェーズD）
+
+- **精算設定は `Merchant` の列**（`settlementCycle` monthly | semimonthly | weekly、`payoutTerm` next_month_end | next_month_15 | month_after_next_15 | next_week、`bankName` / `bankBranch` / `bankAccountType`（ordinary | current）/ `bankAccountNumber`（7〜8 桁）/ `bankAccountHolder`、`settlementFee`）。語彙と Zod は `lib/settlements/types.ts`、`PATCH /api/merchants/[id]/settlement`（監査 `merchant.settlement_update`）、加盟店詳細の `settlement` タブ（`components/merchant-tabs/settlement-tab.tsx`）
+- **`SettlementBatch`**（`@@unique([merchantId, livemode, periodFrom, periodTo])`、`periodTo` は排他的終端、`status` collecting | confirmed | scheduled | paid | held、`holdReason`、`scheduledAt` は `payoutDate(periodEnd, payoutTerm)`）と **`SettlementLine`**（`kind` payment | refund | chargeback、`amount` は返金・チャージバックが負、`fee` は完了時点の契約料率で `calculateFee`）。生成は `lib/settlements/service.ts` の `generateBatch`（`collectLines`: 期間内に `capturedAt` の完了取引 + `completedAt` の完了返金 + `resolvedAt` の lost/confirmed チャージバック）。`POST /api/settlements/generate`（`requireAdmin`、モードは `?mode=` か Cookie）
+- 遷移は `SETTLEMENT_TRANSITIONS`（confirm / schedule / pay / hold（理由必須）/ release）を `transitionBatch` が status 条件付き `updateMany` で適用、`POST /api/settlements/[id]/[action]` は `requireMaster`。collecting のバッチのみ `DELETE`（破棄）可。監査 `settlement.*`
+- 一覧 `/settlements`（生成フォーム + DataTable + CSV）、詳細 `/settlements/[id]`（内訳・明細・`/api/settlements/[id]/lines?format=csv`）。加盟店側は `GET /api/merchant-api/settlements[?id=]`（Bearer、`lib/merchants/api-auth.ts` の `authenticateMerchantApiKey` を ping と共用）。期間の既定値は `lib/settlements/schedule.ts` の `lastClosedPeriod`
+- `Chargeback` テーブルはこのフェーズで追加済み（精算の控除用）。運用画面はフェーズF
+
 ## 代理店・決済申請・IP制限・マニュアル
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
@@ -138,7 +146,8 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **フェーズA 基盤**（完了）: AdminUser ログイン + TOTP 二段階認証、`RoleToggle` 廃止、AuditLog + `recordAudit` を全更新系に適用、横断検索（Ctrl+K）、`lib/nav.ts` によるグループ化ナビとトップカード、共通 `DataTable`（管理者一覧・操作ログで使用）
 - [x] **フェーズB 加盟店設定の拡張**（完了）: 加盟店詳細のタブ化、契約プラン / 手数料率の履歴、限度額（作成時判定 + 失敗理由）、振込期限（毎時 cron で期限切れ）・返金可能期限（表示）、API キー / 署名シークレット（発行・ローテーション・失効・`/api/merchant-api/ping`）、ヘッダーの test / live スイッチ
 - [x] **フェーズC 返金・取消管理**（完了）: 返金申請（理由コード・全額/一部・残額と審査待ち額の検証・返金可能期限の強制はマスターのみ）→ マスターの承認/否認、返金管理一覧/詳細、取引詳細の返金申請ダイアログ、KPI（審査待ち件数）
-- [ ] **フェーズD 精算管理**（未着手。次はここ。`calculateFee` と `MerchantFeeSchedule` を使う） / [ ] フェーズE Webhook 送信ログと再送（限度額超過の加盟店通知もここ） / [ ] フェーズF 不正・リスク対策 / [ ] フェーズG レポート・通知 / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
+- [x] **フェーズD 精算管理**（完了）: 精算設定タブ、SettlementBatch / Line の生成（契約料率で手数料計算・返金/チャージバック控除）、確定 → 振込予定 → 振込済 / 保留（マスター）、一覧・詳細・明細 CSV、加盟店 API での精算参照、KPI
+- [ ] **フェーズE Webhook 送信ログと再送**（未着手。次はここ。限度額超過の加盟店通知もここ） / [ ] フェーズF 不正・リスク対策（Chargeback テーブルは作成済み） / [ ] フェーズG レポート・通知 / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
 - 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う
 - 検索対象「カード下4桁」はフェーズF（カードハッシュ列）で追加する

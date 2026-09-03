@@ -54,6 +54,8 @@ export const SEED_IDS = {
   apiKey4: "key_demo_004",
   refund1: "ref_demo_001",
   refund2: "ref_demo_002",
+  settlement1: "stl_demo_001",
+  settlement2: "stl_demo_002",
 } as const;
 
 /**
@@ -215,6 +217,14 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       agentId: SEED_IDS.agent1,
       enabledMethods: JSON.stringify(["credit", "qr"]),
       transferIdDigits: 7,
+      settlementCycle: "monthly",
+      payoutTerm: "next_month_end",
+      bankName: "デモ銀行",
+      bankBranch: "本店営業部",
+      bankAccountType: "ordinary",
+      bankAccountNumber: "1234567",
+      bankAccountHolder: "カ）コトリ",
+      settlementFee: 330,
       createdAt: daysAgo(40),
     },
     {
@@ -547,6 +557,63 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     await prisma.refund.upsert({ where: { id: r.id }, update: {}, create: r });
   }
 
+  // ── Settlement batches (Phase D) ──────────────────────────────────────
+  // A paid batch for last month (merchant1) and a confirmed one for
+  // merchant3, with hand-written lines so the demo shows the flow without
+  // depending on the relative transaction dates.
+  const monthAgoFrom = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1) - 9 * 3_600_000);
+  const monthAgoTo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) - 9 * 3_600_000);
+  const settlements = [
+    {
+      id: SEED_IDS.settlement1,
+      merchantId: SEED_IDS.merchant1,
+      livemode: false,
+      periodFrom: monthAgoFrom,
+      periodTo: monthAgoTo,
+      grossAmount: 128_400,
+      feeAmount: 4_390,
+      refundAmount: 3_200,
+      chargebackAmount: 0,
+      settlementFee: 330,
+      netAmount: 120_480,
+      status: "paid",
+      scheduledAt: new Date(monthAgoTo.getTime() + 29 * 86_400_000),
+      paidAt: new Date(monthAgoTo.getTime() + 29 * 86_400_000),
+      createdById: DEMO_ADMIN_ACCOUNTS.master.id,
+      createdAt: new Date(monthAgoTo.getTime() + 86_400_000),
+      lines: [
+        { kind: "payment", method: "credit", description: "ORD-2608-0142", amount: 64_800, fee: 2_332, occurredAt: new Date(monthAgoFrom.getTime() + 3 * 86_400_000) },
+        { kind: "payment", method: "qr", description: "ORD-2608-0177", amount: 38_600, fee: 1_158, occurredAt: new Date(monthAgoFrom.getTime() + 12 * 86_400_000) },
+        { kind: "payment", method: "credit", description: "ORD-2608-0203", amount: 25_000, fee: 900, occurredAt: new Date(monthAgoFrom.getTime() + 20 * 86_400_000) },
+        { kind: "refund", method: "credit", description: "ORD-2608-0142", amount: -3_200, fee: 0, occurredAt: new Date(monthAgoFrom.getTime() + 25 * 86_400_000) },
+      ],
+    },
+    {
+      id: SEED_IDS.settlement2,
+      merchantId: SEED_IDS.merchant3,
+      livemode: false,
+      periodFrom: monthAgoFrom,
+      periodTo: monthAgoTo,
+      grossAmount: 86_000,
+      feeAmount: 1_312,
+      refundAmount: 0,
+      chargebackAmount: 0,
+      settlementFee: 0,
+      netAmount: 84_688,
+      status: "confirmed",
+      scheduledAt: new Date(monthAgoTo.getTime() + 14 * 86_400_000),
+      createdById: DEMO_ADMIN_ACCOUNTS.master.id,
+      createdAt: new Date(monthAgoTo.getTime() + 86_400_000),
+      lines: [
+        { kind: "payment", method: "bank", description: "ORD-2608-0311", amount: 48_000, fee: 616, occurredAt: new Date(monthAgoFrom.getTime() + 8 * 86_400_000) },
+        { kind: "payment", method: "bank", description: "ORD-2608-0345", amount: 38_000, fee: 696, occurredAt: new Date(monthAgoFrom.getTime() + 22 * 86_400_000) },
+      ],
+    },
+  ];
+  for (const { lines, ...b } of settlements) {
+    await prisma.settlementBatch.upsert({ where: { id: b.id }, update: {}, create: { ...b, lines: { create: lines } } });
+  }
+
   // ── Audit log samples ─────────────────────────────────────────────────
   const audits = [
     {
@@ -610,6 +677,9 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.adminUser.deleteMany();
   await prisma.ipRestriction.deleteMany();
   await prisma.webhookEvent.deleteMany();
+  await prisma.settlementLine.deleteMany();
+  await prisma.settlementBatch.deleteMany();
+  await prisma.chargeback.deleteMany();
   await prisma.paymentEvent.deleteMany();
   await prisma.refund.deleteMany();
   await prisma.payment.deleteMany();
