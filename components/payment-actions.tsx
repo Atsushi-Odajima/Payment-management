@@ -7,7 +7,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { useApiJson, useT } from "./language-provider";
+import { useApiJson, useFormatDateTime, useT } from "./language-provider";
 import { useConfirm } from "./confirm-dialog";
 import { useRole } from "./session-provider";
 import { formatYen } from "@/lib/utils";
@@ -31,6 +31,7 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
   const [notice, setNotice] = useState<string | null>(() => popFlash(`payment:${id}`) ?? null);
   const refundRef = useRef<{ amount: number; reasonCode: RefundReason; reason: string; force: boolean }>({ amount: 0, reasonCode: "customer", reason: "", force: false });
   const depositRef = useRef<{ amount: number }>({ amount: 0 });
+  const formatDate = useFormatDateTime();
 
   const isBank = payment.transferId !== null;
   // Refundable balance minus requests still waiting for a decision.
@@ -46,6 +47,31 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
   const allowed = (a: PaymentAction) => possible(a) && (isMaster || !MASTER_ACTIONS.includes(a));
   const anyPossible = offered.some(possible);
   const needsMaster = offered.some((a) => possible(a) && MASTER_ACTIONS.includes(a)) && !isMaster;
+  // API 再通知 (bank transfers only): re-send payment.completed to the merchant once the transfer is completed.
+  const renotifyPossible = isBank && payment.merchant !== null && (status === "captured" || status === "partially_refunded" || status === "refunded");
+  const renotifyAllowed = renotifyPossible && isMaster;
+
+  async function renotify() {
+    setError(null);
+    setNotice(null);
+    const ok = await confirm({
+      title: t("paymentActions.renotify"),
+      body: t("paymentActions.confirmRenotifyBody", { orderNumber, transferId: payment.transferId ?? "", merchant: payment.merchant?.siteName ?? "" }),
+      confirmLabel: t("paymentActions.renotify"),
+    });
+    if (!ok) return;
+    setBusy("renotify");
+    const res = await apiJson<{ deliveryId: string | null; renotifyCount: number }>(`/api/payments/${id}/renotify`, { method: "POST" });
+    setBusy(null);
+    if (!res.ok) {
+      setError(res.error.message);
+      return;
+    }
+    const message = res.data.deliveryId ? t("paymentActions.renotified", { count: res.data.renotifyCount }) : t("paymentActions.renotifiedNoUrl");
+    setNotice(message);
+    pushFlash(`payment:${id}`, message);
+    router.refresh();
+  }
 
   async function run(action: PaymentAction) {
     setError(null);
@@ -184,6 +210,14 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
           <ActionButton key={a} label={label(a)} hint={hint(a)} enabled={allowed(a)} busy={busy !== null} className={style[a]} onClick={() => run(a)} />
         ))}
         {!anyPossible && <p className="text-xs text-slate-500">{t("paymentActions.noActions")}</p>}
+        {isBank && (
+          <div className="border-t border-slate-100 pt-2">
+            <ActionButton label={t("paymentActions.renotify")} hint={renotifyPossible ? t("paymentActions.renotifyMasterHint") : t("paymentActions.renotifyHint")} enabled={renotifyAllowed} busy={busy !== null} className="btn-secondary" onClick={renotify} />
+            {payment.renotifyCount > 0 && payment.renotifiedAt && (
+              <p className="mt-1 text-[11px] text-slate-500">{t("paymentActions.renotifyLast", { count: payment.renotifyCount, at: formatDate(payment.renotifiedAt) })}</p>
+            )}
+          </div>
+        )}
         {needsMaster && (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{t("paymentActions.masterOnly")}</p>
         )}

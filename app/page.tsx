@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   const today = startOfDayInTz(now);
   const mode = modeFromCookieStore(cookies());
   const modeWhere = livemodeWhere(mode);
-  const [merchantCount, agentCount, todayAgg, openCount, overdueCount, activeIpRuleCount, adminCount, auditTodayCount, providerCount, pendingRefundCount, settlementOpenCount, settlementScheduled, webhookFailedCount, chargebackOpenCount, blacklistCandidateCount, depositDiffOpenCount, monthAgg, emailTodayCount, announcementActiveCount, templateEnabledCount, subscriptionActiveCount, subscriptionAttentionCount, paymentLinkActiveCount, agentFees] =
+  const [merchantCount, agentCount, todayAgg, openCount, overdueCount, activeIpRuleCount, adminCount, auditTodayCount, providerCount, pendingRefundCount, settlementOpenCount, settlementScheduled, webhookFailedCount, chargebackOpenCount, blacklistCandidateCount, depositDiffOpenCount, monthAgg, emailTodayCount, announcementActiveCount, templateEnabledCount, subscriptionActiveCount, subscriptionAttentionCount, paymentLinkActiveCount, agentFees, unmatchedDepositCount] =
     await Promise.all([
       prisma.merchant.count(),
       prisma.agent.count(),
@@ -50,9 +50,11 @@ export default async function DashboardPage() {
       prisma.subscription.count({ where: { ...modeWhere, status: { in: ["past_due", "suspended"] } } }),
       prisma.paymentLink.count({ where: { ...modeWhere, status: "active", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } }),
       buildAgentFees(parseAgentFeeFilters(undefined, mode, now)),
+      prisma.unmatchedDeposit.count({ where: { ...modeWhere, status: "unmatched" } }),
     ]);
 
   const stats: DashboardStats = {
+    unmatchedDepositCount,
     subscriptionActiveCount,
     subscriptionAttentionCount,
     paymentLinkActiveCount,

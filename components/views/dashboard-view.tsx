@@ -13,6 +13,7 @@ import type { MessageKey } from "@/lib/i18n";
 import { formatYen } from "@/lib/utils";
 
 export interface DashboardStats {
+  unmatchedDepositCount: number;
   subscriptionActiveCount: number;
   subscriptionAttentionCount: number;
   paymentLinkActiveCount: number;
@@ -82,6 +83,8 @@ export function DashboardView({ stats }: { stats: DashboardStats }) {
           value: t("dashboard.valueWebhookFailed", { count: stats.webhookFailedCount }),
           badge: stats.webhookFailedCount > 0 ? t("dashboard.failedBadge") : undefined,
         };
+      case "unmatchedDeposits":
+        return { value: t("dashboard.valueUnmatched", { count: stats.unmatchedDepositCount }), badge: stats.unmatchedDepositCount > 0 ? t("dashboard.openBadge") : undefined };
       case "subscriptions":
         return { value: t("dashboard.valueSubscriptions", { count: stats.subscriptionActiveCount }), badge: stats.subscriptionAttentionCount > 0 ? t("dashboard.valuePastDue", { count: stats.subscriptionAttentionCount }) : undefined };
       case "paymentLinks":

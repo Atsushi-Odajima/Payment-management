@@ -53,6 +53,9 @@ export interface TransactionDetail {
   cardLast4: string | null;
   clientIp: string | null;
   depositDiffStatus: string | null;
+  /** Bank transfer only: last manual API re-notification of the merchant (API 再通知). */
+  renotifiedAt: Date | null;
+  renotifyCount: number;
   /** capturedAt + merchant.refundWindowDays (null when not completed or no merchant). */
   refundDeadlineAt: Date | null;
   /** Amount reserved by refund requests not decided yet. */
@@ -96,6 +99,8 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
       cardLast4: true,
       clientIp: true,
       depositDiffStatus: true,
+      renotifiedAt: true,
+      renotifyCount: true,
       merchant: { select: { id: true, merchantCode: true, siteName: true, transferIdDigits: true, refundWindowDays: true } },
       provider: {
         select: { id: true, displayName: true, providerKey: true, category: true, credentials: true },
@@ -142,6 +147,8 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
     cardLast4: payment.cardLast4,
     clientIp: payment.clientIp,
     depositDiffStatus: payment.depositDiffStatus,
+    renotifiedAt: payment.renotifiedAt,
+    renotifyCount: payment.renotifyCount,
     refundDeadlineAt:
       payment.capturedAt && payment.merchant ? new Date(payment.capturedAt.getTime() + payment.merchant.refundWindowDays * 86_400_000) : null,
     pendingRefundAmount,

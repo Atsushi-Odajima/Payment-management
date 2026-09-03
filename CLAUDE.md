@@ -70,6 +70,8 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 | チャージバック | ○ | M | — | M | — |
 | ブラックリスト・検知ルール | ○ | M | M | M | — |
 | 過不足入金の対応 | ○ | — | ○ | — | — |
+| 未消込入金（登録 / 振込ID付与で消込 / 却下） | ○ | ○ | ○（却下） | M（消込 = 入金消込と同じ） | — |
+| API 再通知（銀行振込の完了取引のみ） | ○ | — | — | M | — |
 | 集計レポート・CSV | ○ | — | — | — | — |
 | メールテンプレート | ○ | — | M | — | — |
 | メール送信ログ | ○ | — | — | — | — |
@@ -139,6 +141,12 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - **決済リンク**: `PaymentLink`（`token` @unique 24 文字、`productName`, `amount`, `description`, `expiresAt`（指定日の翌日 0 時 JST）, `maxUses`（null = 無制限）, `usedCount`, `status` active | disabled, `livemode`, `createdById`）。`lib/payment-links/{types,service,list}.ts`: `createPaymentLink` / `disablePaymentLink`（監査 `payment_link.create` / `payment_link.disable`）、`linkUnavailableReason`（disabled | expired | exhausted）、`checkoutMethods`（加盟店の `enabledMethods` ∩ 同モードの有効プロバイダ）、`checkoutFromLink`（`createTransaction(source: "payment_link", autoCapture: false)` → 注文番号 `LNK-<TOKEN6>-<連番>`、`usedCount++`）。**公開決済ページ `/pay/[token]`** は `AppShell` が管理ナビを外して描画、API `GET/POST /api/pay/[token]`（`ipRestricted: false`、middleware の `PUBLIC_PREFIXES` でセッション不要）と `POST /api/pay/[token]/complete`（デモの「支払いを確定」= そのリンクの取引を actor system で capture）。銀行振込は振込ID・期限を表示して awaiting_transfer。管理画面 `/payment-links`、`/payment-links/new`、`/payment-links/[id]`（QR は `uqr` の `renderSVG`、無効化）。seed の固定トークンは `SEED_PAYMENT_LINK_TOKEN`
 - **代理店手数料**: テーブルは持たず `lib/agent-fees/service.ts` の `buildAgentFees({ month, agent, mode })` が精算バッチ（担当代理店あり・confirmed | scheduled | paid・`periodFrom` が対象月）から `agentFee(netAmount, feeRate)`（円未満切り捨て）を集計。`GET /api/agent-fees?month=YYYY-MM&agent=&mode=`（`?format=csv` で明細）。画面 `/agent-fees`、代理店詳細に当月サマリー、KPI「今月の手数料」
 - 一覧 `/subscriptions` / `/payment-links` は `livemode` で絞る（ヘッダーのモード）。新しい Webhook イベント `subscription.charged` / `subscription.payment_failed` / `subscription.suspended`、メールテンプレート `subscription_failed` / `subscription_suspended`（`EMAIL_TEMPLATE_KEYS` 8 種 × 2 言語 = 16 行）
+
+## 未消込入金と API 再通知（銀行振込のみ）
+
+- **`UnmatchedDeposit`**（`amount`, `payerName`, `receivedAt`, `bankReference`, `givenTransferId`（顧客が書いた誤った / 不足の振込ID）, `note`, `source` bank | manual, `status` unmatched | matched | dismissed, `paymentId` SetNull, `matchedTransferId`, `matchedById`, `matchedAt`, `dismissReason`, `livemode`）。振込IDの付け忘れなどで消込できなかった入金の置き場。`POST /api/demo/deposit-notify` は `transferId` が無い / 不明なら **404 ではなく 202 で未消込入金を登録**（`payerName` / `bankReference` / `receivedAt` / `mode` を任意で受ける）
+- `lib/deposits/{types,service,list}.ts`: `registerUnmatchedDeposit`（監査 `deposit.register`）、`findTransferCandidates`（同モードの振込待ち、残額一致を先頭）、`matchUnmatchedDeposit`（振込IDを付与 → **同じ `applyPaymentAction(deposit)`** で消込 → 完了なら `payment.completed` の Webhook が加盟店へ飛ぶ = API 完結。監査 `deposit.match`）、`dismissUnmatchedDeposit`（`deposit.dismiss`）、`renotifyPayment`（**銀行振込の完了系取引のみ**、`emitPaymentWebhook(payment.completed)` を再送し `Payment.renotifiedAt` / `renotifyCount` を更新、監査 `payment.renotify`。クレジット等は 409 `not_bank_transfer`）
+- API: `GET/POST /api/unmatched-deposits`（一覧 + CSV / 登録 `requireAdmin`）、`GET /api/unmatched-deposits/[id]`（候補付き）、`POST .../match`（`requireMaster`）、`POST .../dismiss`（`requireAdmin`）、`POST /api/payments/[id]/renotify`（`requireMaster`。静的セグメントなので `[action]` より優先）。画面 `/unmatched-deposits`（登録フォーム・候補付きの消込ダイアログ・却下）、取引詳細の「API 再通知」ボタン（`components/payment-actions.tsx`、銀行振込のみ表示）。KPI「未消込入金」。ナビ `unmatchedDeposits`
 
 ## 代理店・決済申請・IP制限・マニュアル
 
