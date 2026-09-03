@@ -612,6 +612,88 @@ async function login(loginId, password) {
   await ctx.close();
 }
 
+// ── Phase M: customers, masking, unmask, anonymisation, retention settings ──
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  await page.goto(BASE + "/customers", { waitUntil: "networkidle" });
+  const list = await page.textContent("body");
+  check("customers list: masked name / e-mail, real values absent", list.includes("山田 ＊＊") && list.includes("ta***@example.com") && !list.includes("taro@example.com"));
+  const csv = await page.request.get(BASE + "/api/customers?format=csv");
+  const csvText = await csv.text();
+  check("customers CSV: masked by default", csv.status() === 200 && csvText.includes("ta***@example.com") && !csvText.includes("taro@example.com"));
+  await page.screenshot({ path: `${OUT}/customers-list-en.png`, fullPage: true });
+  await page.locator("tbody tr").filter({ hasText: "u_10021" }).first().click();
+  await page.waitForURL(/\/customers\/[a-z0-9_]+$/);
+  check("customer detail: stored card and transactions", (await page.textContent("body")).includes("4242") && (await page.textContent("body")).includes("ORD-DEMO-001"));
+  await page.getByRole("button", { name: "Unmask" }).first().click();
+  await page.getByText("山田 太郎").first().waitFor({ timeout: 8000 });
+  check("customer detail: unmask reveals the real name with the audited marker", (await page.textContent("body")).includes("(unmasked · audited)"));
+  await page.screenshot({ path: `${OUT}/customer-detail-en.png`, fullPage: true });
+  await page.goto(BASE + "/audit-logs?action=pii.unmask", { waitUntil: "networkidle" });
+  check("audit log: pii.unmask row written", (await page.textContent("body")).includes("Personal data unmasked"));
+  // Transaction detail masks too and links to the customer record.
+  await page.goto(BASE + "/payments", { waitUntil: "networkidle" });
+  await page.getByText("ORD-DEMO-001").first().click();
+  await page.waitForURL(/\/payments\/[a-z0-9_]+$/);
+  const detail = await page.textContent("body");
+  check("transaction detail: customer masked with unmask control", detail.includes("山田 ＊＊") && (await page.getByRole("button", { name: "Unmask" }).count()) > 0);
+  // Manual anonymisation (admin, reason required).
+  await page.goto(BASE + "/customers?q=u_10388", { waitUntil: "networkidle" });
+  await page.locator("tbody tr").first().click();
+  await page.waitForURL(/\/customers\/[a-z0-9_]+$/);
+  await page.getByRole("button", { name: "Anonymise" }).first().click();
+  const dlg = page.locator("dialog[open]");
+  check("anonymise dialog: confirm disabled until a reason is given", await dlg.getByRole("button", { name: "Anonymise" }).isDisabled());
+  await dlg.locator("#anonymize-reason").fill("smoke: deletion request");
+  await dlg.getByRole("button", { name: "Anonymise" }).click();
+  await page.getByText("Customer anonymised.").waitFor({ timeout: 8000 });
+  await page.waitForTimeout(600);
+  // innerText: the initial RSC payload in <script> still carries the masked name, so read the rendered text only.
+  const anon = await page.locator("body").innerText();
+  check("customer anonymised: badge, reason and cleared data", anon.includes("Anonymised") && anon.includes("smoke: deletion request") && !anon.includes("鈴木"));
+  await page.goto(BASE + "/customers?tab=batches", { waitUntil: "networkidle" });
+  check("anonymisation runs tab lists the manual run and the seeded retention run", (await page.textContent("body")).includes("Manual") && (await page.textContent("body")).includes("Retention (daily)"));
+  // Global settings: retention and CSV fields.
+  await page.goto(BASE + "/global-settings", { waitUntil: "networkidle" });
+  check("global settings: retention months / audit years / CSV mode fields", (await page.locator("#gs-pii-months").inputValue()) === "24" && (await page.locator("#gs-audit-years").inputValue()) === "7" && (await page.locator("#gs-csv-pii").inputValue()) === "masked");
+  await page.selectOption("#gs-csv-pii", "full");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByText("Global settings saved").waitFor({ timeout: 8000 });
+  const fullCsv = await (await page.request.get(BASE + "/api/customers?format=csv")).text();
+  check("customers CSV: full values for admin once the setting is 'Full'", fullCsv.includes("taro@example.com"));
+  await ctx.close();
+}
+{
+  // Viewer: masked, no unmask / anonymise controls.
+  const { ctx, page } = await login("viewer", "viewer1234");
+  await page.goto(BASE + "/customers?q=u_10021", { waitUntil: "networkidle" });
+  await page.locator("tbody tr").first().click();
+  await page.waitForURL(/\/customers\/[a-z0-9_]+$/);
+  const body = await page.textContent("body");
+  check("viewer: customer detail masked without unmask, anonymise disabled", body.includes("山田 ＊＊") && (await page.getByRole("button", { name: "Unmask" }).count()) === 0 && (await page.getByRole("button", { name: "Anonymise" }).isDisabled()));
+  await ctx.close();
+}
+{
+  // Merchant portal: own customers unmasked.
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 1000 }, locale: "en-US", extraHTTPHeaders: { "x-forwarded-for": "10.98.0.2" } });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => pageErrors.push(e.message));
+  await page.goto(BASE + "/merchant/login", { waitUntil: "networkidle" });
+  await page.fill("#merchantCode", "MER-00001");
+  await page.fill("#merchantPassword", "Kotori2026Demo");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await page.waitForURL(BASE + "/merchant", { timeout: 10000 });
+  await page.goto(BASE + "/merchant/customers", { waitUntil: "networkidle" });
+  const mc = await page.textContent("body");
+  check("merchant portal customers: own data shown in full", mc.includes("山田 太郎") && mc.includes("taro@example.com") && !mc.includes("u_20417"));
+  await page.locator("tbody tr a").first().click();
+  await page.waitForURL(/\/merchant\/customers\/[a-z0-9_]+$/);
+  const md = await page.locator("body").innerText();
+  check("merchant portal customer detail renders", md.includes("Stored cards (") && md.includes("Transactions ("));
+  await page.screenshot({ path: `${OUT}/merchant-customers-en.png`, fullPage: true });
+  await ctx.close();
+}
+
 check("no page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 200));
 await browser.close();
 const failed = results.filter((r) => !r.ok);

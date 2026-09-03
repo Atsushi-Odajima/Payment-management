@@ -151,6 +151,8 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 | 横断検索（管理者） | 閲覧 | ○ |  |  |  |  |
 | 全体設定 | 閲覧 | ○ |  |  |  |  |
 | 全体設定 | 更新 | ○ |  |  |  |  |
+| 顧客 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 顧客 | 匿名化 | ○ |  |  |  |  |
 | CSV 出力 | 出力 | ○ | ○ | ○ | ○ |  |
 | 個人情報 | マスク解除 | ○ |  | ○ |  |  |
 | API ドキュメント | 閲覧 | ○ | ○ | ○ | ○ | ○ |
@@ -242,6 +244,15 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - 加盟店側 API `app/api/merchant-portal/*`: login / logout / refunds（`createRefundRequest`、加盟店の取引のみ）/ webhooks/[id]/resend（`resendDelivery`）/ api-keys/[keyId]/rotate（**test のみ**、live は 403 `live_key_rotation`）/ settlements/[id]/invoice（自加盟店 + 確定以降）。画面は `components/views/merchant/*`（内部メモは渡さない）。ヘッダーのモード切替は管理画面と同じ `wirepay.mode`
 - **API ドキュメント `/docs/api/[chapter]`**（公開、`lib/api-docs/chapters.ts` の 6 章 = `content/api-docs/{ja,en}/*.md` を `lib/manual/markdown.tsx` で描画 + OpenAPI から生成したリファレンス / エラーコード表 / テストカード表）。サンドボックスは `/merchant/sandbox`（ブラウザから実 `/api/v1` を呼ぶ、キーは sessionStorage、`wp_live_` は拒否）。ナビ `apiDocs`（権限 `api_docs.view` = 全員）、マニュアル章 `public-api` / `merchant-portal`。`check:i18n` の ALLOW に `lib/public-api/openapi.ts` / `test-cards.ts`（{ja,en} データ）
 
+## 顧客・PaymentToken・個人情報保護（フェーズM）
+
+- **`Customer`**（`merchantId` + `externalId`（取引の `customerId`）で `@@unique`、`name` / `email` / `phone`、`anonymizedAt` / `anonymizeReason`）と **`PaymentToken`**（`customerId` + `cardHash` で `@@unique`、`brand` / `last4` / `expiry` / `label` / `lastUsedAt`。カード番号は保存しない）、**`AnonymizeBatch`**（`kind` retention | manual、件数、`note`、`actorId`）。`Payment.customerRef`（SetNull）で顧客を参照。`lib/customers/service.ts` の **`upsertCustomerForPayment` を `createTransaction` が呼ぶ**（管理画面 / 決済リンク / 定期課金 / 公開 API すべて。匿名化済み顧客が再取引すると復活）。既存行のバックフィルは `linkExistingPayments`（冪等。seed の末尾と `npm run db:link-customers`）
+- **マスク**は `lib/pii/mask.ts`（`maskName` 姓のみ / `maskEmail` 先頭 2 文字 + `***@ドメイン` / `maskPhone` 下 4 桁 / `maskIp` 第 4 オクテット、`maskCustomerFields(row, mode)`、`maskDeep`）。**page.tsx が client に渡す前にマスク**する（取引一覧 / 詳細、申請、定期課金、未消込入金、メール送信ログ、横断検索 `lib/search.ts`、顧客一覧 `lib/customers/list.ts` の `PiiMode`）。`redactForAudit` は `maskValueForKey` で **保存時点で** 個人情報キー（customerName / payerName / contactName / *email* / phone / ip 系）をマスクする（汎用 `name` は対象外）。加盟店管理画面 `/merchant/customers` は自社データを **full** で表示
+- **マスク解除**: `POST /api/pii/unmask`（`targetType` payment | customer | subscription | unmatched_deposit | email_log、権限 `pii.unmask` = admin / cs、1 回ごとに監査 `pii.unmask`（after は項目名のみ））。client は `components/pii-value.tsx` の `PiiValue`（取引詳細・定期課金詳細・メール送信ログ詳細・顧客詳細）
+- **CSV**: `GlobalSetting.csvPii`（masked | full）。`lib/pii/csv.ts` の `piiCsvMode(req)` が full かつ admin / accounting のときだけ実値（顧客・定期課金・未消込入金・メール送信ログの `?format=csv`）
+- **匿名化**: 手動は `POST /api/customers/[id]/anonymize`（権限 `customer.anonymize` = admin、理由必須、409 `already_anonymized`、監査 `pii.anonymize`）。保持期間は `GlobalSetting.piiRetentionMonths`（既定 24、1〜120）/ `auditRetentionYears`（既定 7、1〜30）で、`runRetention`（`GET/POST /api/cron/anonymize`、`CRON_SECRET`、`vercel.json` で 19:00 UTC = 04:00 JST）が「最終取引が期限より前の顧客」と「顧客に紐づかない古い取引」の個人情報を消去（`scrubCustomer`: 氏名 / メール / 電話 / `clientIp` / `cardHash` / `cardLast4` を null、トークン削除。金額・ステータスは残す）し、期限超過の `AuditLog` を削除（`audit_log.prune`）。実行ごとに `AnonymizeBatch` + 監査 `pii.anonymize_batch` + 通知 `pii.anonymized`（admin）。対象 0 件ならバッチ行を作らない
+- API: `GET /api/customers`（一覧 + CSV、絞り込み merchant / q / anonymized）、`GET /api/customers/[id]`。画面 `/customers`（DataTable、`?tab=batches` で匿名化バッチ）、`/customers/[id]`（保存カード・取引・匿名化ダイアログ）、加盟店側 `/merchant/customers[/id]`。ナビ `customers`（加盟店グループ）、KPI「顧客数」、横断検索の顧客グループ、マニュアル章 `customers`、全体設定の「個人情報の保持と出力」。seed: `u_10021` に電話 + visa トークン、匿名化済み `cus_demo_anon`（merchant2 `u_20099`）、バッチ `anb_demo_001`。権限 `customer.view`（全員）/ `customer.anonymize`（admin）
+
 ## 未消込入金と API 再通知（銀行振込のみ）
 
 - **`UnmatchedDeposit`**（`amount`, `payerName`, `receivedAt`, `bankReference`, `givenTransferId`（顧客が書いた誤った / 不足の振込ID）, `note`, `source` bank | manual, `status` unmatched | matched | dismissed, `paymentId` SetNull, `matchedTransferId`, `matchedById`, `matchedAt`, `dismissReason`, `livemode`）。振込IDの付け忘れなどで消込できなかった入金の置き場。`POST /api/demo/deposit-notify` は `transferId` が無い / 不明なら **404 ではなく 202 で未消込入金を登録**（`payerName` / `bankReference` / `receivedAt` / `mode` を任意で受ける）
@@ -316,7 +327,8 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **フェーズJ 通知センター**（完了）: 14 種の通知を既存処理に組み込み（Webhook 断念・決済手段停止・バッチ失敗・チャージバック期限・振込 / コンビニ期限超過の日次まとめ・ブラックリスト候補・限度額超過・定期課金失敗・精算の生成 / 保留・返金申請・加盟店登録）、ヘッダーのベル + 未読バッジ + 最新 10 件、一覧（種別・重要度・既読 / 未読・期間、全既読）、管理者ごとのメール / Slack 設定、Slack Incoming Webhook の実送信（1 回リトライ・SlackLog）
 - [x] **フェーズK コンビニ決済・領収書 PDF・インボイス**（完了）: 受付番号 13 桁・支払店舗・加盟店ごとの支払期限（申請一覧の支払待ちレーン・期限切れ cron・日次通知・入金通知 API `/api/demo/cvs-notify` は銀行振込と同じ `deposit`・決済リンクページ・案内メール）、領収書（月次連番・宛名・再発行回数・PDF・署名付き URL による顧客ダウンロード）、インボイス（発行者情報・登録番号検証・税区分・税率ごとの内税計算と端数処理・確定以降の精算バッチから請求書 PDF）。PDF は pdf-lib + Noto Sans JP サブセット同梱
 - [x] **フェーズL 公開 API v1・加盟店ログイン・API ドキュメント**（完了）: `/api/v1`（取引の作成 / 取得 / 一覧、返金申請、決済リンク、OpenAPI 3 を Zod から生成しテストで route と照合）、加盟店 × 環境のレート制限（DB 計数、429 + Retry-After）、テストカード番号によるシナリオ、加盟店管理画面（別 Cookie のログイン・ロックアウト・取引 / 返金申請 / Webhook 再送 / 精算 + 請求書 PDF / テストキーの自己ローテーション / 決済手段の状態 / お知らせ）、公開 API ドキュメント（手書き 6 章 + 自動生成リファレンス）とサンドボックス
-- [ ] **フェーズM 顧客・PaymentToken・個人情報保護**（次はここ）
+- [x] **フェーズM 顧客・PaymentToken・個人情報保護**（完了）: 加盟店 × ユーザーID の顧客マスタと保存カード（取引作成時に自動作成、既存行は冪等バックフィル）、管理画面全体のマスク表示（姓のみ / メール 2 文字 / 電話下 4 桁 / IP 第 4 オクテット、操作ログは保存時点でマスク）、監査付きマスク解除（admin / cs）、CSV の個人情報モード、手動匿名化（admin・理由必須）と保持期間による日次匿名化 + 操作ログの保持期間削除、加盟店管理画面の顧客一覧
+- 全フェーズ完了。以降の追加は README の「残課題」から選ぶ
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
 - 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う
 - 検索対象「カード下4桁」はフェーズF（カードハッシュ列）で追加する

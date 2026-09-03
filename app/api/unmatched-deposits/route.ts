@@ -1,3 +1,5 @@
+import { piiCsvMode } from "@/lib/pii/csv";
+import { maskName } from "@/lib/pii/mask";
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { requirePermission } from "@/lib/api/role-guard";
@@ -15,7 +17,9 @@ export const GET = withApiHandler(async (req) => {
   const filters = parseUnmatchedDepositFilters(q, resolveMode(q.mode));
   const sort = parseUnmatchedDepositSort(q);
   if (q.format === "csv") {
-    const rows = await loadUnmatchedDepositsForExport(filters, sort, CSV_MAX_ROWS);
+    const raw = await loadUnmatchedDepositsForExport(filters, sort, CSV_MAX_ROWS);
+    const mode = await piiCsvMode(req);
+    const rows = mode === "full" ? raw : raw.map((r) => ({ ...r, payerName: maskName(r.payerName) ?? "" }));
     return csvResponse(
       toCsv(rows, [
         { header: "id", value: (r) => r.id },
