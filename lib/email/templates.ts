@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 
-export const EMAIL_TEMPLATE_KEYS = ["transfer_guide", "payment_completed", "refund_completed", "deposit_short", "statement", "admin_invite"] as const;
+export const EMAIL_TEMPLATE_KEYS = ["transfer_guide", "payment_completed", "refund_completed", "deposit_short", "statement", "admin_invite", "subscription_failed", "subscription_suspended"] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
 export function isEmailTemplateKey(v: unknown): v is EmailTemplateKey {
   return typeof v === "string" && (EMAIL_TEMPLATE_KEYS as readonly string[]).includes(v);
@@ -33,6 +33,8 @@ export const EMAIL_PLACEHOLDERS = [
   "loginId",
   "initialPassword",
   "loginUrl",
+  "planName",
+  "retryDate",
 ] as const;
 export type EmailPlaceholder = (typeof EMAIL_PLACEHOLDERS)[number];
 export type EmailVars = Partial<Record<EmailPlaceholder, string>>;
@@ -60,6 +62,8 @@ export const SAMPLE_EMAIL_VARS: Required<EmailVars> = {
   loginId: "new.operator",
   initialPassword: "Xk9v-2mPq-7Lw3",
   loginUrl: "https://payment-management-green.vercel.app/login",
+  planName: "スタンダードプラン（月額）",
+  retryDate: "2026/09/06",
 };
 
 export const emailTemplateUpdateSchema = z.object({
@@ -148,5 +152,29 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     lang: "en",
     subject: "[Wire Pay] You have been invited to the dashboard",
     body: "An operator account has been created for you on Wire Pay.\n\nLogin ID: {{loginId}}\nInitial password: {{initialPassword}}\nSign in: {{loginUrl}}\n\nPlease change your password after the first login and enable two-factor authentication.",
+  },
+  {
+    key: "subscription_failed",
+    lang: "ja",
+    subject: "【{{merchantName}}】定期課金のお支払いに失敗しました（{{planName}}）",
+    body: "{{customerName}} 様\n\n{{planName}} の定期課金 {{amount}} のお支払いに失敗しました。\n{{retryDate}} に再度お支払いを試みます。お支払い方法をご確認ください。",
+  },
+  {
+    key: "subscription_failed",
+    lang: "en",
+    subject: "[{{merchantName}}] Subscription payment failed ({{planName}})",
+    body: "Dear {{customerName}},\n\nThe {{amount}} payment for your {{planName}} subscription failed.\nWe will retry on {{retryDate}}. Please check your payment method.",
+  },
+  {
+    key: "subscription_suspended",
+    lang: "ja",
+    subject: "【{{merchantName}}】定期課金を停止しました（{{planName}}）",
+    body: "{{customerName}} 様\n\nお支払いが 3 回続けて失敗したため、{{planName}} の定期課金を停止しました。再開をご希望の場合はお支払い方法を更新のうえご連絡ください。",
+  },
+  {
+    key: "subscription_suspended",
+    lang: "en",
+    subject: "[{{merchantName}}] Subscription suspended ({{planName}})",
+    body: "Dear {{customerName}},\n\nYour {{planName}} subscription has been suspended after three failed payments. Update your payment method and contact us to resume it.",
   },
 ];

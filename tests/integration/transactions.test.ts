@@ -194,7 +194,7 @@ describe("transaction lists", () => {
       order: "sales",
       now: NOW,
     });
-    expect(sales.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment1, SEED_IDS.payment2, SEED_IDS.payment7].sort());
+    expect(sales.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment1, SEED_IDS.payment2, SEED_IDS.payment7, SEED_IDS.payment12, SEED_IDS.payment13].sort());
   });
 
   it("filters by method, merchant and period", async () => {

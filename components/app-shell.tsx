@@ -5,7 +5,7 @@
 // confirm/toast providers. Navigation comes from lib/nav.ts.
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { NavLink } from "./nav-link";
 import { WirePayIcon } from "./wire-pay-icon";
@@ -25,6 +25,18 @@ export function AppShell({ children, banner = [] }: { children: React.ReactNode;
   const t = useT();
   const { isMaster } = useSession();
   const groups = visibleNavGroups(isMaster);
+  const pathname = usePathname();
+
+  // Hosted checkout pages (/pay/<token>) are customer-facing: no admin chrome.
+  if (pathname?.startsWith("/pay/")) {
+    return (
+      <ConfirmProvider>
+        <ToastProvider>
+          <div className="min-h-screen bg-slate-50">{children}</div>
+        </ToastProvider>
+      </ConfirmProvider>
+    );
+  }
 
   return (
     <ConfirmProvider>
