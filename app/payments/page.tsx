@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
+import { livemodeWhere, modeFromCookieStore } from "@/lib/mode";
 import { TransactionsView } from "@/components/views/transactions-view";
 import { DEFAULT_PAGE_SIZE, parsePage } from "@/lib/pagination";
 import { loadTransactions, parseTransactionFilters } from "@/lib/payments/list";
@@ -10,8 +12,8 @@ export const dynamic = "force-dynamic";
 /** 決済一覧 — completed sales (captured / partially refunded / refunded). */
 export default async function PaymentsPage({ searchParams }: { searchParams?: Record<string, string | undefined> }) {
   const page = parsePage(searchParams?.page);
-  const filters = parseTransactionFilters(searchParams, SALES_STATUSES);
-  const modeWhere = filters.mode === "all" ? {} : { livemode: filters.mode === "live" };
+  const filters = parseTransactionFilters(searchParams, SALES_STATUSES, modeFromCookieStore(cookies()));
+  const modeWhere = livemodeWhere(filters.mode);
 
   const [result, salesAggregate, todayAggregate] = await Promise.all([
     loadTransactions({ allowedStatuses: SALES_STATUSES, filters, page, pageSize: DEFAULT_PAGE_SIZE, order: "sales" }),

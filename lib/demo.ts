@@ -8,6 +8,7 @@ export const DEMO_LIMITS = {
   agents: 100,
   ipRestrictions: 200,
   admins: 50,
+  apiKeysPerMerchant: 20,
 } as const;
 
 /** When set, destructive operations (DELETE, provider PATCH) are refused. */

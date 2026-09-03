@@ -86,6 +86,9 @@ model Payment {
   transferDueAt     DateTime?
   depositAmount     Int?
   depositDiff       String?
+  // Why a transaction was recorded as failed at creation, e.g.
+  // "limit_exceeded:daily" (lib/merchants/limits.ts) or "blocked" (Phase F).
+  failureReason     String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   // Completion time (完了日時): stamped when the status becomes captured.
@@ -167,11 +170,19 @@ model Merchant {
   enabledMethods    String   @default("[]")
   // Length of the bank-transfer id issued to this merchant's customers: 7 or 8.
   transferIdDigits  Int      @default(7)
+  // Days a customer has to complete a bank transfer (振込期限), counted from
+  // the application; and days after completion during which a refund may be
+  // requested (返金可能期限).
+  transferDueDays   Int      @default(7)
+  refundWindowDays  Int      @default(180)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   payments       Payment[]
   ipRestrictions IpRestriction[]
+  feeSchedules   MerchantFeeSchedule[]
+  limits         MerchantLimit[]
+  apiKeys        ApiKey[]
 
   @@index([createdAt])
   @@index([agentId])
@@ -218,6 +229,58 @@ model IpRestriction {
 
   @@index([target, enabled])
   @@index([merchantId])
+}
+
+// Contract plan and fee rates of a merchant, versioned by effective date:
+// the row with the latest effectiveFrom <= now is the current contract
+// (lib/merchants/fees.ts). rates is JSON: { credit: { ratePercent, fixedFee }, … }.
+model MerchantFeeSchedule {
+  id            String   @id @default(cuid())
+  merchantId    String
+  merchant      Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  // standard | premium | custom
+  plan          String
+  rates         String
+  effectiveFrom DateTime
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@index([merchantId, effectiveFrom])
+}
+
+// Per-method transaction limits (yen). null = unlimited.
+model MerchantLimit {
+  id             String   @id @default(cuid())
+  merchantId     String
+  merchant       Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  // credit | qr | convenience | bank
+  method         String
+  perTransaction Int?
+  daily          Int?
+  monthly        Int?
+  updatedAt      DateTime @updatedAt
+
+  @@unique([merchantId, method])
+}
+
+// Merchant API credentials. Only the SHA-256 hash is stored; the plaintext is
+// returned once at issue / rotation. kind: api_key | signing_secret,
+// mode: test | live. A rotated key keeps working until expiresAt.
+model ApiKey {
+  id         String    @id @default(cuid())
+  merchantId String
+  merchant   Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  mode       String
+  kind       String
+  label      String?
+  keyPrefix  String
+  keyHash    String    @unique
+  issuedAt   DateTime  @default(now())
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+
+  @@index([merchantId, mode, kind])
 }
 
 // Operators of this dashboard. Passwords are scrypt hashes; the TOTP secret

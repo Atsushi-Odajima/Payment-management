@@ -12,6 +12,9 @@ import { buildCredentialStore } from "../lib/providers/credentials";
 import { encryptMerchantPassword } from "../lib/merchants/secrets";
 import { transferDueDate } from "../lib/payments/transfer";
 import { hashPassword } from "../lib/admin/password";
+import { PLAN_DEFAULT_RATES } from "../lib/merchants/fees";
+import { displayPrefix } from "../lib/merchants/api-keys";
+import { hashApiKey } from "../lib/merchants/api-keys-server";
 import { DEMO_ADMIN_ACCOUNTS } from "./seed-accounts";
 
 export const SEED_IDS = {
@@ -25,6 +28,8 @@ export const SEED_IDS = {
   payment5: "pay_demo_005",
   payment6: "pay_demo_006",
   payment7: "pay_demo_007",
+  payment8: "pay_demo_008",
+  payment9: "pay_demo_009",
   merchant1: "mer_demo_001",
   merchant2: "mer_demo_002",
   merchant3: "mer_demo_003",
@@ -39,6 +44,25 @@ export const SEED_IDS = {
   audit1: "aud_demo_001",
   audit2: "aud_demo_002",
   audit3: "aud_demo_003",
+  fee1: "fee_demo_001",
+  fee2: "fee_demo_002",
+  fee3: "fee_demo_003",
+  fee4: "fee_demo_004",
+  apiKey1: "key_demo_001",
+  apiKey2: "key_demo_002",
+  apiKey3: "key_demo_003",
+  apiKey4: "key_demo_004",
+} as const;
+
+/**
+ * Fixed plaintext API keys of the demo merchants (only the SHA-256 hash is
+ * stored; these are exported so tests and the manual can call the merchant API).
+ */
+export const SEED_API_KEYS = {
+  [SEED_IDS.apiKey1]: "wp_test_ak_KotoriDemoTestKey000000000000001", // merchant1, active
+  [SEED_IDS.apiKey2]: "wp_live_ak_KotoriDemoLiveKey000000000000002", // merchant1, active
+  [SEED_IDS.apiKey3]: "wp_test_ss_KotoriDemoSigning000000000000003", // merchant1, signing secret
+  [SEED_IDS.apiKey4]: "wp_test_ak_SakuraDemoRevoked000000000000004", // merchant2, revoked
 } as const;
 
 /** Demo merchant passwords (fixed so the master-role reveal is reproducible). */
@@ -53,6 +77,7 @@ export const SEED_TRANSFER_IDS = {
   [SEED_IDS.payment4]: "48213907", // merchant2 issues 8-digit ids
   [SEED_IDS.payment5]: "7301256", // merchant3 issues 7-digit ids
   [SEED_IDS.payment7]: "5120983",
+  [SEED_IDS.payment9]: "6642019",
 } as const;
 
 export interface SeedOptions {
@@ -68,6 +93,9 @@ export interface SeedSummary {
   ipRestrictions: number;
   admins: number;
   auditLogs: number;
+  feeSchedules: number;
+  limits: number;
+  apiKeys: number;
 }
 
 type EventSeed = { type: string; fromStatus: string | null; toStatus: string; amount: number; actor: string; createdAt: Date };
@@ -368,13 +396,85 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       capturedAt: daysAgo(1),
       events: [ev("created", null, "awaiting_transfer", 12000, "seed", daysAgo(5)), ev("deposit", "awaiting_transfer", "captured", 12000, "bank", daysAgo(1))],
     },
+    // Live-mode rows so the header's test / live switch shows a difference.
+    {
+      id: SEED_IDS.payment8,
+      providerId: stripe.id,
+      merchantId: SEED_IDS.merchant1,
+      method: "credit",
+      orderNumber: "ORD-LIVE-001",
+      productName: "刺繍ブローチ",
+      amount: 3200,
+      status: "captured",
+      externalId: "stripe_live_001",
+      customerName: "中村 花",
+      customerId: "u_10488",
+      description: "刺繍ブローチ x 1",
+      livemode: true,
+      createdAt: daysAgo(3),
+      capturedAt: daysAgo(3),
+      events: [ev("created", null, "authorized", 3200, "seed", daysAgo(3)), ev("capture", "authorized", "captured", 3200, "webhook", daysAgo(3))],
+    },
+    {
+      id: SEED_IDS.payment9,
+      providerId: bank.id,
+      merchantId: SEED_IDS.merchant3,
+      method: "bank",
+      orderNumber: "ORD-LIVE-002",
+      productName: "干物詰め合わせ",
+      amount: 6800,
+      status: "awaiting_transfer",
+      externalId: "va_live_002",
+      customerName: "小林 健",
+      customerId: "u_30512",
+      description: "干物詰め合わせ x 1",
+      livemode: true,
+      transferId: SEED_TRANSFER_IDS[SEED_IDS.payment9],
+      transferDueAt: transferDueDate(daysAgo(1)),
+      createdAt: daysAgo(1),
+      events: [ev("created", null, "awaiting_transfer", 6800, "seed", daysAgo(1))],
+    },
   ];
-  for (const { events, ...p } of payments) {
+  for (const { events, livemode, ...p } of payments as Array<(typeof payments)[number] & { livemode?: boolean }>) {
     await prisma.payment.upsert({
       where: { id: p.id },
       update: {},
-      create: { ...p, livemode: false, events: { create: events } },
+      create: { ...p, livemode: livemode ?? false, events: { create: events } },
     });
+  }
+
+  // ── Contracts / fee schedules ─────────────────────────────────────────
+  const customRates = { credit: { ratePercent: 3.4, fixedFee: 0 }, qr: { ratePercent: 2.8, fixedFee: 0 }, convenience: { ratePercent: 3.2, fixedFee: 30 }, bank: { ratePercent: 1.2, fixedFee: 40 } };
+  const feeSchedules = [
+    { id: SEED_IDS.fee1, merchantId: SEED_IDS.merchant1, plan: "standard", rates: JSON.stringify(PLAN_DEFAULT_RATES.standard), effectiveFrom: daysAgo(40), note: "契約開始", createdAt: daysAgo(40) },
+    { id: SEED_IDS.fee2, merchantId: SEED_IDS.merchant2, plan: "standard", rates: JSON.stringify(PLAN_DEFAULT_RATES.standard), effectiveFrom: daysAgo(30), note: "契約開始", createdAt: daysAgo(30) },
+    { id: SEED_IDS.fee3, merchantId: SEED_IDS.merchant2, plan: "premium", rates: JSON.stringify(PLAN_DEFAULT_RATES.premium), effectiveFrom: daysAgo(-14), note: "月間取扱高の増加によりプレミアムへ", createdAt: daysAgo(2) },
+    { id: SEED_IDS.fee4, merchantId: SEED_IDS.merchant3, plan: "custom", rates: JSON.stringify(customRates), effectiveFrom: daysAgo(20), note: "銀行振込中心のため個別料率", createdAt: daysAgo(20) },
+  ];
+  for (const f of feeSchedules) {
+    await prisma.merchantFeeSchedule.upsert({ where: { id: f.id }, update: {}, create: f });
+  }
+
+  // ── Limits ────────────────────────────────────────────────────────────
+  const limits = [
+    { merchantId: SEED_IDS.merchant1, method: "credit", perTransaction: 100_000, daily: 300_000, monthly: 3_000_000 },
+    { merchantId: SEED_IDS.merchant1, method: "qr", perTransaction: null, daily: 200_000, monthly: null },
+    { merchantId: SEED_IDS.merchant3, method: "bank", perTransaction: 500_000, daily: null, monthly: 5_000_000 },
+  ];
+  for (const l of limits) {
+    await prisma.merchantLimit.upsert({ where: { merchantId_method: { merchantId: l.merchantId, method: l.method } }, update: {}, create: l });
+  }
+
+  // ── API keys ──────────────────────────────────────────────────────────
+  const apiKeys = [
+    { id: SEED_IDS.apiKey1, merchantId: SEED_IDS.merchant1, mode: "test", kind: "api_key", label: "開発環境", issuedAt: daysAgo(35), lastUsedAt: hoursAgo(6) },
+    { id: SEED_IDS.apiKey2, merchantId: SEED_IDS.merchant1, mode: "live", kind: "api_key", label: "本番サーバー", issuedAt: daysAgo(30), lastUsedAt: daysAgo(3) },
+    { id: SEED_IDS.apiKey3, merchantId: SEED_IDS.merchant1, mode: "test", kind: "signing_secret", label: "通知署名（開発）", issuedAt: daysAgo(35), lastUsedAt: null },
+    { id: SEED_IDS.apiKey4, merchantId: SEED_IDS.merchant2, mode: "test", kind: "api_key", label: "旧キー", issuedAt: daysAgo(25), lastUsedAt: daysAgo(10), revokedAt: daysAgo(8) },
+  ];
+  for (const k of apiKeys) {
+    const plaintext = SEED_API_KEYS[k.id as keyof typeof SEED_API_KEYS];
+    await prisma.apiKey.upsert({ where: { id: k.id }, update: {}, create: { ...k, keyPrefix: displayPrefix(plaintext), keyHash: hashApiKey(plaintext) } });
   }
 
   // ── IP restrictions ───────────────────────────────────────────────────
@@ -460,6 +560,9 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     ipRestrictions: ips.length,
     admins: admins.length,
     auditLogs: audits.length,
+    feeSchedules: feeSchedules.length,
+    limits: limits.length,
+    apiKeys: apiKeys.length,
   };
 }
 
@@ -472,6 +575,9 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.paymentEvent.deleteMany();
   await prisma.refund.deleteMany();
   await prisma.payment.deleteMany();
+  await prisma.apiKey.deleteMany();
+  await prisma.merchantLimit.deleteMany();
+  await prisma.merchantFeeSchedule.deleteMany();
   await prisma.merchant.deleteMany();
   await prisma.agent.deleteMany();
   await prisma.paymentProvider.deleteMany();
