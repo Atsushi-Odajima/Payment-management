@@ -8,6 +8,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { PaymentActions } from "@/components/payment-actions";
 import { ReceiptCard } from "@/components/receipt-card";
+import { PiiValue } from "@/components/pii-value";
 import { PaymentTimeline } from "@/components/payment-timeline";
 import { formatCvsReceiptNo, isCvsBrand } from "@/lib/payments/konbini";
 import { ModeBadge, PaymentStatusBadge } from "@/components/payment-status-badge";
@@ -90,8 +91,19 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
             <DetailRow label={t("paymentDetail.product")}>{payment.productName ?? "—"}</DetailRow>
             <DetailRow label={t("paymentDetail.customer")}>
               <div>
-                {payment.customerName ?? "—"}
-                {payment.customerEmail && <p className="text-xs text-slate-500">{payment.customerEmail}</p>}
+                <PiiValue masked={payment.customerName} target={{ type: "payment", id: payment.id }} field="customerName" />
+                {payment.customerEmail && (
+                  <p className="text-xs text-slate-500">
+                    <PiiValue masked={payment.customerEmail} target={{ type: "payment", id: payment.id }} field="customerEmail" />
+                  </p>
+                )}
+                {payment.customerRef && (
+                  <p className="text-xs">
+                    <Link href={`/customers/${payment.customerRef}`} className="text-brand-700 hover:underline">
+                      {t("paymentDetail.customerRecord")} →
+                    </Link>
+                  </p>
+                )}
               </div>
             </DetailRow>
             <DetailRow label={t("paymentDetail.customerId")}>
@@ -104,7 +116,7 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
             )}
             {payment.clientIp && (
               <DetailRow label={t("paymentDetail.clientIp")}>
-                <span className="font-mono text-xs">{payment.clientIp}</span>
+                <PiiValue masked={payment.clientIp} target={{ type: "payment", id: payment.id }} field="clientIp" className="font-mono text-xs" />
               </DetailRow>
             )}
             <DetailRow label={t("paymentDetail.method")}>{methodLabel(payment.method, lang)}</DetailRow>

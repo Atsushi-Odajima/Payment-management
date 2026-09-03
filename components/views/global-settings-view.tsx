@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { FormField } from "@/components/ui/form-field";
 import { useApiJson, useT } from "@/components/language-provider";
 import { useToast } from "@/components/toast";
-import type { GlobalSettingsInput } from "@/lib/settings/global";
+import { CSV_PII_MODES, type CsvPiiMode, type GlobalSettingsInput } from "@/lib/settings/global";
 import { TAX_ROUNDINGS, type TaxRounding } from "@/lib/settlements/types";
 import type { MessageKey } from "@/lib/i18n";
 
@@ -26,6 +26,9 @@ export function GlobalSettingsView({ settings }: { settings: GlobalSettingsInput
   const [issuerAddress, setIssuerAddress] = useState(settings.issuerAddress);
   const [issuerTel, setIssuerTel] = useState(settings.issuerTel);
   const [taxRounding, setTaxRounding] = useState<TaxRounding>(settings.taxRounding);
+  const [piiRetentionMonths, setPiiRetentionMonths] = useState(String(settings.piiRetentionMonths));
+  const [auditRetentionYears, setAuditRetentionYears] = useState(String(settings.auditRetentionYears));
+  const [csvPii, setCsvPii] = useState<CsvPiiMode>(settings.csvPii);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -48,7 +51,7 @@ export function GlobalSettingsView({ settings }: { settings: GlobalSettingsInput
     const res = await apiJson("/api/global-settings", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ viewerCsvExport, slackWebhookUrl, issuerName, issuerRegistrationNo, issuerAddress, issuerTel, taxRounding }),
+      body: JSON.stringify({ viewerCsvExport, slackWebhookUrl, issuerName, issuerRegistrationNo, issuerAddress, issuerTel, taxRounding, piiRetentionMonths: Number(piiRetentionMonths), auditRetentionYears: Number(auditRetentionYears), csvPii }),
     });
     setBusy(false);
     if (!res.ok) {
@@ -110,6 +113,27 @@ export function GlobalSettingsView({ settings }: { settings: GlobalSettingsInput
                 {TAX_ROUNDINGS.map((r) => (
                   <option key={r} value={r}>
                     {t(`globalSettings.rounding.${r}` as MessageKey)}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          </div>
+        </fieldset>
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-semibold text-slate-800">{t("globalSettings.sectionPii")}</legend>
+          <p className="text-xs text-slate-500">{t("globalSettings.piiHelp")}</p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <FormField id="gs-pii-months" label={t("globalSettings.piiRetentionMonths")} help={t("globalSettings.piiRetentionMonthsHelp")} error={err("piiRetentionMonths")}>
+              <input id="gs-pii-months" type="number" min={1} max={120} className="input" value={piiRetentionMonths} onChange={(e) => setPiiRetentionMonths(e.target.value)} required />
+            </FormField>
+            <FormField id="gs-audit-years" label={t("globalSettings.auditRetentionYears")} help={t("globalSettings.auditRetentionYearsHelp")} error={err("auditRetentionYears")}>
+              <input id="gs-audit-years" type="number" min={1} max={30} className="input" value={auditRetentionYears} onChange={(e) => setAuditRetentionYears(e.target.value)} required />
+            </FormField>
+            <FormField id="gs-csv-pii" label={t("globalSettings.csvPii")} help={t("globalSettings.csvPiiHelp")}>
+              <select id="gs-csv-pii" className="input" value={csvPii} onChange={(e) => setCsvPii(e.target.value as CsvPiiMode)}>
+                {CSV_PII_MODES.map((m) => (
+                  <option key={m} value={m}>
+                    {t(`globalSettings.csvPiiModes.${m}` as MessageKey)}
                   </option>
                 ))}
               </select>

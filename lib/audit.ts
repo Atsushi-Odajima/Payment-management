@@ -5,11 +5,14 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { clientIpFromHeaders } from "@/lib/ip";
 import { currentAdminFromRequest } from "@/lib/admin/current";
+import { maskValueForKey } from "@/lib/pii/mask";
 
 export const AUDIT_ACTOR_TYPES = ["admin", "merchant", "system", "webhook", "bank", "cvs", "cron", "seed"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
 export const AUDIT_TARGET_TYPES = [
+  "customer",
+  "anonymize_batch",
   "receipt",
   "payment_method_control",
   "global_setting",
@@ -115,6 +118,10 @@ export const AUDIT_ACTIONS = [
   "merchant.login",
   "merchant.logout",
   "merchant.lockout",
+  "pii.unmask",
+  "pii.anonymize",
+  "pii.anonymize_batch",
+  "audit_log.prune",
   "provider.create",
   "provider.update",
   "provider.delete",
@@ -152,7 +159,11 @@ type Db = PrismaClient | Prisma.TransactionClient;
 
 const SENSITIVE_KEY = /password|passwordEnc|passwordHash|credentials|secret|totp/i;
 
-/** Drop secrets and make Dates / bigints JSON-safe. */
+/**
+ * Drop secrets, mask personal data (Phase M-2: the audit trail is kept for
+ * years, so names / e-mails / phones / IPs are stored masked) and make
+ * Dates / bigints JSON-safe.
+ */
 export function redactForAudit(value: unknown): unknown {
   if (value === null || value === undefined) return value;
   if (value instanceof Date) return value.toISOString();
@@ -165,7 +176,7 @@ export function redactForAudit(value: unknown): unknown {
         if (v !== null && v !== undefined) out[k] = "[redacted]";
         continue;
       }
-      out[k] = redactForAudit(v);
+      out[k] = typeof v === "string" ? maskValueForKey(k, v) : redactForAudit(v);
     }
     return out;
   }

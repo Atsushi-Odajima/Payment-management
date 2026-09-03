@@ -39,6 +39,7 @@ Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Ve
 | `/api/cron/subscriptions` | `15 * * * *` | 次回課金日を過ぎた定期課金を課金する（失敗は 3 日 / 7 日後に再試行、3 回で停止） |
 | `/api/cron/payment-method-controls` | `45 * * * *` | 自動再開予定日時を過ぎた決済手段の停止を解除する |
 | `/api/cron/notifications` | `50 * * * *` | 通知センターの日次まとめ（振込期限超過・チャージバック期限）と、メール / Slack の未配信通知の配信 |
+| `/api/cron/anonymize` | `0 19 * * *`（04:00 JST） | 保持期間（全体設定、既定 24 か月）を過ぎた顧客と古い取引の個人情報を匿名化し、保持期間（既定 7 年）を過ぎた操作ログを削除する |
 
 すべて `GET` / `POST` の両方を受け付け、`CRON_SECRET` 未設定時は 404 を返します。
 
@@ -58,7 +59,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 2. **環境変数**: `ENCRYPTION_KEY`（base64 32 バイト、**一度決めたら変えない**）、`SESSION_SECRET`（別鍵を推奨）、`CRON_SECRET`、`DEPOSIT_NOTIFY_SECRET`、`APP_URL`（公開 URL）、必要なら `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`。`DEMO_LOGIN_HINT` と `DEMO_READONLY` は **設定しない**
 3. **スキーマ適用**: `vercel.json` の buildCommand は `prisma db push --accept-data-loss` を実行する。実データを持つ DB では **このフラグを外す** か、Docker 経路と同じく `prisma migrate deploy`（`prisma/migrations` の履歴）に切り替える。スキーマ変更は常に「追加のみ」（nullable か `@default` 付き）で行い、列の削除・型変更をしない
 4. **初期データ**: ビルド末尾の `tsx prisma/seed.ts` はテーブル単位の upsert で、**デモ加盟店・取引・管理者（`kuromaru` / `general`）を投入する**。実運用では seed をビルドから外し（`vercel.json` の `&& tsx prisma/seed.ts` を削除）、管理者は `scripts/` から手動で作るか、初回のみ seed → 不要な行を削除 → デモ管理者のパスワードを変更する
-5. **Cron**: 上表の `/api/cron/expire-transfers`・`/api/cron/webhook-retry`・`/api/cron/subscriptions` を登録し、`/api/demo/reset` は **登録しない**（Vercel は `vercel.json` の `crons` から該当行を削除）
+5. **Cron**: 上表の `/api/cron/*`（expire-transfers / webhook-retry / subscriptions / payment-method-controls / notifications / anonymize）を登録し、`/api/demo/reset` は **登録しない**（Vercel は `vercel.json` の `crons` から該当行を削除）
 6. **加盟店の設定**: 各加盟店の通知先 URL（https）と署名シークレット（APIキータブ）を発行し、加盟店側で `X-Signature` の検証を実装してもらう（マニュアル「通知パラメータ仕様」）
 7. **動作確認**: `GET /api/merchant-api/ping` をテストキーで呼ぶ → 200、`/api/cron/subscriptions` を `Authorization: Bearer <CRON_SECRET>` で呼ぶ → 200、未設定のヘッダーでは 401 を確認する
 8. **運用上の前提**: 決済プロバイダの実 API・実メール送信・実際の銀行入金連携は未接続（README の「残課題」参照）。`lib/providers/*` にプロバイダごとのアダプタ、`lib/email/send.ts` に `EmailProvider`、`/api/demo/deposit-notify` に銀行連携を差し込む

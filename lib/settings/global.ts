@@ -8,6 +8,9 @@ import { REGISTRATION_NO_RE, TAX_ROUNDINGS, isTaxRounding } from "@/lib/settleme
 
 export const GLOBAL_SETTING_ID = "global";
 
+export const CSV_PII_MODES = ["masked", "full"] as const;
+export type CsvPiiMode = (typeof CSV_PII_MODES)[number];
+
 export const globalSettingsSchema = z.object({
   /** Whether the viewer role may export CSV. */
   viewerCsvExport: z.boolean(),
@@ -21,14 +24,32 @@ export const globalSettingsSchema = z.object({
   issuerTel: z.string().trim().max(30, "tooLong").default(""),
   /** Rounding of the consumption tax per rate: floor (default) | round | ceil. */
   taxRounding: z.enum(TAX_ROUNDINGS).default("floor"),
+  // ── Personal data (Phase M-2) ───────────────────────────────────────────
+  /** Customers without a transaction for this many months are anonymised (1–120). */
+  piiRetentionMonths: z.number({ invalid_type_error: "number" }).int("integer").min(1, "range").max(120, "range").default(24),
+  /** Audit rows older than this many years are pruned (1–30). */
+  auditRetentionYears: z.number({ invalid_type_error: "number" }).int("integer").min(1, "range").max(30, "range").default(7),
+  /** CSV exports: masked (default) | full (admin / accounting only). */
+  csvPii: z.enum(CSV_PII_MODES).default("masked"),
 });
 export type GlobalSettingsInput = z.infer<typeof globalSettingsSchema>;
 
-export const DEFAULT_GLOBAL_SETTINGS: GlobalSettingsInput = { viewerCsvExport: false, slackWebhookUrl: "", issuerName: "", issuerRegistrationNo: "", issuerAddress: "", issuerTel: "", taxRounding: "floor" };
+export const DEFAULT_GLOBAL_SETTINGS: GlobalSettingsInput = {
+  viewerCsvExport: false,
+  slackWebhookUrl: "",
+  issuerName: "",
+  issuerRegistrationNo: "",
+  issuerAddress: "",
+  issuerTel: "",
+  taxRounding: "floor",
+  piiRetentionMonths: 24,
+  auditRetentionYears: 7,
+  csvPii: "masked",
+};
 
-const SELECT = { viewerCsvExport: true, slackWebhookUrl: true, issuerName: true, issuerRegistrationNo: true, issuerAddress: true, issuerTel: true, taxRounding: true } as const;
+const SELECT = { viewerCsvExport: true, slackWebhookUrl: true, issuerName: true, issuerRegistrationNo: true, issuerAddress: true, issuerTel: true, taxRounding: true, piiRetentionMonths: true, auditRetentionYears: true, csvPii: true } as const;
 
-type Row = { viewerCsvExport: boolean; slackWebhookUrl: string | null; issuerName: string | null; issuerRegistrationNo: string | null; issuerAddress: string | null; issuerTel: string | null; taxRounding: string };
+type Row = { viewerCsvExport: boolean; slackWebhookUrl: string | null; issuerName: string | null; issuerRegistrationNo: string | null; issuerAddress: string | null; issuerTel: string | null; taxRounding: string; piiRetentionMonths: number; auditRetentionYears: number; csvPii: string };
 
 function fromRow(row: Row): GlobalSettingsInput {
   return {
@@ -39,6 +60,9 @@ function fromRow(row: Row): GlobalSettingsInput {
     issuerAddress: row.issuerAddress ?? "",
     issuerTel: row.issuerTel ?? "",
     taxRounding: isTaxRounding(row.taxRounding) ? row.taxRounding : "floor",
+    piiRetentionMonths: row.piiRetentionMonths,
+    auditRetentionYears: row.auditRetentionYears,
+    csvPii: row.csvPii === "full" ? "full" : "masked",
   };
 }
 
@@ -58,6 +82,9 @@ export async function saveGlobalSettings(db: PrismaClient, input: GlobalSettings
       issuerAddress: input.issuerAddress || null,
       issuerTel: input.issuerTel || null,
       taxRounding: input.taxRounding,
+      piiRetentionMonths: input.piiRetentionMonths,
+      auditRetentionYears: input.auditRetentionYears,
+      csvPii: input.csvPii,
     };
     const row = await tx.globalSetting.upsert({ where: { id: GLOBAL_SETTING_ID }, update: data, create: { id: GLOBAL_SETTING_ID, ...data }, select: SELECT });
     const after = fromRow(row);

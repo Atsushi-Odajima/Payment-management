@@ -22,6 +22,7 @@ import { initialStatus } from "@/lib/payments/transitions";
 import { DEFAULT_TRANSFER_ID_DIGITS, generateTransferId, isTransferIdDigits, transferDueDate } from "@/lib/payments/transfer";
 import { CVS_BRANDS, DEFAULT_CVS_BRAND, cvsDueDate, generateCvsReceiptNo } from "@/lib/payments/konbini";
 import { blockedFailureReason, cardFingerprint, checkBlacklist, detectRepeatedFailures } from "@/lib/risk/service";
+import { upsertCustomerForPayment } from "@/lib/customers/service";
 import { cardInputSchema } from "@/lib/risk/types";
 import { emitPaymentWebhook } from "@/lib/webhooks/deliver";
 
@@ -132,6 +133,16 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
   const isCvs = method === "convenience" && !failureReason;
   const actor = opts.source === "subscription" ? "system" : opts.source === "api" ? "api" : "dashboard";
 
+  // Customer master (Phase M-1): resolve the merchant's customer id to a Customer row and remember the card.
+  const customerRef = await upsertCustomerForPayment(prisma, {
+    merchantId: body.merchantId ?? null,
+    customerId: body.customerId ?? null,
+    customerName: body.customerName ?? null,
+    customerEmail: body.customerEmail ?? null,
+    card: body.card && cardHash ? { brand: body.card.brand, last4: body.card.last4, expiry: body.card.expiry, cardHash } : null,
+    now,
+  });
+
   // A random transfer id / receipt number can collide with an existing one;
   // the unique constraint rejects it and we draw a new one once.
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -159,6 +170,7 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
           idempotencyKey: idempotencyKey ?? null,
           paymentLinkId: opts.paymentLinkId ?? null,
           subscriptionId: opts.subscriptionId ?? null,
+          customerRef,
           createdAt: now,
           capturedAt: status === "captured" ? now : null,
           transferId: isBank ? generateTransferId(transferDigits) : null,

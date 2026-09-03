@@ -109,6 +109,11 @@ model Payment {
   cvsBrand          String?
   cvsReceiptNo      String?   @unique
   cvsPaidAt         DateTime?
+  // Customer master (Phase M-1): resolved from merchantId + customerId at
+  // creation (and by the linking job for older rows). The legacy customer*
+  // columns stay as the snapshot shown on the transaction.
+  customerRef       String?
+  customer          Customer? @relation(fields: [customerRef], references: [id], onDelete: SetNull)
   subscriptionId    String?
   subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   createdAt         DateTime  @default(now())
@@ -270,9 +275,74 @@ model Merchant {
   subscriptions  Subscription[]
   paymentLinks   PaymentLink[]
   auditLogs      AuditLog[]
+  customers      Customer[]
 
   @@index([createdAt])
   @@index([agentId])
+}
+
+/// Customer master per merchant (Phase M-1): one row per merchant × the
+/// merchant's own customer id. name / email / phone are personal data —
+/// masked on operator screens (lib/pii/mask.ts), cleared by anonymisation
+/// (anonymizedAt), which also deletes the stored payment tokens.
+model Customer {
+  id           String    @id @default(cuid())
+  merchantId   String
+  merchant     Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  /// The merchant's customer id (Payment.customerId).
+  externalId   String
+  name         String?
+  email        String?
+  phone        String?
+  anonymizedAt DateTime?
+  /// Reason given for a manual anonymisation (audited as well).
+  anonymizeReason String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  payments Payment[]
+  tokens   PaymentToken[]
+
+  @@unique([merchantId, externalId])
+  @@index([merchantId, createdAt])
+  @@index([email])
+}
+
+/// Stored card reference of a customer (Phase M-1): brand, last 4, expiry
+/// and the fraud fingerprint — never the PAN. Deleted on anonymisation.
+model PaymentToken {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  brand      String
+  last4      String
+  /// MM/YY
+  expiry     String
+  cardHash   String
+  label      String?
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime?
+
+  @@unique([customerId, cardHash])
+  @@index([customerId])
+}
+
+/// One anonymisation run (Phase M-2): the daily retention job or a manual
+/// per-customer action, with what it touched.
+model AnonymizeBatch {
+  id         String   @id @default(cuid())
+  /// retention | manual
+  kind       String
+  customers  Int      @default(0)
+  payments   Int      @default(0)
+  tokens     Int      @default(0)
+  auditLogs  Int      @default(0)
+  note       String?
+  actorId    String?
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+
+  @@index([startedAt])
 }
 
 // Agent (代理店) that refers / brokers merchants. Auto-numbered AGT-00001.
@@ -873,6 +943,12 @@ model GlobalSetting {
   issuerAddress        String?
   issuerTel            String?
   taxRounding          String   @default("floor")
+  /// Personal-data retention (Phase M-2): customers without a transaction for
+  /// this many months are anonymised by the daily job; audit logs are kept
+  /// for auditRetentionYears. csvPii: masked | full (full = admin / accounting).
+  piiRetentionMonths   Int      @default(24)
+  auditRetentionYears  Int      @default(7)
+  csvPii               String   @default("masked")
   updatedAt       DateTime @updatedAt
 }
 

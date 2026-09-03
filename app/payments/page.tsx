@@ -1,3 +1,4 @@
+import { maskCustomerFields } from "@/lib/pii/mask";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { livemodeWhere, modeFromCookieStore } from "@/lib/mode";
@@ -33,7 +34,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams?: Re
   return (
     <TransactionsView
       kind="sales"
-      items={result.items}
+      items={result.items.map((i) => maskCustomerFields(i, "masked"))}
       total={result.total}
       page={page}
       pageSize={DEFAULT_PAGE_SIZE}

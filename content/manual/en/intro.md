@@ -119,6 +119,8 @@ Roles (master / general) belong to the signed-in admin account and are enforced 
 | Global search (admins) | View | ○ |  |  |  |  |
 | Global settings | View | ○ |  |  |  |  |
 | Global settings | Update | ○ |  |  |  |  |
+| Customers | View | ○ | ○ | ○ | ○ | ○ |
+| Customers | Anonymise | ○ |  |  |  |  |
 | CSV export | Export | ○ | ○ | ○ | ○ |  |
 | Personal data | Unmask | ○ |  | ○ |  |  |
 | API docs | View | ○ | ○ | ○ | ○ | ○ |

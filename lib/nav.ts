@@ -41,6 +41,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     key: "merchants",
     items: [
       { key: "merchants", href: "/merchants", icon: "store", implemented: true },
+      { key: "customers", href: "/customers", icon: "user", implemented: true },
       { key: "agents", href: "/agents", icon: "users", implemented: true },
       { key: "paymentLinks", href: "/payment-links", icon: "link", implemented: true },
       { key: "subscriptions", href: "/subscriptions", icon: "repeat", implemented: true },
