@@ -17,7 +17,7 @@ Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Ve
 |------|------|------|
 | `DATABASE_URL` | ✅ | `file:./dev.db`（SQLite） / `postgresql://…`（Neon 等） |
 | `ENCRYPTION_KEY` | ✅ | AES-256-GCM 鍵。**base64 32 バイト**。本番は未設定・不正だと起動時に例外（fail-closed） |
-| `DEMO_LOGIN_HINT` | 任意 | 何か値を設定するとログイン画面にデモアカウント（`kuromaru` / `general`）を表示する（公開デモ用）。管理者は `AdminUser` テーブル（seed が作成）で、`ADMIN_PASSWORD` は使わない |
+| `DEMO_LOGIN_HINT` | 任意 | 何か値を設定するとログイン画面にデモアカウント（`kuromaru` / `general` ほか）と、加盟店ログイン画面（`/merchant/login`）に seed の加盟店ID / パスワードを表示する（公開デモ用）。管理者は `AdminUser` テーブル（seed が作成）で、`ADMIN_PASSWORD` は使わない |
 | `DEMO_GENERAL_PASSWORD` | 任意 | seed が作る一般権限アカウント `general` のパスワード（既定 `general1234`） |
 | `SESSION_SECRET` | 任意 | セッション Cookie の HMAC 鍵。未設定時は `ENCRYPTION_KEY` を流用 |
 | `DEMO_READONLY` | 任意 | `1` で DELETE とプロバイダの PATCH を 403 に（デモ荒らし対策） |

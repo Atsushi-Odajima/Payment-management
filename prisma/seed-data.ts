@@ -1212,6 +1212,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
 /** Remove all demo data (used by the demo reset endpoint and tests). */
 export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.auditLog.deleteMany();
+  await prisma.apiRateLimit.deleteMany();
   await prisma.slackLog.deleteMany();
   await prisma.notificationPreference.deleteMany();
   await prisma.notificationRead.deleteMany();

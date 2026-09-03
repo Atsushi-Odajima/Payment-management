@@ -17,6 +17,8 @@ export interface AuditRow {
   id: string;
   actorType: AuditActorType | string;
   actor: { id: string; loginId: string; name: string } | null;
+  /** The merchant when actorType is "merchant" (public API / portal, Phase L). */
+  merchant: { id: string; merchantCode: string; siteName: string } | null;
   action: string;
   targetType: string;
   targetId: string | null;
@@ -60,6 +62,7 @@ const ROW_SELECT = {
   id: true,
   actorType: true,
   actor: { select: { id: true, loginId: true, name: true } },
+  merchant: { select: { id: true, merchantCode: true, siteName: true } },
   action: true,
   targetType: true,
   targetId: true,

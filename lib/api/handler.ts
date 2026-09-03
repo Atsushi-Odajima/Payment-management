@@ -27,6 +27,8 @@ export class ApiError extends Error {
     public readonly messageKey: ErrorKey,
     public readonly params?: MessageParams,
     public readonly details?: unknown,
+    /** Extra response headers (e.g. Retry-After on 429). */
+    public readonly headers?: Record<string, string>,
   ) {
     super(messageKey);
     this.name = "ApiError";
@@ -87,7 +89,9 @@ export function withApiHandler<Ctx = unknown>(handler: Handler<Ctx>, options: Ha
 
 export function errorToResponse(err: unknown, lang: Lang): NextResponse<ApiFail> {
   if (err instanceof ApiError) {
-    return fail(lang, err.status, err.code, err.messageKey, err.params, err.details);
+    const res = fail(lang, err.status, err.code, err.messageKey, err.params, err.details);
+    for (const [k, v] of Object.entries(err.headers ?? {})) res.headers.set(k, v);
+    return res;
   }
   if (err instanceof ZodError) {
     return fail(lang, 400, "invalid_input", "errors.invalidInput", undefined, err.flatten());

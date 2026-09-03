@@ -233,6 +233,12 @@ model Merchant {
   refundWindowDays  Int      @default(180)
   // Days a customer has to pay at the konbini counter (Phase K-1).
   cvsDueDays        Int      @default(3)
+  // Merchant portal login (Phase L-2): consecutive failures, lockout until,
+  // last successful login. The portal session is a separate cookie from the
+  // operator session (lib/merchant-portal/token.ts).
+  failedLoginCount  Int      @default(0)
+  lockedUntil       DateTime?
+  lastLoginAt       DateTime?
   // Qualified-invoice data of the merchant (Phase K-3): its own registration
   // number (T + 13 digits, optional) and postal address printed on invoices.
   invoiceNumber     String?
@@ -263,6 +269,7 @@ model Merchant {
   plans          Plan[]
   subscriptions  Subscription[]
   paymentLinks   PaymentLink[]
+  auditLogs      AuditLog[]
 
   @@index([createdAt])
   @@index([agentId])
@@ -401,6 +408,9 @@ model AuditLog {
   actorType  String     @default("admin")
   actorId    String?
   actor      AdminUser? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  // Merchant acting through the public API or the portal (Phase L); actorId stays null.
+  merchantId String?
+  merchant   Merchant?  @relation(fields: [merchantId], references: [id], onDelete: SetNull)
   action     String
   targetType String
   targetId   String?
@@ -864,6 +874,19 @@ model GlobalSetting {
   issuerTel            String?
   taxRounding          String   @default("floor")
   updatedAt       DateTime @updatedAt
+}
+
+/// Public API rate limit (Phase L-1): one row per merchant × mode × minute,
+/// incremented on every /api/v1 request; 60 per window → 429. Stored in the
+/// database so every serverless instance shares the count.
+model ApiRateLimit {
+  /// "<merchantId>:<mode>:<unix minute>"
+  id          String   @id
+  merchantId  String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@index([windowStart])
 }
 
 /// Receipt (領収書) issued for a completed transaction (Phase K-2). One row

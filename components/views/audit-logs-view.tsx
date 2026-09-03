@@ -57,6 +57,11 @@ export function AuditLogsView({
             <span className="font-medium text-slate-900">{r.actor.name}</span>
             <span className="ml-1 font-mono text-xs text-slate-500">{r.actor.loginId}</span>
           </span>
+        ) : r.merchant ? (
+          <span>
+            <span className="badge bg-sky-100 text-sky-800 ring-sky-200">{labels.actorType(r.actorType)}</span>
+            <span className="ml-1 font-mono text-xs text-slate-500">{r.merchant.merchantCode}</span>
+          </span>
         ) : (
           <span className="badge bg-slate-100 text-slate-700 ring-slate-200">{labels.actorType(r.actorType)}</span>
         ),

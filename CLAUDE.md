@@ -153,6 +153,7 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 | 全体設定 | 更新 | ○ |  |  |  |  |
 | CSV 出力 | 出力 | ○ | ○ | ○ | ○ |  |
 | 個人情報 | マスク解除 | ○ |  | ○ |  |  |
+| API ドキュメント | 閲覧 | ○ | ○ | ○ | ○ | ○ |
 <!-- permissions:end -->
 
 ## 加盟店設定の拡張（フェーズB）
@@ -232,6 +233,15 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - **インボイス**: `GlobalSetting` に `issuerName` / `issuerRegistrationNo`（`REGISTRATION_NO_RE` = T + 13 桁）/ `issuerAddress` / `issuerTel` / `taxRounding`（floor 既定 | round | ceil）、`Merchant` に `invoiceNumber` / `address`（精算設定タブ・`PATCH /api/merchants/[id]/settlement`）、`SettlementLine.taxCategory`（`TAX_CATEGORIES` standard10 | reduced8 | exempt。`collectLines` が売上行 standard10 / 返金・CB 行 exempt を付与、旧行は `defaultTaxCategory(kind)`）。税計算は `lib/settlements/tax.ts`（**手数料は内税**: `includedTax` = 税込 × 率 / (100 + 率) を税率ごとに丸める。差引支払額は変えない）。`GET /api/settlements/[id]/invoice`（`invoice.export`: admin / accounting、collecting は 409 `settlement_not_confirmed`、監査 `settlement.invoice_export`、番号 `INV-YYYYMM-<加盟店番号>`）
 - 権限 `receipt.issue` / `invoice.export`、監査 `receipt.issue` / `settlement.invoice_export`、対象種別 `receipt`。マニュアル章 `konbini` / `receipts`。seed: コンビニプロバイダ `prov_cvs_demo`（web_conveni）、payment14（支払待ち）/ payment15（支払済 + 領収書 `rcp_demo_001`）、`SEED_CVS_RECEIPT_NOS`
 
+## 公開 API v1・加盟店管理画面・API ドキュメント（フェーズL）
+
+- **公開 API は `app/api/v1/*`**（transactions POST / GET / GET :id、refunds POST、payment-links POST、openapi.json GET）。認証は `lib/public-api/auth.ts` の `authenticatePublicApi`（既存の `authenticateMerchantApiKey` = Bearer `wp_<mode>_ak_` + 加盟店の `merchant_api` IP ルール、署名シークレットは 401）+ **レート制限** `lib/public-api/rate-limit.ts`（`ApiRateLimit` テーブルに加盟店 × モード × 分で計数、60/分、超過は 429 + `Retry-After` / `X-RateLimit-*`。`ApiError` に `headers` 引数を追加）。middleware の `SIGNATURE_AUTH_PREFIXES` に `/api/v1/`、route は `ipRestricted: false`
+- 取引作成は `lib/public-api/transactions.ts` の `createApiTransaction` → **`createTransaction(source: "api")`**（プロバイダは method × キーの環境で選択、`enabledMethods` 外は 400 `method_not_enabled`、停止・限度額・ブラックリストは既存どおり）。PaymentEvent actor `api`、監査は `merchantAuditContext(merchantId)`（`AuditLog.actorType = "merchant"`、**`AuditLog.merchantId` 列**（`actorId` は AdminUser の FK なので使わない）。一覧・詳細は加盟店コードを表示）。テストカードは `lib/public-api/test-cards.ts`（`4242…` 成功 / `…3220` 与信止まり / `…0002` 拒否 など。`createTransaction` の `forcedFailure` で `failed` + `failureReason` を記録、本番キーでは 400 `test_card_in_live`、Luhn 不正は 400）
+- レスポンス形状は `lib/public-api/serialize.ts`（`serializeTransaction` / `serializeRefund` / `serializePaymentLink`、`object` フィールド付き）。リクエスト Zod は `lib/public-api/schemas.ts`、**OpenAPI 3 は `lib/public-api/openapi.ts` の `buildOpenApiSpec`（`zodToJsonSchema` で Zod から生成、`PUBLIC_API_ENDPOINTS` が唯一のエンドポイント定義で `routeFile` を持ち、テスト `public-api.test.ts` が route の存在と Zod との一致を検査）**。返金は `createRefundRequest(actor: { id: null, role: "cs" })`（`RefundActor.id` は null 可、`requestedById` null）、決済リンクは `createPaymentLink(actorId: null)`
+- **加盟店管理画面 `/merchant/*`**: セッションは `lib/merchant-portal/token.ts` の Cookie `wirepay.merchant`（HMAC、鍵派生を管理者と分離、purpose `merchant`、12 時間。Edge 対応）と `lib/merchant-portal/session.ts`（`loginMerchant`: 加盟店コード + `decryptMerchantPassword` を timing-safe 比較、**5 回失敗で 15 分ロック** `Merchant.failedLoginCount / lockedUntil`、423 `merchant_locked`、監査 `merchant.login / logout / lockout`、`requireMerchant(req)` / `page-guard.ts` の `requireMerchantPage()` → `/merchant/login`）。middleware は `/api/merchant-portal/*` の非 GET を加盟店 Cookie で検証（CSRF は共通、ログインはログイン用レート制限）。`app/merchant/layout.tsx` が `MerchantShell`（`lib/merchant-portal/nav.ts` の `MERCHANT_NAV`）を描画し、`AppShell` は `/merchant` `/docs` で管理チュームを外す
+- 加盟店側 API `app/api/merchant-portal/*`: login / logout / refunds（`createRefundRequest`、加盟店の取引のみ）/ webhooks/[id]/resend（`resendDelivery`）/ api-keys/[keyId]/rotate（**test のみ**、live は 403 `live_key_rotation`）/ settlements/[id]/invoice（自加盟店 + 確定以降）。画面は `components/views/merchant/*`（内部メモは渡さない）。ヘッダーのモード切替は管理画面と同じ `wirepay.mode`
+- **API ドキュメント `/docs/api/[chapter]`**（公開、`lib/api-docs/chapters.ts` の 6 章 = `content/api-docs/{ja,en}/*.md` を `lib/manual/markdown.tsx` で描画 + OpenAPI から生成したリファレンス / エラーコード表 / テストカード表）。サンドボックスは `/merchant/sandbox`（ブラウザから実 `/api/v1` を呼ぶ、キーは sessionStorage、`wp_live_` は拒否）。ナビ `apiDocs`（権限 `api_docs.view` = 全員）、マニュアル章 `public-api` / `merchant-portal`。`check:i18n` の ALLOW に `lib/public-api/openapi.ts` / `test-cards.ts`（{ja,en} データ）
+
 ## 未消込入金と API 再通知（銀行振込のみ）
 
 - **`UnmatchedDeposit`**（`amount`, `payerName`, `receivedAt`, `bankReference`, `givenTransferId`（顧客が書いた誤った / 不足の振込ID）, `note`, `source` bank | manual, `status` unmatched | matched | dismissed, `paymentId` SetNull, `matchedTransferId`, `matchedById`, `matchedAt`, `dismissReason`, `livemode`）。振込IDの付け忘れなどで消込できなかった入金の置き場。`POST /api/demo/deposit-notify` は `transferId` が無い / 不明なら **404 ではなく 202 で未消込入金を登録**（`payerName` / `bankReference` / `receivedAt` / `mode` を任意で受ける）
@@ -305,8 +315,8 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **フェーズI ロール細分化・取引メモ・決済手段一時停止**（完了）: 5 ロール（admin / accounting / cs / developer / viewer）と `lib/role.ts` の権限マトリクス、`requirePermission` / `useCan`、取引メモ（タイムライン統合・ピン留め・削除の監査）、決済手段の全体 / 加盟店別停止（理由必須・自動再開 cron・赤バナー・障害お知らせ下書き）、通知テーブルと `emitNotification`（J の最小部分）、`GlobalSetting`（viewer の CSV 可否）
 - [x] **フェーズJ 通知センター**（完了）: 14 種の通知を既存処理に組み込み（Webhook 断念・決済手段停止・バッチ失敗・チャージバック期限・振込 / コンビニ期限超過の日次まとめ・ブラックリスト候補・限度額超過・定期課金失敗・精算の生成 / 保留・返金申請・加盟店登録）、ヘッダーのベル + 未読バッジ + 最新 10 件、一覧（種別・重要度・既読 / 未読・期間、全既読）、管理者ごとのメール / Slack 設定、Slack Incoming Webhook の実送信（1 回リトライ・SlackLog）
 - [x] **フェーズK コンビニ決済・領収書 PDF・インボイス**（完了）: 受付番号 13 桁・支払店舗・加盟店ごとの支払期限（申請一覧の支払待ちレーン・期限切れ cron・日次通知・入金通知 API `/api/demo/cvs-notify` は銀行振込と同じ `deposit`・決済リンクページ・案内メール）、領収書（月次連番・宛名・再発行回数・PDF・署名付き URL による顧客ダウンロード）、インボイス（発行者情報・登録番号検証・税区分・税率ごとの内税計算と端数処理・確定以降の精算バッチから請求書 PDF）。PDF は pdf-lib + Noto Sans JP サブセット同梱
-- [ ] **フェーズL 公開 API v1・加盟店ログイン・API ドキュメント**（次はここ）
-- [ ] **フェーズM 顧客・PaymentToken・個人情報保護**
+- [x] **フェーズL 公開 API v1・加盟店ログイン・API ドキュメント**（完了）: `/api/v1`（取引の作成 / 取得 / 一覧、返金申請、決済リンク、OpenAPI 3 を Zod から生成しテストで route と照合）、加盟店 × 環境のレート制限（DB 計数、429 + Retry-After）、テストカード番号によるシナリオ、加盟店管理画面（別 Cookie のログイン・ロックアウト・取引 / 返金申請 / Webhook 再送 / 精算 + 請求書 PDF / テストキーの自己ローテーション / 決済手段の状態 / お知らせ）、公開 API ドキュメント（手書き 6 章 + 自動生成リファレンス）とサンドボックス
+- [ ] **フェーズM 顧客・PaymentToken・個人情報保護**（次はここ）
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
 - 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う
 - 検索対象「カード下4桁」はフェーズF（カードハッシュ列）で追加する

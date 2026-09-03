@@ -25,6 +25,8 @@ export const MANUAL_CHAPTERS = [
   "agent-fees",
   "ip-restrictions",
   "notification-spec",
+  "public-api",
+  "merchant-portal",
   "admins",
 ] as const;
 

@@ -29,8 +29,10 @@ export function AppShell({ children, banner = [], suspendedMethods = [] }: { chi
   const groups = visibleNavGroups(can);
   const pathname = usePathname();
 
-  // Hosted checkout pages (/pay/<token>) are customer-facing: no admin chrome.
-  if (pathname?.startsWith("/pay/")) {
+  // Hosted checkout pages (/pay/<token>), the merchant portal (/merchant, own
+  // shell in app/merchant/layout.tsx) and the public API docs (/docs) are not
+  // operator screens: no admin chrome.
+  if (pathname?.startsWith("/pay/") || pathname === "/merchant" || pathname?.startsWith("/merchant/") || pathname?.startsWith("/docs")) {
     return (
       <ConfirmProvider>
         <ToastProvider>
