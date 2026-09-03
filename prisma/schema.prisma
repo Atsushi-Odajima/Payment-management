@@ -222,6 +222,7 @@ model Merchant {
   limits         MerchantLimit[]
   apiKeys        ApiKey[]
   settlements    SettlementBatch[]
+  webhookDeliveries WebhookDelivery[]
 
   @@index([createdAt])
   @@index([agentId])
@@ -314,6 +315,9 @@ model ApiKey {
   label      String?
   keyPrefix  String
   keyHash    String    @unique
+  // Signing secrets only: AES-GCM ciphertext of the plaintext so outbound
+  // webhooks can be signed with it (lib/merchants/secrets.ts).
+  secretEnc  String?
   issuedAt   DateTime  @default(now())
   expiresAt  DateTime?
   revokedAt  DateTime?
@@ -462,4 +466,53 @@ model Chargeback {
   @@index([paymentId])
   @@index([status, disputeDeadlineAt])
   @@index([merchantId])
+}
+
+// Outbound merchant notification (Phase E). One row per event to deliver;
+// each try is a WebhookAttempt. status: pending | success | failed |
+// retrying | abandoned. Retries follow RETRY_DELAYS_MS in lib/webhooks/deliver.ts.
+model WebhookDelivery {
+  id             String    @id @default(cuid())
+  merchantId     String
+  merchant       Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  paymentId      String?
+  livemode       Boolean   @default(false)
+  // payment.completed | payment.failed | payment.expired | refund.completed |
+  // chargeback.opened | limit.exceeded | subscription.* (lib/webhooks/events.ts)
+  event          String
+  url            String
+  method         String    @default("POST")
+  requestHeaders String    @default("{}")
+  requestBody    String?
+  responseStatus Int?
+  // First 1 KB of the last response body.
+  responseBody   String?
+  attempts       Int       @default(0)
+  status         String    @default("pending")
+  nextRetryAt    DateTime?
+  lastSentAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  attemptLog WebhookAttempt[]
+
+  @@index([merchantId, createdAt])
+  @@index([status, nextRetryAt])
+  @@index([paymentId])
+}
+
+model WebhookAttempt {
+  id             String          @id @default(cuid())
+  deliveryId     String
+  delivery       WebhookDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  attemptNo      Int
+  sentAt         DateTime        @default(now())
+  responseStatus Int?
+  responseBody   String?
+  error          String?
+  durationMs     Int?
+  // dashboard (manual resend) | system | cron
+  trigger        String          @default("system")
+
+  @@index([deliveryId, attemptNo])
 }

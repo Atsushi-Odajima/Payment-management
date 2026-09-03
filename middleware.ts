@@ -27,7 +27,9 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 // Own authentication: PSP webhook signatures, merchant API keys.
 const SIGNATURE_AUTH_PREFIXES = ["/api/webhooks/", "/api/merchant-api/"];
 // Bearer secrets: cron / demo endpoints.
-const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify", "/api/cron/expire-transfers"];
+const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify", "/api/cron/expire-transfers", "/api/cron/webhook-retry"];
+// Public demo endpoints without authentication (the webhook receiver is only an echo).
+const PUBLIC_PATHS = ["/api/demo/webhook-receiver"];
 // The two login steps authenticate by themselves (password / 2FA token).
 const LOGIN_PATHS = ["/api/auth/login", "/api/auth/2fa"];
 
@@ -41,7 +43,8 @@ export async function middleware(req: NextRequest) {
   // Endpoints with their own authentication scheme.
   if (
     SIGNATURE_AUTH_PREFIXES.some((p) => pathname.startsWith(p)) ||
-    SECRET_AUTH_PATHS.includes(pathname)
+    SECRET_AUTH_PATHS.includes(pathname) ||
+    PUBLIC_PATHS.includes(pathname)
   ) {
     return NextResponse.next();
   }
