@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { API_KEY_SELECT, toApiKeyView } from "@/lib/merchants/api-keys";
 
@@ -8,7 +8,7 @@ type Ctx = { params: { id: string; keyId: string } };
 
 /** POST /api/merchants/:id/api-keys/:keyId/revoke — stop the key immediately. */
 export const POST = withApiHandler<Ctx>(async (req, { params }) => {
-  await requireAdmin(req);
+  await requirePermission(req, "api_key", "revoke");
   const row = await prisma.apiKey.findFirst({ where: { id: params.keyId, merchantId: params.id }, select: API_KEY_SELECT });
   if (!row) throw new ApiError(404, "not_found", "errors.notFound");
   if (row.revokedAt) throw new ApiError(409, "key_not_active", "errors.apiKeyNotActive");

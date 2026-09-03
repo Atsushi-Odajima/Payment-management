@@ -12,7 +12,7 @@ export const GET = withApiHandler<Ctx>(
   async (_req, { params }) => {
     const link = await loadPublicLink(params.token);
     if (!link) throw new ApiError(404, "not_found", "errors.notFound");
-    const raw = await prisma.paymentLink.findUnique({ where: { token: params.token }, select: { livemode: true, merchant: { select: { enabledMethods: true } } } });
+    const raw = await prisma.paymentLink.findUnique({ where: { token: params.token }, select: { livemode: true, merchant: { select: { id: true, enabledMethods: true } } } });
     const methods = raw ? (await checkoutMethods(prisma, raw)).map((m) => m.method) : [];
     return ok({ productName: link.productName, amount: link.amount, description: link.description, merchant: link.merchant.siteName, unavailable: link.unavailable, methods, livemode: link.livemode });
   },

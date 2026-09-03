@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
+import { sessionHeaders } from "../helpers/session";
 import { SEED_IDS, seed, truncateAll } from "@/prisma/seed-data";
 import { GET as listRules, POST as createRule } from "@/app/api/ip-restrictions/route";
 import { DELETE as deleteRule, GET as getRule, PATCH as patchRule } from "@/app/api/ip-restrictions/[id]/route";
 
 const BASE = "http://localhost";
+let ADMIN: Record<string, string> = {};
 
-function json(path: string, method: string, body?: unknown) {
+function json(path: string, method: string, body?: unknown, headers: Record<string, string> = {}) {
   return new Request(BASE + path, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...ADMIN, ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
@@ -21,6 +23,7 @@ const ctx = (id: string) => ({ params: { id } });
 beforeEach(async () => {
   await truncateAll(prisma);
   await seed(prisma, { now: new Date("2026-09-01T03:00:00Z") });
+  ADMIN = await sessionHeaders("admin");
 });
 
 describe("IP restrictions API", () => {
@@ -64,7 +67,7 @@ describe("IP restrictions API", () => {
     expect(upd.body.data.enabled).toBe(true);
     expect(upd.body.data.label).toBe("Prod");
 
-    const del = await read(await deleteRule(new Request(BASE + "/x", { method: "DELETE" }), ctx(SEED_IDS.ip3)));
+    const del = await read(await deleteRule(new Request(BASE + "/x", { method: "DELETE", headers: ADMIN }), ctx(SEED_IDS.ip3)));
     expect(del.status).toBe(200);
     const gone = await read(await getRule(new Request(BASE + "/x"), ctx(SEED_IDS.ip3)));
     expect(gone.status).toBe(404);

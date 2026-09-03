@@ -7,9 +7,10 @@ import { SESSION_COOKIE, SESSION_TTL_SEC, TWO_FACTOR_COOKIE, createSessionToken,
 import { recordAudit } from "@/lib/audit";
 import { toAdminView } from "./select";
 import type { Role } from "./types";
+import { normalizeRole } from "@/lib/role";
 
 export async function issueSession(user: { id: string; role: string; status: string }, ip: string | null) {
-  const role: Role = user.role === "master" ? "master" : "general";
+  const role: Role = normalizeRole(user.role);
   const token = await createSessionToken({ id: user.id, role });
   const updated = await prisma.adminUser.update({
     where: { id: user.id },

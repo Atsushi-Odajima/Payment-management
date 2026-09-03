@@ -29,13 +29,24 @@ function newIdempotencyKey(): string {
     : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function NewPaymentForm({ providers, merchants }: { providers: ProviderOption[]; merchants: MerchantChoice[] }) {
+/** A suspended payment-method switch (Phase I-3): global rows have merchantId null. */
+export interface SuspendedControl {
+  scope: string;
+  merchantId: string | null;
+  method: string;
+}
+
+export function NewPaymentForm({ providers: allProviders, merchants, suspended = [] }: { providers: ProviderOption[]; merchants: MerchantChoice[]; suspended?: SuspendedControl[] }) {
   const router = useRouter();
   const t = useT();
   const { lang } = useLang();
   const apiJson = useApiJson();
-  const [providerId, setProviderId] = useState(providers[0]?.id ?? "");
   const [merchantId, setMerchantId] = useState(merchants[0]?.id ?? "");
+  // Suspended methods (global, or for the selected merchant) are not offered at all.
+  const suspendedMethods = new Set(suspended.filter((c) => c.scope === "global" || c.merchantId === merchantId).map((c) => c.method));
+  const providers = allProviders.filter((p) => !suspendedMethods.has(getProviderDefinition(p.providerKey)?.category ?? "other"));
+  const [providerId, setProviderId] = useState(allProviders[0]?.id ?? "");
+  const effectiveProviderId = providers.some((p) => p.id === providerId) ? providerId : (providers[0]?.id ?? "");
   const [orderNumber, setOrderNumber] = useState(() => `ORD-${Date.now().toString(36).toUpperCase()}`);
   const [amount, setAmount] = useState("3980");
   const [productName, setProductName] = useState("");
@@ -51,7 +62,7 @@ export function NewPaymentForm({ providers, merchants }: { providers: ProviderOp
   // the server can recognize the duplicate; a success mints a fresh one.
   const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
 
-  const selectedProvider = providers.find((p) => p.id === providerId);
+  const selectedProvider = providers.find((p) => p.id === effectiveProviderId);
   const selectedDef = selectedProvider ? getProviderDefinition(selectedProvider.providerKey) : undefined;
   const category = selectedDef?.category ?? "other";
   const isAsync = ASYNC_CATEGORIES.includes(category);
@@ -75,7 +86,7 @@ export function NewPaymentForm({ providers, merchants }: { providers: ProviderOp
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
       body: JSON.stringify({
-        providerId,
+        providerId: effectiveProviderId,
         merchantId: merchantId || null,
         orderNumber,
         amount: Number(amount),
@@ -121,7 +132,7 @@ export function NewPaymentForm({ providers, merchants }: { providers: ProviderOp
           <label htmlFor="providerId" className="label">
             {t("newPayment.provider")} <span className="text-rose-600">*</span>
           </label>
-          <select id="providerId" className="input" value={providerId} onChange={(e) => setProviderId(e.target.value)} required>
+          <select id="providerId" className="input" value={effectiveProviderId} onChange={(e) => setProviderId(e.target.value)} required>
             {providers.map((p) => (
               <option key={p.id} value={p.id}>
                 {optionLabel(p)}

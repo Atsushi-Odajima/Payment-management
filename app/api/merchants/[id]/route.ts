@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { requirePermission } from "@/lib/api/role-guard";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateMerchantInput } from "@/lib/merchants/schema";
 import { MERCHANT_SELECT, serialize, toMerchantData } from "../select";
@@ -14,6 +15,7 @@ export const GET = withApiHandler<Ctx>(async (_req, { params }) => {
 
 /** PATCH /api/merchants/:id — update editable fields (code/password are immutable here). */
 export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
+    await requirePermission(req, "merchant", "update");
   const v = validateMerchantInput(await readJson(req));
   if (!v.ok) {
     throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: v.errors });

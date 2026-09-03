@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { AdminForm } from "@/components/admin-form";
-import { AdminStatusBadge, RoleBadge } from "@/components/admin-badges";
+import { AdminStatusBadge, RoleBadge, RoleCapabilities } from "@/components/admin-badges";
 import { DetailRow } from "@/components/ui/detail-row";
 import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -104,6 +104,9 @@ export function AdminDetailView({ admin: initial }: { admin: AdminView }) {
             </DetailRow>
             <DetailRow label={t("adminForm.role")}>
               <RoleBadge role={admin.role} />
+            </DetailRow>
+            <DetailRow label={t("adminDetail.capabilities")}>
+              <RoleCapabilities role={admin.role} />
             </DetailRow>
             <DetailRow label={t("adminForm.status")}>
               <AdminStatusBadge status={admin.status} />

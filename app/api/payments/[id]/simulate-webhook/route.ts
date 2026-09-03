@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { requirePermission } from "@/lib/api/role-guard";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { readCredentialsForUse } from "@/lib/providers/credentials";
 import { signWebhookPayload } from "@/lib/webhooks/verify";
@@ -19,6 +20,7 @@ const Body = z.object({
  * machine exactly as a real PSP callback would.
  */
 export const POST = withApiHandler<{ params: { id: string } }>(async (req, { params }) => {
+    await requirePermission(req, "payment", "simulate_webhook");
   const body = Body.parse(await readJson(req));
   const payment = await prisma.payment.findUnique({
     where: { id: params.id },

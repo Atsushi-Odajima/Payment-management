@@ -10,7 +10,7 @@
 // A second, short-lived token bridges the password step and the TOTP step of
 // a two-factor login (purpose "2fa"); it is never accepted as a session.
 
-import type { Role } from "@/lib/merchants/types";
+import { LEGACY_ROLE_MAP, isRole, type Role } from "@/lib/role";
 
 export const SESSION_COOKIE = "wirepay.session";
 export const SESSION_TTL_SEC = 60 * 60 * 12; // 12 hours
@@ -99,7 +99,8 @@ async function verify(token: string | undefined | null, now: number): Promise<Se
   try {
     const payload = JSON.parse(new TextDecoder().decode(fromB64url(body))) as Partial<SessionPayload>;
     if (typeof payload.sub !== "string" || typeof payload.exp !== "number" || payload.exp <= now) return null;
-    if (payload.role !== "master" && payload.role !== "general") return null;
+    // Current or legacy (pre-Phase-I) role names; the user row is re-read anyway.
+    if (!isRole(payload.role) && !(typeof payload.role === "string" && payload.role in LEGACY_ROLE_MAP)) return null;
     if (payload.purpose !== "session" && payload.purpose !== "2fa") return null;
     return payload as SessionPayload;
   } catch {

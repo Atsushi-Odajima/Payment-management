@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { PaymentActions } from "@/components/payment-actions";
+import { PaymentTimeline } from "@/components/payment-timeline";
 import { ModeBadge, PaymentStatusBadge } from "@/components/payment-status-badge";
 import { DetailRow } from "@/components/ui/detail-row";
 import { useFormatDateTime, useLang, useT } from "@/components/language-provider";
@@ -169,38 +170,7 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
             </section>
           )}
 
-          <section className="card" aria-labelledby="events-heading">
-            <div className="border-b border-slate-100 px-5 py-4">
-              <h2 id="events-heading" className="text-sm font-semibold text-slate-900">
-                {t("paymentDetail.events")}
-              </h2>
-            </div>
-            {payment.events.length === 0 ? (
-              <p className="px-5 py-6 text-sm text-slate-500">{t("paymentDetail.noEvents")}</p>
-            ) : (
-              <ol className="divide-y divide-slate-100">
-                {payment.events.map((e) => (
-                  <li key={e.id} className="flex items-start justify-between gap-4 px-5 py-3 text-sm">
-                    <div>
-                      <p className="font-medium text-slate-800">
-                        {t(eventLabelKey(e.type))}
-                        {e.toStatus && (
-                          <span className="ml-2 text-xs font-normal text-slate-500">
-                            {e.fromStatus ? `${statusLabel(t, e.fromStatus)} → ` : ""}
-                            {statusLabel(t, e.toStatus)}
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {t(actorLabelKey(e.actor))} · {formatDate(e.createdAt)}
-                      </p>
-                    </div>
-                    {e.amount != null && <span className="tabular-nums text-xs text-slate-600">{formatYen(e.amount)}</span>}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
+          <PaymentTimeline paymentId={payment.id} events={payment.events} notes={payment.notes} eventLabel={(type) => t(eventLabelKey(type))} statusLabel={(st) => statusLabel(t, st)} actorLabel={(actor) => t(actorLabelKey(actor))} />
 
           {payment.refunds.length > 0 && (
             <section className="card" aria-labelledby="refunds-heading">

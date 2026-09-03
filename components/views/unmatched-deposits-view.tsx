@@ -16,7 +16,7 @@ import { PaymentStatusBadge } from "@/components/payment-status-badge";
 import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useToast } from "@/components/toast";
-import { useRole } from "@/components/session-provider";
+import { useCan } from "@/components/session-provider";
 import { UNMATCHED_DEPOSIT_STATUSES, type TransferCandidate, type UnmatchedDepositFilters, type UnmatchedDepositRow, type UnmatchedDepositStatus } from "@/lib/deposits/types";
 import { isPaymentStatus } from "@/lib/payments/transitions";
 import { buildHref, type QueryParams, type SortState } from "@/lib/query";
@@ -40,7 +40,7 @@ export function UnmatchedDepositsView({ rows, total, page, pageSize, sort, filte
   const apiJson = useApiJson();
   const toast = useToast();
   const { confirm } = useConfirm();
-  const { isMaster } = useRole();
+  const isMaster = useCan("unmatched_deposit", "match");
   const formatDate = useFormatDateTime();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);

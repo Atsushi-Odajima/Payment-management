@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
+import { sessionHeaders } from "../helpers/session";
 import { SEED_IDS, seed, truncateAll } from "@/prisma/seed-data";
 import { GET as listAgents } from "@/app/api/agents/route";
 import { POST as createRule } from "@/app/api/ip-restrictions/route";
@@ -11,12 +12,13 @@ import { POST as webhook } from "@/app/api/webhooks/[providerId]/route";
 import { checkAdminAccess } from "@/lib/ip-restrictions/enforce";
 
 const BASE = "http://localhost";
+let ADMIN: Record<string, string> = {};
 const BLOCKED_IP = "203.0.113.200"; // seeded deny rule
 
 function json(path: string, method: string, body?: unknown, headers: Record<string, string> = {}) {
   return new Request(BASE + path, {
     method,
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json", ...ADMIN, ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
@@ -27,6 +29,7 @@ async function read(res: Response) {
 beforeEach(async () => {
   await truncateAll(prisma);
   await seed(prisma, { now: new Date("2026-09-01T03:00:00Z") });
+  ADMIN = await sessionHeaders("admin");
 });
 
 describe("admin IP block list", () => {

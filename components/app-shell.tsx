@@ -13,18 +13,19 @@ import { LanguageToggle } from "./language-toggle";
 import { SearchBox } from "./search-box";
 import { ModeToggle } from "./mode-provider";
 import { AnnouncementBanner, type BannerItem } from "./announcement-banner";
+import { MethodBanner } from "./method-banner";
 import { ConfirmProvider } from "./confirm-dialog";
 import { ToastProvider } from "./toast";
 import { Icon, type IconName } from "./icons";
 import { useApiJson, useT } from "./language-provider";
-import { useSession } from "./session-provider";
+import { useRole, useSession } from "./session-provider";
 import { MOBILE_TABS, visibleNavGroups } from "@/lib/nav";
 import type { MessageKey } from "@/lib/i18n";
 
-export function AppShell({ children, banner = [] }: { children: React.ReactNode; banner?: BannerItem[] }) {
+export function AppShell({ children, banner = [], suspendedMethods = [] }: { children: React.ReactNode; banner?: BannerItem[]; suspendedMethods?: string[] }) {
   const t = useT();
-  const { isMaster } = useSession();
-  const groups = visibleNavGroups(isMaster);
+  const { can } = useRole();
+  const groups = visibleNavGroups(can);
   const pathname = usePathname();
 
   // Hosted checkout pages (/pay/<token>) are customer-facing: no admin chrome.
@@ -42,6 +43,7 @@ export function AppShell({ children, banner = [] }: { children: React.ReactNode;
     <ConfirmProvider>
       <ToastProvider>
         <div className="flex min-h-screen flex-col">
+          <MethodBanner methods={suspendedMethods} />
           <AnnouncementBanner items={banner} />
           <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur md:px-6">
             <Link href="/" className="flex shrink-0 items-center gap-2 md:invisible md:w-0" aria-label="Wire Pay">

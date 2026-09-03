@@ -11,7 +11,7 @@ import { DetailRow } from "@/components/ui/detail-row";
 import { HttpStatusBadge, WebhookStatusBadge } from "@/components/webhook-badges";
 import { ModeBadge } from "@/components/payment-status-badge";
 import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
-import { useRole } from "@/components/session-provider";
+import { useCan } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import type { WebhookDetail } from "@/lib/webhooks/list";
 import type { MessageKey } from "@/lib/i18n";
@@ -21,7 +21,7 @@ export function WebhookLogDetailView({ delivery }: { delivery: WebhookDetail }) 
   const router = useRouter();
   const apiJson = useApiJson();
   const toast = useToast();
-  const { isMaster } = useRole();
+  const isMaster = useCan("webhook", "resend");
   const formatDate = useFormatDateTime();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

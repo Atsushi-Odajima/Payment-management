@@ -10,6 +10,8 @@ export const AUDIT_ACTOR_TYPES = ["admin", "system", "webhook", "bank", "cron", 
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
 export const AUDIT_TARGET_TYPES = [
+  "payment_method_control",
+  "global_setting",
   "unmatched_deposit",
   "merchant",
   "agent",
@@ -103,6 +105,10 @@ export const AUDIT_ACTIONS = [
   "deposit.match",
   "deposit.dismiss",
   "payment.renotify",
+  "payment.note_delete",
+  "payment_method.suspend",
+  "payment_method.resume",
+  "global_setting.update",
   "provider.create",
   "provider.update",
   "provider.delete",

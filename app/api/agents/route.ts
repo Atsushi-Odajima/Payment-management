@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { requirePermission } from "@/lib/api/role-guard";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateAgentInput } from "@/lib/agents/schema";
 import { nextAgentCode } from "@/lib/agents/ids";
@@ -17,6 +18,7 @@ export const GET = withApiHandler(async () => {
 
 /** POST /api/agents — register an agent; agentCode is auto-numbered. */
 export const POST = withApiHandler(async (req) => {
+    await requirePermission(req, "agent", "create");
   const v = validateAgentInput(await readJson(req));
   if (!v.ok) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: v.errors });
   const count = await prisma.agent.count();

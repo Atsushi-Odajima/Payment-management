@@ -19,6 +19,8 @@ import { LimitsTab } from "@/components/merchant-tabs/limits-tab";
 import { ApiKeysTab } from "@/components/merchant-tabs/api-keys-tab";
 import { SettlementTab } from "@/components/merchant-tabs/settlement-tab";
 import { WebhooksTab } from "@/components/merchant-tabs/webhooks-tab";
+import { MethodsTab } from "@/components/merchant-tabs/methods-tab";
+import type { MethodControlRow } from "@/lib/payments/method-control-types";
 import type { WebhookRow } from "@/lib/webhooks/list";
 import type { AgentOption, MerchantView } from "@/lib/merchants/types";
 import { MERCHANT_TABS, type MerchantContract, type MerchantLimits, type MerchantSettlement, type MerchantTab } from "@/lib/merchants/tabs";
@@ -37,10 +39,11 @@ export interface MerchantDetailProps {
   apiKeys: ApiKeyView[];
   settlement: MerchantSettlement;
   webhooks: WebhookRow[];
+  methodControls: { global: MethodControlRow[]; merchant: MethodControlRow[] };
   mode: DataMode;
 }
 
-export function MerchantDetailView({ merchant: initial, agents, tab, contract, limits, apiKeys, settlement, webhooks, mode }: MerchantDetailProps) {
+export function MerchantDetailView({ merchant: initial, agents, tab, contract, limits, apiKeys, settlement, webhooks, methodControls, mode }: MerchantDetailProps) {
   const t = useT();
   const { lang } = useLang();
   const router = useRouter();
@@ -189,6 +192,8 @@ export function MerchantDetailView({ merchant: initial, agents, tab, contract, l
         <SettlementTab merchantId={merchant.id} data={settlement} />
       ) : tab === "webhooks" ? (
         <WebhooksTab merchantId={merchant.id} rows={webhooks} />
+      ) : tab === "methods" ? (
+        <MethodsTab merchantId={merchant.id} enabledMethods={merchant.enabledMethods} controls={methodControls} />
       ) : (
         <section className="card" aria-labelledby="sec-notify">
           <div className="divide-y divide-slate-100">

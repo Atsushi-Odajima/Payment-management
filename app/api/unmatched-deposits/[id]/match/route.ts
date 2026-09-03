@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireMaster } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest } from "@/lib/audit";
 import { toUnmatchedDepositRow } from "@/lib/deposits/list";
 import { matchUnmatchedDeposit } from "@/lib/deposits/service";
@@ -13,7 +13,7 @@ import { matchDepositSchema } from "@/lib/deposits/types";
  * every deposit reconciliation.
  */
 export const POST = withApiHandler<{ params: { id: string } }>(async (req, { params }) => {
-  const admin = await requireMaster(req);
+  const admin = await requirePermission(req, "unmatched_deposit", "match");
   const parsed = matchDepositSchema.safeParse(await readJson(req));
   if (!parsed.success) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: { transferId: "format" } });
   const result = await matchUnmatchedDeposit(prisma, { id: params.id, transferId: parsed.data.transferId, actorId: admin.id, audit: await auditContextFromRequest(req) });

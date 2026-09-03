@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { ROLES } from "@/lib/role";
 import { ADMIN_STATUSES, LOGIN_ID_RE, PASSWORD_MIN_LENGTH, type AdminCreateInput, type AdminInput } from "./types";
 
-const roleSchema = z.enum(["master", "general"]);
+const roleSchema = z.enum(ROLES);
 
 export const adminInputSchema = z.object({
   name: z.string().trim().min(1, "required").max(80, "tooLong"),
@@ -50,7 +51,7 @@ export const EMPTY_ADMIN_CREATE: AdminCreateInput = {
   loginId: "",
   name: "",
   email: "",
-  role: "general",
+  role: "cs",
   status: "invited",
 };
 

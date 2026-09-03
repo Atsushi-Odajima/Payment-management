@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { PaymentStatusBadge } from "@/components/payment-status-badge";
 import { RoleBadge } from "@/components/admin-badges";
+import { normalizeRole } from "@/lib/role";
 import { useFormatDateTime, useLang, useT } from "@/components/language-provider";
 import { methodLabel } from "@/components/views/transactions-view";
 import { SALES_STATUSES } from "@/lib/payments/transitions";
@@ -67,7 +68,7 @@ export function SearchView({ result }: { result: SearchResult }) {
                   <p className="font-medium text-slate-900">{a.name}</p>
                   <p className="text-xs text-slate-500">{a.loginId} · {a.email}</p>
                 </div>
-                <RoleBadge role={a.role === "master" ? "master" : "general"} />
+                <RoleBadge role={normalizeRole(a.role)} />
               </Item>
             ))}
           </Group>

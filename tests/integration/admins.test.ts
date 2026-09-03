@@ -55,7 +55,7 @@ describe("login", () => {
     expect(res.status).toBe(200);
     expect(cookieValue(res, SESSION_COOKIE)).toMatch(/\./);
     const { body } = await read(res);
-    expect(body.data.user).toMatchObject({ loginId: "kuromaru", role: "master", status: "active" });
+    expect(body.data.user).toMatchObject({ loginId: "kuromaru", role: "admin", status: "active" });
     const audit = await prisma.auditLog.findFirst({ where: { action: "auth.login", actorId: SEED_IDS.adminMaster } });
     expect(audit).not.toBeNull();
   });
@@ -67,7 +67,7 @@ describe("login", () => {
     const unknown = await read(await login(json("/api/auth/login", "POST", { loginId: "ghost", password: "atusi0130" }), {}));
     expect(unknown.status).toBe(401);
     await prisma.adminUser.update({ where: { id: SEED_IDS.adminGeneral }, data: { status: "disabled" } });
-    const disabled = await read(await login(json("/api/auth/login", "POST", { loginId: "general", password: DEMO_ADMIN_ACCOUNTS.general.password }), {}));
+    const disabled = await read(await login(json("/api/auth/login", "POST", { loginId: "general", password: DEMO_ADMIN_ACCOUNTS.cs.password }), {}));
     expect(disabled.status).toBe(401);
   });
 
@@ -124,55 +124,55 @@ describe("account", () => {
 describe("admin users (master only)", () => {
   it("lists for master, refuses general and anonymous", async () => {
     const ok = await read(await listAdmins(new Request(BASE + "/api/admins", { headers: MASTER }), {}));
-    expect(ok.body.data.admins.map((a: { loginId: string }) => a.loginId)).toEqual(["general", "kuromaru"]);
+    expect(ok.body.data.admins.map((a: { loginId: string }) => a.loginId)).toEqual(["accounting", "developer", "general", "kuromaru", "viewer"]);
     expect(JSON.stringify(ok.body)).not.toMatch(/passwordHash|totpSecret/);
     expect((await listAdmins(new Request(BASE + "/api/admins", { headers: GENERAL }), {})).status).toBe(403);
-    expect((await listAdmins(new Request(BASE + "/api/admins"), {})).status).toBe(403);
+    expect((await listAdmins(new Request(BASE + "/api/admins"), {})).status).toBe(401);
     const csv = await listAdmins(new Request(BASE + "/api/admins?format=csv", { headers: MASTER }), {});
     expect(csv.headers.get("content-type")).toContain("text/csv");
     expect(await csv.text()).toContain("kuromaru");
   });
 
   it("invites an admin with a one-time initial password and activates it on first login", async () => {
-    const res = await read(await inviteAdmin(json("/api/admins", "POST", { loginId: "Taro.Ops", name: "Taro", email: "Taro@wirepay.demo", role: "general", status: "active" }, MASTER), {}));
+    const res = await read(await inviteAdmin(json("/api/admins", "POST", { loginId: "Taro.Ops", name: "Taro", email: "Taro@wirepay.demo", role: "cs", status: "active" }, MASTER), {}));
     expect(res.status).toBe(201);
     expect(res.body.data.admin).toMatchObject({ loginId: "taro.ops", email: "taro@wirepay.demo", status: "invited" });
     const pw = res.body.data.initialPassword as string;
     expect(pw).toHaveLength(12);
     const first = await read(await login(json("/api/auth/login", "POST", { loginId: "taro.ops", password: pw }), {}));
     expect(first.body.data.user.status).toBe("active");
-    const dup = await read(await inviteAdmin(json("/api/admins", "POST", { loginId: "taro.ops", name: "X", email: "x@wirepay.demo", role: "general", status: "active" }, MASTER), {}));
+    const dup = await read(await inviteAdmin(json("/api/admins", "POST", { loginId: "taro.ops", name: "X", email: "x@wirepay.demo", role: "cs", status: "active" }, MASTER), {}));
     expect(dup.status).toBe(409);
     expect(dup.body.error.details.fieldErrors).toEqual({ loginId: "taken" });
-    const badId = await read(await inviteAdmin(json("/api/admins", "POST", { loginId: "no spaces", name: "X", email: "y@wirepay.demo", role: "general", status: "active" }, MASTER), {}));
+    const badId = await read(await inviteAdmin(json("/api/admins", "POST", { loginId: "no spaces", name: "X", email: "y@wirepay.demo", role: "cs", status: "active" }, MASTER), {}));
     expect(badId.body.error.details.fieldErrors).toEqual({ loginId: "loginId" });
   });
 
   it("protects the last master and the caller's own account", async () => {
-    const self = await read(await patchAdmin(json(`/api/admins/${SEED_IDS.adminMaster}`, "PATCH", { name: "kuromaru", email: "kuromaru@wirepay.demo", role: "general", status: "active" }, MASTER), { params: { id: SEED_IDS.adminMaster } }));
+    const self = await read(await patchAdmin(json(`/api/admins/${SEED_IDS.adminMaster}`, "PATCH", { name: "kuromaru", email: "kuromaru@wirepay.demo", role: "cs", status: "active" }, MASTER), { params: { id: SEED_IDS.adminMaster } }));
     expect(self.status).toBe(400);
     expect(self.body.error.code).toBe("self_change");
     // Promote general, then the (other) master could be demoted; without that it is the last master.
-    const invited = await read(await inviteAdmin(json("/api/admins", "POST", { loginId: "second", name: "Second", email: "second@wirepay.demo", role: "master", status: "active" }, MASTER), {}));
+    const invited = await read(await inviteAdmin(json("/api/admins", "POST", { loginId: "second", name: "Second", email: "second@wirepay.demo", role: "admin", status: "active" }, MASTER), {}));
     const secondId = invited.body.data.admin.id as string;
-    const secondSession = { cookie: `${SESSION_COOKIE}=${(await (await import("@/lib/auth")).createSessionToken({ id: secondId, role: "master" }))}` };
-    const demote = await read(await patchAdmin(json(`/api/admins/${SEED_IDS.adminMaster}`, "PATCH", { name: "kuromaru", email: "kuromaru@wirepay.demo", role: "general", status: "active" }, secondSession), { params: { id: SEED_IDS.adminMaster } }));
+    const secondSession = { cookie: `${SESSION_COOKIE}=${(await (await import("@/lib/auth")).createSessionToken({ id: secondId, role: "admin" }))}` };
+    const demote = await read(await patchAdmin(json(`/api/admins/${SEED_IDS.adminMaster}`, "PATCH", { name: "kuromaru", email: "kuromaru@wirepay.demo", role: "cs", status: "active" }, secondSession), { params: { id: SEED_IDS.adminMaster } }));
     expect(demote.status).toBe(200);
-    expect(demote.body.data.role).toBe("general");
+    expect(demote.body.data.role).toBe("cs");
     // Now "second" is the last active master.
-    const disableLast = await read(await patchAdmin(json(`/api/admins/${secondId}`, "PATCH", { name: "Second", email: "second@wirepay.demo", role: "master", status: "disabled" }, MASTER), { params: { id: secondId } }));
+    const disableLast = await read(await patchAdmin(json(`/api/admins/${secondId}`, "PATCH", { name: "Second", email: "second@wirepay.demo", role: "admin", status: "disabled" }, MASTER), { params: { id: secondId } }));
     expect(disableLast.status).toBe(403); // kuromaru is general now → not master
     const audits = await prisma.auditLog.findMany({ where: { action: "admin.update" } });
     expect(audits).toHaveLength(1);
-    expect(JSON.parse(audits[0].before!)).toMatchObject({ role: "master" });
-    expect(JSON.parse(audits[0].after!)).toMatchObject({ role: "general" });
+    expect(JSON.parse(audits[0].before!)).toMatchObject({ role: "admin" });
+    expect(JSON.parse(audits[0].after!)).toMatchObject({ role: "cs" });
   });
 
   it("reissues a temporary password", async () => {
     const res = await read(await resetPassword(json(`/api/admins/${SEED_IDS.adminGeneral}/password`, "POST", undefined, MASTER), { params: { id: SEED_IDS.adminGeneral } }));
     expect(res.status).toBe(200);
     expect((await login(json("/api/auth/login", "POST", { loginId: "general", password: res.body.data.password }), {})).status).toBe(200);
-    expect((await login(json("/api/auth/login", "POST", { loginId: "general", password: DEMO_ADMIN_ACCOUNTS.general.password }), {})).status).toBe(401);
+    expect((await login(json("/api/auth/login", "POST", { loginId: "general", password: DEMO_ADMIN_ACCOUNTS.cs.password }), {})).status).toBe(401);
   });
 });
 

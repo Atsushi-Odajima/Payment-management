@@ -26,8 +26,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:i18n": "node scripts/check-i18n.mjs",
+    "check:permissions": "tsx scripts/gen-permissions.ts --check",
+    "gen:permissions": "tsx scripts/gen-permissions.ts",
     "icons:build": "tsx scripts/build-icons.mts",
-    "verify": "npm run lint && npm run typecheck && npm run check:i18n && npm test && npm run build"
+    "verify": "npm run lint && npm run typecheck && npm run check:i18n && npm run check:permissions && npm test && npm run build"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

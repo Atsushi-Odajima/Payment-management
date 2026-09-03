@@ -11,7 +11,7 @@ import { ChargebackStatusBadge } from "@/components/risk-badges";
 import { ModeBadge, PaymentStatusBadge } from "@/components/payment-status-badge";
 import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
 import { useConfirm } from "@/components/confirm-dialog";
-import { useRole } from "@/components/session-provider";
+import { useCan } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import type { ChargebackRow } from "@/lib/chargebacks/list";
 import { isPaymentStatus } from "@/lib/payments/transitions";
@@ -26,7 +26,7 @@ export function ChargebackDetailView({ chargeback: cb }: { chargeback: Chargebac
   const apiJson = useApiJson();
   const toast = useToast();
   const { confirm } = useConfirm();
-  const { isMaster } = useRole();
+  const isMaster = useCan("chargeback", "update");
   const formatDate = useFormatDateTime();
   const [busy, setBusy] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);

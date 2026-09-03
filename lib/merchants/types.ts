@@ -17,8 +17,7 @@ export type NotifyIdFormat = (typeof NOTIFY_ID_FORMATS)[number];
 export const EMAIL_NOTIFICATIONS = ["per_payment", "daily", "none"] as const;
 export type EmailNotification = (typeof EMAIL_NOTIFICATIONS)[number];
 
-export const ROLES = ["master", "general"] as const;
-export type Role = (typeof ROLES)[number];
+export { ROLES, isRole, type Role } from "@/lib/role";
 
 function includes<T extends readonly string[]>(list: T, v: unknown): v is T[number] {
   return typeof v === "string" && (list as readonly string[]).includes(v);
@@ -29,7 +28,6 @@ export const isNotifyParamSet = (v: unknown): v is NotifyParamSet => includes(NO
 export const isNotifyIdFormat = (v: unknown): v is NotifyIdFormat => includes(NOTIFY_ID_FORMATS, v);
 export const isEmailNotification = (v: unknown): v is EmailNotification =>
   includes(EMAIL_NOTIFICATIONS, v);
-export const isRole = (v: unknown): v is Role => includes(ROLES, v);
 
 /** Editable merchant fields (id / code / password are managed by the system). */
 export interface MerchantInput {

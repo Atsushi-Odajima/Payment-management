@@ -1,3 +1,4 @@
+import { normalizeRole } from "@/lib/role";
 import type { AdminView } from "./types";
 import { isAdminStatus } from "./types";
 
@@ -29,7 +30,7 @@ export function toAdminView(row: {
 }): AdminView {
   return {
     ...row,
-    role: row.role === "master" ? "master" : "general",
+    role: normalizeRole(row.role),
     status: isAdminStatus(row.status) ? row.status : "disabled",
   };
 }

@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api/handler";
 import { recordAudit, systemAuditContext, type AuditContext } from "@/lib/audit";
 import { parseEnabledMethods } from "@/lib/merchants/types";
 import { createTransaction } from "@/lib/payments/create";
+import { suspendedMethods } from "@/lib/payments/method-controls";
 import type { PaymentMethod } from "@/lib/payments/methods";
 import { nextDayInTz, parseDateInTz } from "@/lib/time";
 import type { LinkCheckoutInput, LinkUnavailableReason, PaymentLinkInput } from "./types";
@@ -81,8 +82,9 @@ export function linkUnavailableReason(link: { status: string; expiresAt: Date | 
 }
 
 /** Providers a customer may pick on the hosted page: the merchant's enabled methods that have an active provider in the link's mode. */
-export async function checkoutMethods(db: PrismaClient, link: { livemode: boolean; merchant: { enabledMethods: string } }): Promise<Array<{ method: PaymentMethod; providerId: string }>> {
-  const enabled = parseEnabledMethods(link.merchant.enabledMethods);
+export async function checkoutMethods(db: PrismaClient, link: { livemode: boolean; merchant: { id: string; enabledMethods: string } }): Promise<Array<{ method: PaymentMethod; providerId: string }>> {
+  const suspended = await suspendedMethods(db, link.merchant.id);
+  const enabled = parseEnabledMethods(link.merchant.enabledMethods).filter((m) => !suspended.has(m));
   const providers = await db.paymentProvider.findMany({ where: { status: "active", testMode: !link.livemode }, select: { id: true, category: true }, orderBy: { createdAt: "asc" } });
   const out: Array<{ method: PaymentMethod; providerId: string }> = [];
   for (const m of enabled) {
