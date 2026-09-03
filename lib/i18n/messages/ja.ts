@@ -117,6 +117,7 @@ export const ja = {
       auditLogs: "誰が・いつ・何を変更したかの記録",
       providers: "決済サービスの接続と認証情報",
       manual: "各機能の使い方と通知パラメータ仕様",
+      apiDocs: "公開 API v1 のガイド・リファレンス・テストカード・サンドボックス",
       refunds: "返金申請の審査（承認 / 否認）と返金履歴",
       settlements: "加盟店ごとの精算バッチの生成・確定・振込管理",
       webhookLogs: "加盟店への通知（Webhook）の送信記録と再送",
