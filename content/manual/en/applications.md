@@ -40,7 +40,7 @@ Every change is written to the **status history** with the previous and new stat
 ## Ordering and filters
 
 - **Awaiting transfer** rows come first, nearest deadline on top. **Overdue** transfers are highlighted in red with an “Overdue” badge. Everything else is newest first.
-- Filter by payment method, status, merchant, applied-date range (from / to) and test / live.
+- Filter by payment method, status, merchant and applied-date range (from / to). Test / live is selected with the switch in the header.
 
 ## Actions (master role)
 

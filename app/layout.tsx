@@ -3,12 +3,14 @@ import type { Metadata, Viewport } from "next";
 import { cookies, headers } from "next/headers";
 import { LanguageProvider } from "@/components/language-provider";
 import { SessionProvider } from "@/components/session-provider";
+import { ModeProvider } from "@/components/mode-provider";
 import { AppShell } from "@/components/app-shell";
 import { BlockedScreen } from "@/components/blocked-screen";
 import { LANG_COOKIE, resolveInitialLang, translate, type Lang } from "@/lib/i18n";
 import { SESSION_COOKIE } from "@/lib/auth";
 import { currentAdminFromToken } from "@/lib/admin/current";
 import { checkAdminAccess } from "@/lib/ip-restrictions/enforce";
+import { MODE_COOKIE, resolveMode } from "@/lib/mode";
 
 function requestLang(): Lang {
   return resolveInitialLang(cookies().get(LANG_COOKIE)?.value, headers().get("accept-language"));
@@ -58,12 +60,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // The signed-in operator (null when browsing anonymously). Role and
   // identity flow to client components through SessionProvider.
   const user = await currentAdminFromToken(cookies().get(SESSION_COOKIE)?.value);
+  const mode = resolveMode(cookies().get(MODE_COOKIE)?.value);
   return (
     <html lang={lang}>
       <body>
         <LanguageProvider initialLang={lang}>
           <SessionProvider user={user}>
-            <AppShell>{children}</AppShell>
+            <ModeProvider initialMode={mode}>
+              <AppShell>{children}</AppShell>
+            </ModeProvider>
           </SessionProvider>
         </LanguageProvider>
       </body>

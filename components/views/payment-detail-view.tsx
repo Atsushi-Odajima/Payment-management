@@ -105,6 +105,16 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
             </DetailRow>
             <DetailRow label={t("paymentDetail.appliedAt")}>{formatDate(payment.createdAt)}</DetailRow>
             <DetailRow label={t("paymentDetail.completedAt")}>{payment.capturedAt ? formatDate(payment.capturedAt) : "—"}</DetailRow>
+            {payment.refundDeadlineAt && <DetailRow label={t("paymentDetail.refundDeadline")}>{formatDate(payment.refundDeadlineAt)}</DetailRow>}
+            {payment.failureReason && (
+              <DetailRow label={t("paymentDetail.failureReason")}>
+                <span className="badge bg-rose-100 text-rose-800 ring-rose-200">
+                  {payment.failureReason.startsWith("limit_exceeded:")
+                    ? t(`paymentDetail.failure_limit_${payment.failureReason.slice("limit_exceeded:".length)}` as MessageKey)
+                    : payment.failureReason}
+                </span>
+              </DetailRow>
+            )}
             <DetailRow label={t("paymentDetail.memo")}>
               <span className="whitespace-pre-wrap text-sm">{payment.description || "—"}</span>
             </DetailRow>

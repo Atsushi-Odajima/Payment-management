@@ -11,6 +11,7 @@ import { NavLink } from "./nav-link";
 import { WirePayIcon } from "./wire-pay-icon";
 import { LanguageToggle } from "./language-toggle";
 import { SearchBox } from "./search-box";
+import { ModeToggle } from "./mode-provider";
 import { ConfirmProvider } from "./confirm-dialog";
 import { ToastProvider } from "./toast";
 import { Icon, type IconName } from "./icons";
@@ -37,6 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <SearchBox />
             </div>
             <div className="flex items-center gap-2">
+              <ModeToggle />
               <AccountMenu />
               <LanguageToggle />
             </div>

@@ -47,6 +47,14 @@ export function parseDateInTz(value: string | undefined | null, tz: string = BUS
   return new Date(utcMidnight - tzOffsetMs(probe, tz));
 }
 
+/** Start of the calendar month containing `now` in the business time zone. */
+export function startOfMonthInTz(now: Date, tz: string = BUSINESS_TZ): Date {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit" }).formatToParts(now);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  const utcMidnight = Date.UTC(get("year"), get("month") - 1, 1, 0, 0, 0, 0);
+  return new Date(utcMidnight - tzOffsetMs(new Date(utcMidnight), tz));
+}
+
 /** Exclusive upper bound for a "to" date: the start of the following day. */
 export function nextDayInTz(day: Date): Date {
   return new Date(day.getTime() + 24 * 60 * 60 * 1000);

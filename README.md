@@ -50,7 +50,8 @@
 - **横断検索** — ヘッダーの検索ボックス（Ctrl+K）で取引ID・注文番号・振込ID・メール・加盟店・代理店・管理者をまとめて検索
 - **グループ化ナビ** — 取引 / 加盟店 / 精算 / リスク / レポート / 配信 / 設定のグループを `lib/nav.ts` で一元定義し、サイドバー・トップカード・モバイルタブを生成（未実装フェーズは非表示）
 - **日本語 / 英語** — ヘッダーの「EN / 日本語」トグル。cookie + localStorage に保存し、SSR から正しい言語で描画。APIのエラー文言も翻訳。通貨は JPY 固定、時刻は Asia/Tokyo 固定
-- **テスト / 本番モード** — プロバイダのモードを決済に `livemode` としてスナップショット。ダッシュボードと一覧で切替表示
+- **テスト / 本番モード** — プロバイダのモードを決済に `livemode` としてスナップショット。ヘッダーの Stripe 風スイッチ（Cookie 保存）でダッシュボード・一覧・限度額の利用状況が参照するモードを切替
+- **加盟店の契約・限度額・APIキー** — 加盟店詳細をタブ化（基本情報 / 契約・手数料 / 限度額 / APIキー / 通知設定）。契約プラン（スタンダード / プレミアム / カスタム）と決済手段ごとの料率を **適用開始日付きの履歴** で管理、決済手段ごとの 1 回 / 1 日 / 1 か月の **限度額**（超過する取引は失敗理由付きで記録、利用状況ゲージ）、加盟店ごとの **振込期限**（期限超過は毎時の Cron で期限切れ）と **返金可能期限**、SHA-256 ハッシュ保存の **API キー / 署名シークレット**（1 回だけ平文表示・猶予期間付きローテーション・失効・`GET /api/merchant-api/ping` で疎通確認）
 - **モバイル対応** — 下部タブバー、横スクロールするテーブル、`<dialog>` ベースの確認ダイアログ、loading / error / not-found の各ページ
 - **加盟店管理（PSP 視点）** — 加盟店アカウントの発行（`MER-00001` 自動採番・パスワード自動生成/暗号化保存）、サイト名ふりがな（カタカナ）/ メール / https の検証、通知設定（型 × パラメータセット × 識別子）に応じて **実際に送信されるリクエストをリアルタイムでプレビュー**、閲覧 → 編集 → 更新のモード切替、マスター権限のみパスワード表示・再発行（権限は cookie を API 側で検査）、担当代理店の紐付け
 - **ダッシュボード** — サイドバーと同じグループ構成のカードに主要 KPI（本日の決済件数・金額、未完了取引と振込期限超過、有効 IP ルール、本日の操作ログ件数など）を表示
@@ -175,7 +176,9 @@ app/
     payments/                POST（冪等キー）, [id]/[action]（capture|cancel|refund）, simulate-webhook
     providers/               CRUD + 接続テスト（credentials は返さない）
     webhooks/[providerId]/   HMAC 署名検証 + 重複排除 → 状態遷移
-    merchants/               加盟店 CRUD + パスワード表示/再発行（マスター権限のみ）
+    merchants/               加盟店 CRUD + パスワード表示/再発行（マスター権限のみ）+ [id]/fees・limits・terms・api-keys（契約 / 限度額 / 期限 / API キー）
+    merchant-api/ping/       加盟店向け API の疎通確認（Bearer API キー・加盟店ごとの IP 制限）
+    cron/expire-transfers/   期限超過の振込待ちを期限切れにする毎時 Cron（CRON_SECRET）
     agents/                  代理店 CRUD
     payments/[id]/[action]   capture|cancel|refund|fail|expire|deposit（refund 以外はマスター権限）
     ip-restrictions/         ブロック / 許可ルール CRUD（自己ロックアウト防止）
@@ -193,7 +196,8 @@ components/
   language-provider.tsx      言語 Context・useT・useApiJson
 lib/
   payments/                  transitions.ts（状態遷移表・申請/決済のステータス集合）, actions.ts（アトミック適用 + 履歴）, transfer.ts（振込ID・入金消込）, list.ts / detail.ts（両画面共通のローダ）
-  merchants/                 types / schema（Zod）/ ids（採番）/ secrets（PW）/ notification（通知サンプル）
+  merchants/                 types / schema（Zod）/ ids（採番）/ secrets（PW）/ notification（通知サンプル）/ fees（契約プラン・料率）/ limits（限度額判定）/ api-keys（生成・ハッシュ・状態）/ detail（タブのローダ）
+  mode.ts                    テスト / 本番のデータモード（Cookie `wirepay.mode`）
   agents/                    代理店の語彙・Zod・採番
   ip-restrictions/ ip.ts     ルールの Zod / enforce.ts（ブロック判定）/ IPv4・CIDR の純関数（parseCidr, ipInCidr, evaluateRules）
   manual/                    chapters.ts（章の定義）, markdown.tsx（自前レンダラ）, load.ts
@@ -207,7 +211,7 @@ lib/
   i18n/                      型付き辞書 ja.ts / en.ts とコア
   auth.ts crypto.ts rate-limit.ts time.ts
 prisma/
-  schema.prisma migrations/  PaymentProvider · Payment · Refund · PaymentEvent · WebhookEvent · Merchant · Agent · PaymentApplication · IpRestriction
+  schema.prisma migrations/  PaymentProvider · Payment · Refund · PaymentEvent · WebhookEvent · Merchant · MerchantFeeSchedule · MerchantLimit · ApiKey · Agent · IpRestriction · AdminUser · AuditLog
   seed-data.ts               決定的な seed（固定ID・テーブル単位の upsert で冪等）。Vercel は毎ビルドで db push --accept-data-loss → seed
 content/manual/{ja,en}/      マニュアル本文（Markdown）
 scripts/
@@ -229,6 +233,8 @@ tests/integration/           Route Handler の統合テスト
 - [x] JA/EN i18n（型同期）・Asia/Tokyo 固定・cookie による SSR 言語決定
 - [x] Vitest 130 ケース超 + GitHub Actions CI
 - [x] 加盟店管理（発行・編集・通知仕様プレビュー・権限別パスワード表示）
+- [x] 管理者アカウント（TOTP 二段階認証）・操作ログ・横断検索・グループ化ナビ
+- [x] 加盟店の契約プラン / 手数料率・限度額・振込期限 / 返金可能期限・API キー・テスト / 本番スイッチ
 - [ ] Postgres 専用 migration 履歴への一本化（現在 Vercel は `db push`）
 - [ ] Next.js 15 へのアップグレード（`params` / `searchParams` の await 化）
 - [ ] レートリミットを Upstash Redis に（現在はインスタンス内メモリ）
@@ -274,7 +280,8 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 - **Global search** — the header box (Ctrl+K) searches transaction IDs, order numbers, transfer IDs, emails, merchants, agents and admins at once.
 - **Grouped navigation** — Transactions / Merchants / Settlement / Risk / Reports / Notices / Settings are defined once in `lib/nav.ts` and drive the sidebar, the dashboard cards and the mobile tabs (unimplemented phases stay hidden).
 - **Japanese / English** — an EN / 日本語 toggle in the header. Stored in a cookie + localStorage so SSR already renders the right language; API error messages are localized too. Currency stays JPY; times are Asia/Tokyo.
-- **Test / live mode** — each payment snapshots the provider's mode as `livemode`; dashboard and list can filter on it.
+- **Test / live mode** — each payment snapshots the provider's mode as `livemode`; a Stripe-style switch in the header (stored in a cookie) selects the mode the dashboard, the lists and the limit usage cards read.
+- **Merchant contracts, limits and API keys** — the merchant detail is tabbed (Basic / Contract & fees / Limits / API keys / Notifications). Contract plans (standard / premium / custom) with per-method fee rates kept as a **dated history**, per-method **per-transaction / daily / monthly limits** (an exceeding transaction is recorded as failed with the reason; usage gauges), per-merchant **transfer deadline** (an hourly cron expires overdue transfers) and **refund window**, and SHA-256-hashed **API keys / signing secrets** (plaintext shown once, rotation with a grace period, revocation, `GET /api/merchant-api/ping` connectivity check).
 - **Mobile** — bottom tab bar, horizontally scrolling tables, `<dialog>`-based confirmations, loading / error / not-found routes.
 - **Merchant management (PSP side)** — issue merchant accounts (auto-numbered `MER-00001`, generated + encrypted password), katakana / email / https validation, and notification settings (format × parameter set × identifier) with a **live preview of the exact request the merchant will receive**; read → edit → update mode switch; only the master role can reveal or regenerate the password (the role is enforced server-side from a cookie); optional referring agent.
 - **Dashboard** — cards grouped like the sidebar, each with its headline figure (today's payments, open transactions and overdue transfers, active IP rules, today's audit entries…).
@@ -322,7 +329,7 @@ See [`DEPLOY.md`](./DEPLOY.md): Vercel (Tokyo) + Neon for the public demo, or th
 
 ## Roadmap
 
-Done: transition table + atomic updates + idempotency · partial refunds + audit log · webhook verification + simulator · login / CSRF / rate limit / headers · fail-closed key · typed JA/EN i18n · 90 tests + CI.
+Done: transition table + atomic updates + idempotency · partial refunds + audit log · webhook verification + simulator · login / CSRF / rate limit / headers · fail-closed key · typed JA/EN i18n · admin accounts with TOTP, audit log, global search · merchant contracts / limits / deadlines / API keys and the test / live switch · 230+ tests + CI.
 Next: Postgres-only migration history (Vercel currently uses `db push`) · Next.js 15 · Upstash-backed rate limiting · real PSP SDKs (Stripe → PayPay → GMO PG) with per-vendor webhook adapters · KMS key rotation · payouts & disputes · Playwright E2E.
 
 ## How this was built
