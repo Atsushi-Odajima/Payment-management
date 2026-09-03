@@ -15,6 +15,8 @@ import { getProviderDefinition } from "@/lib/providers/registry";
 import { pickText, type MessageKey } from "@/lib/i18n";
 import { isPaymentStatus } from "@/lib/payments/transitions";
 import type { TransactionDetail } from "@/lib/payments/detail";
+import { RefundStatusBadge } from "@/components/refund-badges";
+import { isRefundReason, isRefundStatus } from "@/lib/refunds/types";
 import { cn, formatYen } from "@/lib/utils";
 
 export type DetailOrigin = "payments" | "applications";
@@ -199,10 +201,19 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
                 {payment.refunds.map((r) => (
                   <li key={r.id} className="flex items-start justify-between gap-4 px-5 py-3 text-sm">
                     <div>
-                      <p className="text-slate-800">{r.reason || t("paymentDetail.noReason")}</p>
+                      <p className="text-slate-800">
+                        <Link href={`/refunds/${r.id}`} className="text-brand-700 hover:underline">
+                          {isRefundReason(r.reasonCode) ? t(`refundEnums.reason.${r.reasonCode}`) : r.reasonCode}
+                        </Link>
+                        {r.reason && <span className="ml-2 text-xs text-slate-500">{r.reason}</span>}
+                        {r.forced && <span className="badge ml-2 bg-rose-100 text-rose-800 ring-rose-200">{t("refunds.forcedBadge")}</span>}
+                      </p>
                       <p className="text-xs text-slate-500">{formatDate(r.createdAt)}</p>
                     </div>
-                    <span className="tabular-nums font-medium text-purple-700">−{formatYen(r.amount)}</span>
+                    <span className="flex flex-col items-end gap-1">
+                      <span className="tabular-nums font-medium text-purple-700">−{formatYen(r.amount)}</span>
+                      {isRefundStatus(r.status) && <RefundStatusBadge status={r.status} />}
+                    </span>
                   </li>
                 ))}
               </ul>

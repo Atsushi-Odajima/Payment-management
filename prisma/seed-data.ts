@@ -52,6 +52,8 @@ export const SEED_IDS = {
   apiKey2: "key_demo_002",
   apiKey3: "key_demo_003",
   apiKey4: "key_demo_004",
+  refund1: "ref_demo_001",
+  refund2: "ref_demo_002",
 } as const;
 
 /**
@@ -507,6 +509,42 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
         createdAt: daysAgo(70),
       },
     });
+  }
+
+  // ── Refund requests (Phase C) ─────────────────────────────────────────
+  // One pending request (for the master to review) and one rejected one;
+  // neither touches the payment rows, which keeps the transaction seed stable.
+  const refunds = [
+    {
+      id: SEED_IDS.refund1,
+      paymentId: SEED_IDS.payment2,
+      merchantId: SEED_IDS.merchant1,
+      amount: 500,
+      kind: "partial",
+      reasonCode: "defect",
+      reason: "プリントのかすれ（写真あり）",
+      status: "requested",
+      requestedById: DEMO_ADMIN_ACCOUNTS.general.id,
+      createdAt: hoursAgo(2),
+    },
+    {
+      id: SEED_IDS.refund2,
+      paymentId: SEED_IDS.payment1,
+      merchantId: SEED_IDS.merchant1,
+      amount: 4980,
+      kind: "full",
+      reasonCode: "customer",
+      reason: "サイズ違いのため返品希望",
+      status: "rejected",
+      requestedById: DEMO_ADMIN_ACCOUNTS.general.id,
+      approvedById: DEMO_ADMIN_ACCOUNTS.master.id,
+      decisionNote: "返品受領前のため否認。商品到着後に再申請",
+      createdAt: hoursAgo(5),
+      completedAt: hoursAgo(4),
+    },
+  ];
+  for (const r of refunds) {
+    await prisma.refund.upsert({ where: { id: r.id }, update: {}, create: r });
   }
 
   // ── Audit log samples ─────────────────────────────────────────────────

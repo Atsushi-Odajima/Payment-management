@@ -30,7 +30,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { key: "applications", href: "/applications", icon: "inbox", implemented: true },
       { key: "payments", href: "/payments", icon: "list", implemented: true },
-      { key: "refunds", href: "/refunds", icon: "refund", implemented: false },
+      { key: "refunds", href: "/refunds", icon: "refund", implemented: true },
       { key: "depositDiffs", href: "/deposit-diffs", icon: "bank", implemented: false },
     ],
   },
