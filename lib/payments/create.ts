@@ -14,6 +14,7 @@ import { recordAudit, type AuditContext } from "@/lib/audit";
 import { DEMO_LIMITS } from "@/lib/demo";
 import { notifyTransferIssued } from "@/lib/email/hooks";
 import { isUniqueViolation } from "@/lib/ids";
+import { emitNotification } from "@/lib/notifications/emit";
 import { checkLimit, limitFailureReason } from "@/lib/merchants/limits";
 import { assertMethodAvailable } from "@/lib/payments/method-controls";
 import { toPaymentMethod } from "@/lib/payments/methods";
@@ -166,6 +167,7 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
       // Tell the merchant when their own limit stopped the checkout (Phase E).
       if (status === "failed" && body.merchantId && !limit.ok) {
         await emitPaymentWebhook(prisma, payment.id, "limit.exceeded", { status: `failed:${failureReason}` });
+        await emitNotification(prisma, { kind: "limit.exceeded", title: `Limit exceeded: ${body.orderNumber}`, body: `A ${method} checkout of ¥${body.amount.toLocaleString("en-US")} was blocked by the merchant's limit (${failureReason}).`, href: `/payments/${payment.id}`, roles: ["admin", "accounting", "cs"], targetType: "payment", targetId: payment.id, now });
       }
       // Completed at creation (auto-capture) → the merchant is notified like any completion.
       if (status === "captured" && body.merchantId && opts.source !== "subscription") {

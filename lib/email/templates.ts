@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 
-export const EMAIL_TEMPLATE_KEYS = ["transfer_guide", "payment_completed", "refund_completed", "deposit_short", "statement", "admin_invite", "subscription_failed", "subscription_suspended"] as const;
+export const EMAIL_TEMPLATE_KEYS = ["transfer_guide", "payment_completed", "refund_completed", "deposit_short", "statement", "admin_invite", "subscription_failed", "subscription_suspended", "notification"] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
 export function isEmailTemplateKey(v: unknown): v is EmailTemplateKey {
   return typeof v === "string" && (EMAIL_TEMPLATE_KEYS as readonly string[]).includes(v);
@@ -35,6 +35,9 @@ export const EMAIL_PLACEHOLDERS = [
   "loginUrl",
   "planName",
   "retryDate",
+  "title",
+  "body",
+  "link",
 ] as const;
 export type EmailPlaceholder = (typeof EMAIL_PLACEHOLDERS)[number];
 export type EmailVars = Partial<Record<EmailPlaceholder, string>>;
@@ -62,6 +65,9 @@ export const SAMPLE_EMAIL_VARS: Required<EmailVars> = {
   loginId: "new.operator",
   initialPassword: "Xk9v-2mPq-7Lw3",
   loginUrl: "https://payment-management-green.vercel.app/login",
+  title: "Payment method suspended: credit",
+  body: "acquirer outage",
+  link: "https://wire-pay.example.com/payment-method-controls",
   planName: "スタンダードプラン（月額）",
   retryDate: "2026/09/06",
 };
@@ -176,5 +182,17 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     lang: "en",
     subject: "[{{merchantName}}] Subscription suspended ({{planName}})",
     body: "Dear {{customerName}},\n\nYour {{planName}} subscription has been suspended after three failed payments. Update your payment method and contact us to resume it.",
+  },
+  {
+    key: "notification",
+    lang: "ja",
+    subject: "【Wire Pay 通知】{{title}}",
+    body: "{{title}}\n\n{{body}}\n\n{{link}}\n\n（通知センターの設定でメール送信を選んだ種別だけ届きます）",
+  },
+  {
+    key: "notification",
+    lang: "en",
+    subject: "[Wire Pay] {{title}}",
+    body: "{{title}}\n\n{{body}}\n\n{{link}}\n\n(You receive this because e-mail is enabled for this kind in your notification settings.)",
   },
 ];

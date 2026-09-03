@@ -8,6 +8,7 @@ import { OPEN_STATUSES, SALES_STATUSES } from "@/lib/payments/transitions";
 import { MANUAL_CHAPTERS } from "@/lib/manual/chapters";
 import { startOfDayInTz, startOfMonthInTz } from "@/lib/time";
 import { buildAgentFees, parseAgentFeeFilters } from "@/lib/agent-fees/service";
+import { unreadCount } from "@/lib/notifications/list";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,9 @@ export default async function DashboardPage() {
       prisma.unmatchedDeposit.count({ where: { ...modeWhere, status: "unmatched" } }),
     ]);
 
+  const unreadNotificationCount = await unreadCount(prisma, admin);
   const stats: DashboardStats = {
+    unreadNotificationCount,
     unmatchedDepositCount,
     subscriptionActiveCount,
     subscriptionAttentionCount,

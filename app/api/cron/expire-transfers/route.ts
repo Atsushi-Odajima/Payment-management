@@ -1,3 +1,4 @@
+import { runCron } from "@/lib/cron/run";
 import { ApiError, ok, withApiHandler } from "@/lib/api/handler";
 import { timingSafeEqualBytes } from "@/lib/auth";
 import { expireOverdueTransfers } from "@/lib/payments/expire";
@@ -15,7 +16,7 @@ async function handle(req: Request) {
   if (!timingSafeEqualBytes(enc.encode(given), enc.encode(secret))) {
     throw new ApiError(401, "unauthorized", "errors.unauthorized");
   }
-  const result = await expireOverdueTransfers();
+  const result = await runCron("expire-transfers", () => expireOverdueTransfers());
   return ok(result);
 }
 

@@ -26,6 +26,7 @@ Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Ve
 | `APP_URL` | 本番は推奨 | 公開 URL（例 `https://wire-pay.example.com`）。加盟店の相対 `notifyUrl`（seed の `/api/demo/webhook-receiver`）を絶対 URL に解決する。未設定時は `VERCEL_PROJECT_PRODUCTION_URL` → `VERCEL_URL` → `http://localhost:3000` |
 | `EMAIL_PROVIDER` | 任意 | `log`（既定。送信せず `EmailLog` に「デモ」として記録）/ `console`（記録 + 標準出力）。実サービスは `lib/email/send.ts` に `EmailProvider` を追加する |
 | `EMAIL_DEFAULT_LANG` | 任意 | 顧客向けメール（振込案内・決済完了・返金完了・追加入金案内・定期課金）の言語。`ja`（既定）/ `en` |
+| `SLACK`（環境変数ではなく全体設定） | — | Slack Incoming Webhook URL は環境変数ではなく管理画面の **全体設定** に保存する（admin）。未設定なら Slack 通知は送らない |
 | `WEBHOOK_DELIVERY` | 任意 | `queue` にすると Webhook を即時送信せずキューに積み、毎時 30 分の `/api/cron/webhook-retry` がまとめて送る（既定は即時送信 + 失敗時リトライ） |
 
 ### Cron（`vercel.json`。他の PaaS では同等のスケジューラから `Authorization: Bearer <CRON_SECRET>` 付きで呼ぶ）
@@ -36,6 +37,8 @@ Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Ve
 | `/api/cron/expire-transfers` | `0 * * * *` | 振込期限を過ぎた振込待ちの取引を期限切れにし、Webhook `payment.expired` を送る |
 | `/api/cron/webhook-retry` | `30 * * * *` | 再送時刻が来た Webhook（リトライ待ち / 送信待ち）を送信する |
 | `/api/cron/subscriptions` | `15 * * * *` | 次回課金日を過ぎた定期課金を課金する（失敗は 3 日 / 7 日後に再試行、3 回で停止） |
+| `/api/cron/payment-method-controls` | `45 * * * *` | 自動再開予定日時を過ぎた決済手段の停止を解除する |
+| `/api/cron/notifications` | `50 * * * *` | 通知センターの日次まとめ（振込期限超過・チャージバック期限）と、メール / Slack の未配信通知の配信 |
 
 すべて `GET` / `POST` の両方を受け付け、`CRON_SECRET` 未設定時は 404 を返します。
 

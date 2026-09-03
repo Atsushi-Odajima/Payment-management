@@ -7,6 +7,7 @@
 
 import type { PrismaClient } from "@prisma/client";
 import { ApiError } from "@/lib/api/handler";
+import { emitNotification } from "@/lib/notifications/emit";
 import { recordAudit, type AuditContext } from "@/lib/audit";
 import { isUniqueViolation } from "@/lib/ids";
 import { calculateFee, currentScheduleIndex, isFeeMethod, parseFeeRates } from "@/lib/merchants/fees";
@@ -140,6 +141,7 @@ export async function generateBatch(
         targetId: batch.id,
         after: { merchantId: merchant.id, livemode: opts.livemode, from: opts.from, to: opts.to, lines: lines.length, ...totals },
       });
+      await emitNotification(tx, { kind: "settlement.generated", title: `Settlement batch generated: ${opts.from} – ${opts.to}`, body: `Net payout ¥${totals.netAmount.toLocaleString("en-US")} over ${lines.length} lines. Review and confirm it.`, href: `/settlements/${batch.id}`, roles: ["admin", "accounting"], targetType: "settlement", targetId: batch.id });
       return batch;
     });
   } catch (e) {
@@ -177,6 +179,9 @@ export async function transitionBatch(
       before: { status: batch.status, holdReason: batch.holdReason },
       after: { status: t.to, holdReason: opts.action === "hold" ? opts.reason : null },
     });
+    if (opts.action === "hold") {
+      await emitNotification(tx, { kind: "settlement.held", title: "Settlement batch put on hold", body: opts.reason ?? "", href: `/settlements/${batch.id}`, roles: ["admin", "accounting"], targetType: "settlement", targetId: batch.id, now });
+    }
     return tx.settlementBatch.findUniqueOrThrow({ where: { id: batch.id }, select: BATCH_SELECT });
   });
 }

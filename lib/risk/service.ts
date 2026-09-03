@@ -3,6 +3,7 @@
 
 import { createHash } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { emitNotification } from "@/lib/notifications/emit";
 import { recordAudit, systemAuditContext, type AuditContext } from "@/lib/audit";
 import { BLOCKED_FAILURE_PREFIX, DEFAULT_RISK_SETTINGS, RISK_SETTINGS_ID, normalizeBlacklistValue, type BlacklistKind, type CardInput, type RiskSettingsInput } from "./types";
 
@@ -74,6 +75,7 @@ export async function detectRepeatedFailures(db: PrismaClient, keys: RiskKeys, n
         select: { id: true },
       });
       await recordAudit(tx, systemAuditContext("system"), { action: "blacklist.create", targetType: "blacklist", targetId: row.id, after: { kind: k.kind, value: k.value, source: "auto", status: "candidate", failures } });
+      await emitNotification(tx, { kind: "blacklist.candidate", title: `Blacklist candidate: ${k.kind} ${k.value}`, body: `${failures} failed checkouts in ${settings.windowMinutes} minutes. Review the candidate on the blacklist screen.`, href: "/blacklist", roles: ["admin", "cs"], targetType: "blacklist", targetId: row.id, now });
     });
     created.push(k);
   }

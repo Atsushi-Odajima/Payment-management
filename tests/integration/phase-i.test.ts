@@ -97,7 +97,7 @@ describe("payment method suspension", () => {
     expect(list.body.data.global.find((c: any) => c.method === "credit").suspended).toBe(true);
     expect(list.body.data.global.find((c: any) => c.method === "bank").suspended).toBe(false);
     expect(await prisma.auditLog.count({ where: { action: "payment_method.suspend" } })).toBe(1);
-    const n = await prisma.notification.findFirst({ where: { kind: "payment_method.suspended" } });
+    const n = await prisma.notification.findFirst({ where: { kind: "payment_method.suspended", targetId: res.body.data.id } });
     expect(n).toMatchObject({ severity: "critical" });
 
     // createTransaction refuses the suspended method for every merchant …

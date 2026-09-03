@@ -17,6 +17,7 @@ export const MANUAL_CHAPTERS = [
   "reports",
   "emails",
   "announcements",
+  "notifications",
   "subscriptions",
   "payment-links",
   "agent-fees",

@@ -214,7 +214,7 @@ async function login(loginId, password) {
   await page.screenshot({ path: `${OUT}/reports-en.png`, fullPage: true });
 
   await page.goto(BASE + "/email-templates", { waitUntil: "networkidle" });
-  check("email templates: 16 rows", (await page.locator("tbody tr").count()) === 16);
+  check("email templates: 18 rows", (await page.locator("tbody tr").count()) === 18);
   await page.locator("tbody tr").first().getByRole("link").first().click();
   await page.waitForURL(/\/email-templates\/[a-z0-9_]+$/);
   await page.fill("#tpl-subject", "Smoke subject {{orderNumber}}");
@@ -402,6 +402,47 @@ async function login(loginId, password) {
   check("banner gone after resume", (await page.locator("[role=region][aria-label='Payment method suspension banner']").count()) === 0);
   await page.goto(BASE + "/merchants/mer_demo_002?tab=methods", { waitUntil: "networkidle" });
   check("merchant methods tab shows the seeded QR suspension", (await page.textContent("body")).includes("Not accepting"));
+  await ctx.close();
+}
+
+// ── Notification centre (Phase J) ──────────────────────────────────────
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  await page.goto(BASE + "/", { waitUntil: "networkidle" });
+  const badge = page.locator("[data-testid=unread-badge]");
+  await badge.waitFor({ timeout: 8000 });
+  const unreadBefore = Number(await badge.textContent());
+  check("bell shows the unread badge (seeded + smoke-generated notifications)", unreadBefore >= 3);
+  await page.getByRole("button", { name: /^Notifications \(/ }).click();
+  await page.getByRole("menu", { name: "Notification centre" }).waitFor({ timeout: 5000 });
+  check("bell dropdown lists the latest notifications", (await page.locator("[role=menu] [role=menuitem]").count()) >= 3);
+  await page.screenshot({ path: `${OUT}/notification-bell-en.png` });
+  await page.locator("[role=menu] [role=menuitem]").first().click();
+  await page.waitForTimeout(800);
+  await page.goto(BASE + "/notifications", { waitUntil: "networkidle" });
+  const listBody = await page.textContent("body");
+  check("notification list shows severities and the unread count", listBody.includes("Critical") && /\d+ unread/.test(listBody));
+  await page.getByRole("button", { name: "Mark all as read" }).click();
+  await page.getByText("All notifications marked as read").waitFor({ timeout: 8000 });
+  await page.waitForTimeout(500);
+  check("mark all read → 0 unread", (await page.textContent("body")).includes("0 unread"));
+  await page.screenshot({ path: `${OUT}/notifications-en.png`, fullPage: true });
+  await page.goto(BASE + "/notifications/settings", { waitUntil: "networkidle" });
+  check("settings: Slack disabled until configured", (await page.textContent("body")).includes("Incoming Webhook URL is configured"));
+  await page.getByLabel("E-mail: Settlement generated").check();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByText("Notification settings saved").waitFor({ timeout: 8000 });
+  check("notification preferences saved", true);
+  await page.goto(BASE + "/global-settings", { waitUntil: "networkidle" });
+  await page.fill("#gs-slack", "https://hooks.slack.com/services/T000/B000/SMOKE");
+  await page.getByRole("button", { name: "Send test" }).click();
+  // Outside the sandbox this really posts to Slack; here the network is closed, so either outcome (sent / failed) proves the round trip.
+  await page.getByText(/Test message (sent|failed)/).first().waitFor({ timeout: 15000 });
+  check("Slack test send attempted and reported", true);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByText("Global settings saved").waitFor({ timeout: 8000 });
+  await page.goto(BASE + "/notifications/settings", { waitUntil: "networkidle" });
+  check("settings: Slack column enabled once configured", await page.getByLabel("Slack: Settlement generated").isEnabled());
   await ctx.close();
 }
 
