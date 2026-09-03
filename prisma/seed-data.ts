@@ -78,6 +78,8 @@ export const SEED_IDS = {
   paymentLink2: "plk_demo_002",
   payment12: "pay_demo_012",
   payment13: "pay_demo_013",
+  unmatched1: "und_demo_001",
+  unmatched2: "und_demo_002",
 } as const;
 
 /** Fixed token of the seeded payment link (the hosted page is /pay/<token>). */
@@ -991,6 +993,18 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     await prisma.payment.upsert({ where: { id: p.id }, update: {}, create: { ...p, livemode: false, events: { create: events } } });
   }
 
+  // ── Unmatched deposits (未消込入金) ────────────────────────────────────
+  // A deposit that arrived without the transfer id (same amount as the
+  // awaiting transfer ORD-DEMO-005, so the match dialog suggests it) and one
+  // already dismissed.
+  const unmatchedDeposits = [
+    { id: SEED_IDS.unmatched1, livemode: false, amount: 6600, payerName: "ワタナベ ケン", receivedAt: hoursAgo(20), bankReference: "20260902-000317", givenTransferId: null, note: null, source: "bank", status: "unmatched", createdAt: hoursAgo(20) },
+    { id: SEED_IDS.unmatched2, livemode: false, amount: 3000, payerName: "サトウ ハナコ", receivedAt: daysAgo(6), bankReference: "20260828-000122", givenTransferId: "123", note: "振込IDが 3 桁のみ", source: "manual", status: "dismissed", dismissReason: "本人確認のうえ組戻し（返金）済み", createdAt: daysAgo(6) },
+  ];
+  for (const d of unmatchedDeposits) {
+    await prisma.unmatchedDeposit.upsert({ where: { id: d.id }, update: {}, create: d });
+  }
+
   // ── Audit log samples ─────────────────────────────────────────────────
   const audits = [
     {
@@ -1065,6 +1079,7 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.chargeback.deleteMany();
   await prisma.blacklist.deleteMany();
   await prisma.riskSetting.deleteMany();
+  await prisma.unmatchedDeposit.deleteMany();
   await prisma.paymentEvent.deleteMany();
   await prisma.refund.deleteMany();
   await prisma.payment.deleteMany();

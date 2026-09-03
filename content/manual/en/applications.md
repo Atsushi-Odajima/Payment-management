@@ -79,7 +79,7 @@ Example response:
 
 | Situation | Response |
 |---|---|
-| Unknown transfer ID | 404 `transfer_not_found` |
+| Missing or unknown transfer ID | 202, recorded as an unmatched deposit (`matched: false`, `unmatchedDepositId`) |
 | Not awaiting transfer (already completed, expired…) | 409 `invalid_transition` |
 | Short deposit | 200, `status: "awaiting_transfer"`, `depositDiff: "short"` |
 | Excess deposit | 200, `status: "captured"`, `depositDiff: "excess"` |
@@ -91,3 +91,24 @@ curl -X POST http://localhost:3000/api/demo/deposit-notify \
   -H "Content-Type: application/json" \
   -d '{"transferId":"48213907","amount":24800}'
 ```
+
+## Unmatched deposits and API re-notify (bank transfers only)
+
+When a customer **transfers money without the transfer ID**, the deposit notification cannot be tied to a transaction and the purchase is never reflected. This feature lets support attach the transfer ID and have the merchant credited **through the API (webhook) instead of a manual update on the merchant side**. It does not apply to card, QR or other payments that the provider confirms itself.
+
+### Flow
+
+1. **An unmatched deposit appears**: a call to `POST /api/demo/deposit-notify` whose `transferId` is missing (or matches no transaction) is recorded as an *unmatched deposit* with **202** instead of 404 (`payerName` / `bankReference` / `receivedAt` / `mode` are optional). Support can also register one by hand from **Unmatched deposits → + Register deposit** after reading the bank statement.
+2. **Attach the transfer ID (match)**: **Match by transfer ID** on the list (master) asks for the ID. The dialog lists the awaiting transfers of the same mode, **exact remaining amounts first**; clicking one fills the field. The normal reconciliation then runs (exact → completed, short → still awaiting with the short flag, excess → completed with the excess flag) and, **as soon as the transaction completes, `payment.completed` is sent to the merchant's notification URL**.
+3. **API re-notify**: if the merchant lost the notification, **API re-notify** on the transaction detail (completed / partially refunded / refunded bank transfers only, master) sends `payment.completed` again. The result is visible in the webhook delivery log, and the transaction keeps the re-notify count and the last time.
+4. **Dismiss**: deposits that must not be tied to a transaction (already returned, duplicates) are **dismissed** with a reason.
+
+| Action | API | Role |
+|---|---|---|
+| Register an unmatched deposit | `POST /api/unmatched-deposits` `{ amount, payerName, receivedAt?, bankReference?, givenTransferId?, note? }` | ○ |
+| Candidates | `GET /api/unmatched-deposits/<id>` → `{ deposit, candidates }` | ○ |
+| Match by transfer ID | `POST /api/unmatched-deposits/<id>/match` `{ transferId }` → `{ deposit, payment, renotified }` | M |
+| Dismiss | `POST /api/unmatched-deposits/<id>/dismiss` `{ reason }` | ○ |
+| API re-notify | `POST /api/payments/<id>/renotify` → `{ deliveryId, renotifyCount, renotifiedAt }` | M |
+
+Errors: unknown transfer ID / not a bank transfer → 404 `transfer_not_found`, not awaiting transfer → 409 `invalid_transition`, other mode → 409 `mode_mismatch`, deposit already handled → 409 `deposit_not_open`, re-notify on a card payment → 409 `not_bank_transfer`, re-notify on an open transaction → 409 `invalid_transition`. Everything is audited (`deposit.register` / `deposit.match` / `deposit.dismiss` / `payment.renotify`).

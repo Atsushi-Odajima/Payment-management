@@ -79,7 +79,7 @@ Content-Type: application/json
 
 | 状況 | 応答 |
 |---|---|
-| 振込IDが存在しない | 404 `transfer_not_found` |
+| 振込IDが無い・存在しない | 202、未消込入金として記録（`matched: false`, `unmatchedDepositId`） |
 | 振込待ち以外（完了済み・期限切れなど） | 409 `invalid_transition` |
 | 不足入金 | 200、`status: "awaiting_transfer"`, `depositDiff: "short"` |
 | 超過入金 | 200、`status: "captured"`, `depositDiff: "excess"` |
@@ -91,3 +91,24 @@ curl -X POST http://localhost:3000/api/demo/deposit-notify \
   -H "Content-Type: application/json" \
   -d '{"transferId":"48213907","amount":24800}'
 ```
+
+## 未消込入金と API 再通知（銀行振込のみ）
+
+顧客が **振込IDを付け忘れて振り込んだ** 場合、入金通知は取引に結び付かず、そのままではユーザーの購入が反映されません。この機能はサポートが振込IDを付与し、**手動で加盟店側を更新するのではなく API（Webhook）で加盟店に反映させる** ための仕組みです。クレジットや QR などプロバイダ側で確定する決済には付きません。
+
+### 流れ
+
+1. **未消込入金の発生**: `POST /api/demo/deposit-notify` に `transferId` が無い（または該当する取引が無い）入金通知が届くと、404 ではなく **202** で「未消込入金」として記録します（`payerName` / `bankReference` / `receivedAt` / `mode` を任意で受け付け）。銀行明細を見たサポートが **未消込入金 → ＋ 入金を登録** から手で登録することもできます。
+2. **振込IDの付与（消込）**: 一覧の **振込IDを付与して消込**（マスター）で振込IDを入力します。ダイアログには同じモードの振込待ち取引が **残額の一致するものを先頭に** 候補表示され、クリックで入力できます。実行すると通常の入金消込と同じ判定（一致 → 完了、不足 → 振込待ちのまま不足フラグ、超過 → 完了 + 超過フラグ）が走り、**完了した時点で加盟店の通知先に `payment.completed` が送信されます**。
+3. **API 再通知**: 加盟店側が通知を取りこぼした場合は、取引詳細の **API 再通知**（銀行振込の完了 / 一部返金済 / 返金済の取引のみ、マスター）で `payment.completed` を再送します。送信結果は Webhook 送信ログで確認でき、取引には再通知回数と最終再通知日時が残ります。
+4. **却下**: 組戻し（返金）済みや二重入金など取引に結び付けない入金は **却下** し、理由を残します。
+
+| 操作 | API | 権限 |
+|---|---|---|
+| 未消込入金の登録 | `POST /api/unmatched-deposits` `{ amount, payerName, receivedAt?, bankReference?, givenTransferId?, note? }` | ○ |
+| 候補の取得 | `GET /api/unmatched-deposits/<id>` → `{ deposit, candidates }` | ○ |
+| 振込IDを付与して消込 | `POST /api/unmatched-deposits/<id>/match` `{ transferId }` → `{ deposit, payment, renotified }` | M |
+| 却下 | `POST /api/unmatched-deposits/<id>/dismiss` `{ reason }` | ○ |
+| API 再通知 | `POST /api/payments/<id>/renotify` → `{ deliveryId, renotifyCount, renotifiedAt }` | M |
+
+エラー: 振込IDが存在しない / 銀行振込でない → 404 `transfer_not_found`、振込待ち以外 → 409 `invalid_transition`、モード違い → 409 `mode_mismatch`、処理済みの入金 → 409 `deposit_not_open`、クレジット等への再通知 → 409 `not_bank_transfer`、未完了の取引への再通知 → 409 `invalid_transition`。すべて操作ログ（`deposit.register` / `deposit.match` / `deposit.dismiss` / `payment.renotify`）に記録されます。
