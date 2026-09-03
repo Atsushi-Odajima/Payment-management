@@ -18,6 +18,11 @@ export interface DashboardStats {
   chargebackOpenCount: number;
   blacklistCandidateCount: number;
   depositDiffOpenCount: number;
+  monthPaymentCount: number;
+  monthPaymentAmount: number;
+  emailTodayCount: number;
+  announcementActiveCount: number;
+  templateEnabledCount: number;
   settlementOpenCount: number;
   settlementScheduledAmount: number;
   merchantCount: number;
@@ -60,6 +65,14 @@ export function DashboardView({ stats }: { stats: DashboardStats }) {
         return { value: t("dashboard.valueCandidates", { count: stats.blacklistCandidateCount }), badge: stats.blacklistCandidateCount > 0 ? t("dashboard.reviewBadge") : undefined };
       case "depositDiffs":
         return { value: t("dashboard.valueDepositDiffs", { count: stats.depositDiffOpenCount }), badge: stats.depositDiffOpenCount > 0 ? t("dashboard.openBadge") : undefined };
+      case "reports":
+        return { value: t("dashboard.valueMonth", { count: stats.monthPaymentCount, amount: formatYen(stats.monthPaymentAmount) }) };
+      case "emailLogs":
+        return { value: t("dashboard.valueAuditToday", { count: stats.emailTodayCount }) };
+      case "emailTemplates":
+        return { value: t("dashboard.valueActive", { count: stats.templateEnabledCount }) };
+      case "announcements":
+        return { value: t("dashboard.valueActive", { count: stats.announcementActiveCount }) };
       case "webhookLogs":
         return {
           value: t("dashboard.valueWebhookFailed", { count: stats.webhookFailedCount }),
