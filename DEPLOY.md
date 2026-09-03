@@ -17,8 +17,8 @@ Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Ve
 |------|------|------|
 | `DATABASE_URL` | ✅ | `file:./dev.db`（SQLite） / `postgresql://…`（Neon 等） |
 | `ENCRYPTION_KEY` | ✅ | AES-256-GCM 鍵。**base64 32 バイト**。本番は未設定・不正だと起動時に例外（fail-closed） |
-| `ADMIN_PASSWORD` | 推奨 | 設定すると全ての更新操作（決済作成・確定・返金・プロバイダ変更）にログインが必要になる。未設定時は画面に警告バナー |
-| `DEMO_LOGIN_HINT` | 任意 | ログイン画面に「デモ用パスワード: …」を表示（公開デモ用） |
+| `DEMO_LOGIN_HINT` | 任意 | 何か値を設定するとログイン画面にデモアカウント（`kuromaru` / `general`）を表示する（公開デモ用）。管理者は `AdminUser` テーブル（seed が作成）で、`ADMIN_PASSWORD` は使わない |
+| `DEMO_GENERAL_PASSWORD` | 任意 | seed が作る一般権限アカウント `general` のパスワード（既定 `general1234`） |
 | `SESSION_SECRET` | 任意 | セッション Cookie の HMAC 鍵。未設定時は `ENCRYPTION_KEY` を流用 |
 | `DEMO_READONLY` | 任意 | `1` で DELETE とプロバイダの PATCH を 403 に（デモ荒らし対策） |
 | `CRON_SECRET` | 任意 | 設定すると `GET/POST /api/demo/reset` が有効になり、Vercel Cron（毎日 03:00 JST）がデモデータを初期化 |
@@ -36,7 +36,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 1. <https://neon.tech/> でプロジェクト作成 → **Pooled connection** の接続文字列をコピー
 2. <https://vercel.com/new> → GitHub からこのリポジトリをインポート（`main` ブランチ）
-3. Environment Variables に上表の値を設定（最低 `DATABASE_URL`, `ENCRYPTION_KEY`。公開デモなら `ADMIN_PASSWORD`, `DEMO_LOGIN_HINT`, `DEMO_READONLY=1`, `CRON_SECRET` も）
+3. Environment Variables に上表の値を設定（最低 `DATABASE_URL`, `ENCRYPTION_KEY`。公開デモなら `DEMO_LOGIN_HINT`, `DEMO_READONLY=1`, `CRON_SECRET` も）
 4. Deploy。`vercel.json` の buildCommand が以下を順に実行します:
    `prepare-prisma → prisma generate → prisma db push --accept-data-loss → next build → seed（テーブル単位の upsert。既存 DB でも新テーブルのサンプルだけが追加され、何度実行しても件数は増えない）`
    **`--accept-data-loss` を付ける理由**: `db push` は非対話環境では「一意制約の追加」「テーブル削除」などの *警告* があるだけでエラー終了する。デモ DB はダミーデータで毎日リセットされるため受け入れている。実データを持つ本番 DB に使う場合はこのフラグを外し、`prisma migrate deploy`（migration 履歴）に切り替えること。
@@ -58,7 +58,6 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 docker build -t wirepay .
 docker run -p 3000:3000 \
   -e ENCRYPTION_KEY="$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")" \
-  -e ADMIN_PASSWORD=change-me \
   -v wirepay-data:/data \
   wirepay
 ```
@@ -80,7 +79,7 @@ Workers ランタイムは Node.js のファイルシステムを持たないた
 ## 動作確認（デプロイ後）
 
 1. `/` を開く → ダッシュボード。右上の **EN / 日本語** で言語が切り替わり、リロード後も維持される
-2. `ADMIN_PASSWORD` を設定した場合は右上「ログイン」→ パスワード入力
+2. トップページでログイン（seed のマスター `kuromaru` / `atusi0130`）。右上の氏名からアカウント設定（パスワード変更・二段階認証）
 3. **プロバイダ → 新規接続 → PayPay** などを選び、ダミーの認証情報で保存 → 接続テスト
 4. **決済を作成** → 詳細画面で **完了 / 一部返金 / キャンセル**（マスター権限）、銀行振込は **入金消込**。ステータス変更履歴に記録されることを確認。未完了の取引は **決済申請一覧** に、完了後は **決済一覧** に表示される
 5. Stripe プロバイダの決済で **Webhook をシミュレート** → 署名検証・重複排除を通って状態が変わる

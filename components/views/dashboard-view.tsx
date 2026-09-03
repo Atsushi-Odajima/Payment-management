@@ -1,91 +1,63 @@
 "use client";
 
+// Dashboard: one card per implemented navigation item, grouped exactly like
+// the sidebar (lib/nav.ts), each with its headline figure.
+
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
-import { Icon, type IconName } from "@/components/icons";
+import { Icon } from "@/components/icons";
 import { useT } from "@/components/language-provider";
+import { useSession } from "@/components/session-provider";
+import { visibleNavGroups, type NavItem } from "@/lib/nav";
+import type { MessageKey } from "@/lib/i18n";
 import { formatYen } from "@/lib/utils";
-import { MANUAL_CHAPTERS } from "@/lib/manual/chapters";
 
-export interface DashboardViewProps {
+export interface DashboardStats {
   merchantCount: number;
   agentCount: number;
   todayPaymentCount: number;
   todayPaymentAmount: number;
-  /** Transactions still expecting an outcome (pending / awaiting transfer / authorized). */
   openTransactionCount: number;
-  /** Bank transfers past their deadline. */
   overdueTransferCount: number;
   activeIpRuleCount: number;
+  adminCount: number;
+  auditTodayCount: number;
+  providerCount: number;
+  manualChapterCount: number;
 }
 
-interface Card {
-  key: string;
-  href: string;
-  icon: IconName;
-  title: string;
-  description: string;
-  value: string;
-  badge?: string;
-}
-
-export function DashboardView(props: DashboardViewProps) {
+export function DashboardView({ stats }: { stats: DashboardStats }) {
   const t = useT();
+  const { isMaster } = useSession();
+  const groups = visibleNavGroups(isMaster);
 
-  const cards: Card[] = [
-    {
-      key: "merchants",
-      href: "/merchants",
-      icon: "store",
-      title: t("dashboard.cards.merchants.title"),
-      description: t("dashboard.cards.merchants.description"),
-      value: t("dashboard.valueCount", { count: props.merchantCount }),
-    },
-    {
-      key: "agents",
-      href: "/agents",
-      icon: "users",
-      title: t("dashboard.cards.agents.title"),
-      description: t("dashboard.cards.agents.description"),
-      value: t("dashboard.valueCount", { count: props.agentCount }),
-    },
-    {
-      key: "payments",
-      href: "/payments",
-      icon: "list",
-      title: t("dashboard.cards.payments.title"),
-      description: t("dashboard.cards.payments.description"),
-      value: t("dashboard.valueToday", {
-        count: props.todayPaymentCount,
-        amount: formatYen(props.todayPaymentAmount),
-      }),
-    },
-    {
-      key: "applications",
-      href: "/applications",
-      icon: "inbox",
-      title: t("dashboard.cards.applications.title"),
-      description: t("dashboard.cards.applications.description"),
-      value: t("dashboard.valueOpen", { count: props.openTransactionCount }),
-      badge: props.overdueTransferCount > 0 ? t("dashboard.overdueBadge", { count: props.overdueTransferCount }) : undefined,
-    },
-    {
-      key: "ip",
-      href: "/ip-restrictions",
-      icon: "shield",
-      title: t("dashboard.cards.ipRestrictions.title"),
-      description: t("dashboard.cards.ipRestrictions.description"),
-      value: t("dashboard.valueRules", { count: props.activeIpRuleCount }),
-    },
-    {
-      key: "manual",
-      href: "/manual",
-      icon: "book",
-      title: t("dashboard.cards.manual.title"),
-      description: t("dashboard.cards.manual.description"),
-      value: t("dashboard.valueChapters", { count: MANUAL_CHAPTERS.length }),
-    },
-  ];
+  const figure = (item: NavItem): { value: string; badge?: string } => {
+    switch (item.key) {
+      case "applications":
+        return {
+          value: t("dashboard.valueOpen", { count: stats.openTransactionCount }),
+          badge: stats.overdueTransferCount > 0 ? t("dashboard.overdueBadge", { count: stats.overdueTransferCount }) : undefined,
+        };
+      case "payments":
+        return { value: t("dashboard.valueToday", { count: stats.todayPaymentCount, amount: formatYen(stats.todayPaymentAmount) }) };
+      case "merchants":
+        return { value: t("dashboard.valueCount", { count: stats.merchantCount }) };
+      case "agents":
+        return { value: t("dashboard.valueCount", { count: stats.agentCount }) };
+      case "admins":
+        return { value: t("dashboard.valueCount", { count: stats.adminCount }) };
+      case "ipRestrictions":
+        return { value: t("dashboard.valueRules", { count: stats.activeIpRuleCount }) };
+      case "auditLogs":
+        return { value: t("dashboard.valueAuditToday", { count: stats.auditTodayCount }) };
+      case "providers":
+        return { value: t("dashboard.valueActive", { count: stats.providerCount }) };
+      case "manual":
+        return { value: t("dashboard.valueChapters", { count: stats.manualChapterCount }) };
+      default:
+        return { value: "—" };
+    }
+  };
 
   return (
     <div>
@@ -105,37 +77,43 @@ export function DashboardView(props: DashboardViewProps) {
         }
       />
 
-      <ul className="grid gap-4 sm:grid-cols-2" aria-label={t("dashboard.title")}>
-        {cards.map((c) => (
-          <li key={c.key}>
-            <Link
-              href={c.href}
-              className="card group flex h-full items-start gap-4 p-5 transition hover:border-brand-300 hover:shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-            >
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
-                <Icon name={c.icon} className="h-6 w-6" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-2">
-                  <span className="text-base font-semibold text-slate-900 group-hover:text-brand-700">
-                    {c.title}
-                  </span>
-                  {c.badge && (
-                    <span className="badge bg-rose-100 text-rose-800 ring-rose-200">{c.badge}</span>
-                  )}
-                </span>
-                <span className="mt-0.5 block text-xs text-slate-500">{c.description}</span>
-                <span className="mt-3 block text-2xl font-semibold tracking-tight text-slate-900 tabular-nums">
-                  {c.value}
-                </span>
-              </span>
-              <span className="self-center text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100" aria-hidden>
-                {t("dashboard.open")}
-              </span>
-            </Link>
-          </li>
+      <div className="space-y-8">
+        {groups.map((g) => (
+          <section key={g.key} aria-labelledby={`dash-${g.key}`}>
+            <h2 id={`dash-${g.key}`} className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              {t(`nav.groups.${g.key}` as MessageKey)}
+            </h2>
+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label={t(`nav.groups.${g.key}` as MessageKey)}>
+              {g.items.map((item) => {
+                const f = figure(item);
+                return (
+                  <li key={item.key}>
+                    <Link
+                      href={item.href}
+                      className="card group flex h-full items-start gap-4 p-5 transition hover:border-brand-300 hover:shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                    >
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
+                        <Icon name={item.icon} className="h-6 w-6" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="text-base font-semibold text-slate-900 group-hover:text-brand-700">{t(`nav.items.${item.key}` as MessageKey)}</span>
+                          {f.badge && <span className="badge bg-rose-100 text-rose-800 ring-rose-200">{f.badge}</span>}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-500">{t(`dashboard.cards.${item.key}` as MessageKey)}</span>
+                        <span className="mt-3 block text-2xl font-semibold tracking-tight text-slate-900 tabular-nums">{f.value}</span>
+                      </span>
+                      <span className="self-center text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100" aria-hidden>
+                        {t("dashboard.open")}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }

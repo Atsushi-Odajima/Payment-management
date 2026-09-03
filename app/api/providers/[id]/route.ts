@@ -6,6 +6,7 @@ import { getProviderDefinition } from "@/lib/providers/registry";
 import { credentialSchemaFor, missingRequiredFields } from "@/lib/providers/validation";
 import { langFromRequest, pickText } from "@/lib/i18n";
 import { PROVIDER_STATUSES } from "@/lib/utils";
+import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 
 const UpdateSchema = z.object({
   displayName: z.string().min(1).max(80).optional(),
@@ -53,15 +54,22 @@ export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
       testMode: body.testMode ?? existing.testMode,
       credentials: JSON.stringify(merged),
     },
-    select: { id: true },
+    select: { id: true, displayName: true, status: true, testMode: true },
+  });
+  await recordAudit(prisma, await auditContextFromRequest(req), {
+    action: "provider.update",
+    targetType: "provider",
+    targetId: updated.id,
+    before: { displayName: existing.displayName, status: existing.status, testMode: existing.testMode },
+    after: { displayName: updated.displayName, status: updated.status, testMode: updated.testMode, credentialsChanged: Object.keys(incoming).length > 0 },
   });
   return ok({ id: updated.id });
 });
 
-export const DELETE = withApiHandler<Ctx>(async (_req, { params }) => {
+export const DELETE = withApiHandler<Ctx>(async (req, { params }) => {
   const record = await prisma.paymentProvider.findUnique({
     where: { id: params.id },
-    select: { id: true, _count: { select: { payments: true } } },
+    select: { id: true, providerKey: true, displayName: true, _count: { select: { payments: true } } },
   });
   if (!record) throw new ApiError(404, "not_found", "errors.notFound");
   if (record._count.payments > 0) {
@@ -70,6 +78,10 @@ export const DELETE = withApiHandler<Ctx>(async (_req, { params }) => {
       count: record._count.payments,
     });
   }
-  await prisma.paymentProvider.delete({ where: { id: params.id } });
+  const audit = await auditContextFromRequest(req);
+  await prisma.$transaction(async (tx) => {
+    await tx.paymentProvider.delete({ where: { id: params.id } });
+    await recordAudit(tx, audit, { action: "provider.delete", targetType: "provider", targetId: params.id, before: { providerKey: record.providerKey, displayName: record.displayName } });
+  });
   return ok({ deleted: true });
 });

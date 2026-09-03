@@ -6,6 +6,7 @@ import { toPaymentMethod } from "@/lib/payments/methods";
 import { DEFAULT_TRANSFER_ID_DIGITS, generateTransferId, isTransferIdDigits, transferDueDate } from "@/lib/payments/transfer";
 import { isUniqueViolation } from "@/lib/ids";
 import { DEMO_LIMITS } from "@/lib/demo";
+import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 
 const CreateSchema = z.object({
   providerId: z.string().min(1),
@@ -126,6 +127,12 @@ export const POST = withApiHandler(async (req) => {
           },
         },
         select: { id: true, externalId: true, transferId: true, transferDueAt: true, status: true },
+      });
+      await recordAudit(prisma, await auditContextFromRequest(req), {
+        action: "payment.create",
+        targetType: "payment",
+        targetId: payment.id,
+        after: { ...payment, merchantId: body.merchantId ?? null, orderNumber: body.orderNumber, amount: body.amount, method },
       });
       return ok({ ...payment, replayed: false }, { status: 201 });
     } catch (err) {

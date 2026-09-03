@@ -6,6 +6,7 @@ import { nextMerchantCode } from "@/lib/merchants/ids";
 import { encryptMerchantPassword, generateMerchantPassword } from "@/lib/merchants/secrets";
 import { DEMO_LIMITS } from "@/lib/demo";
 import { MERCHANT_SELECT, serialize, toMerchantData } from "./select";
+import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 
 export const GET = withApiHandler(async () => {
   const merchants = await prisma.merchant.findMany({
@@ -38,6 +39,7 @@ export const POST = withApiHandler(async (req) => {
   }
 
   const passwordEnc = encryptMerchantPassword(generateMerchantPassword());
+  const audit = await auditContextFromRequest(req);
 
   // Two attempts: a concurrent insert can take the same code; the unique
   // constraint rejects the loser and we recompute once.
@@ -45,10 +47,12 @@ export const POST = withApiHandler(async (req) => {
     try {
       const created = await prisma.$transaction(async (tx) => {
         const merchantCode = await nextMerchantCode(tx);
-        return tx.merchant.create({
+        const row = await tx.merchant.create({
           data: { ...toMerchantData(v.data), merchantCode, passwordEnc },
           select: MERCHANT_SELECT,
         });
+        await recordAudit(tx, audit, { action: "merchant.create", targetType: "merchant", targetId: row.id, after: row });
+        return row;
       });
       return ok(serialize(created), { status: 201 });
     } catch (err) {

@@ -6,7 +6,7 @@
 
 import { useState } from "react";
 import { useApiJson, useT } from "./language-provider";
-import { useRole } from "./role-provider";
+import { useRole } from "./session-provider";
 import { useConfirm } from "./confirm-dialog";
 import { useToast } from "./toast";
 import { PASSWORD_MASK } from "@/lib/merchants/password-mask";
