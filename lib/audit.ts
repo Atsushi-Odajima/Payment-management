@@ -6,10 +6,11 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { clientIpFromHeaders } from "@/lib/ip";
 import { currentAdminFromRequest } from "@/lib/admin/current";
 
-export const AUDIT_ACTOR_TYPES = ["admin", "system", "webhook", "bank", "cron", "seed"] as const;
+export const AUDIT_ACTOR_TYPES = ["admin", "system", "webhook", "bank", "cvs", "cron", "seed"] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
 export const AUDIT_TARGET_TYPES = [
+  "receipt",
   "payment_method_control",
   "global_setting",
   "unmatched_deposit",
@@ -109,6 +110,8 @@ export const AUDIT_ACTIONS = [
   "payment_method.suspend",
   "payment_method.resume",
   "global_setting.update",
+  "receipt.issue",
+  "settlement.invoice_export",
   "provider.create",
   "provider.update",
   "provider.delete",

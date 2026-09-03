@@ -61,10 +61,13 @@ Roles (master / general) belong to the signed-in admin account and are enforced 
 | Refunds | Request | ○ |  | ○ |  |  |
 | Refunds | Force past the window | ○ |  |  |  |  |
 | Refunds | Approve / reject | ○ | ○ |  |  |  |
+| Receipts | View | ○ | ○ | ○ | ○ | ○ |
+| Receipts | Issue | ○ | ○ | ○ |  |  |
 | Settlement batches | View | ○ | ○ | ○ | ○ | ○ |
 | Settlement batches | Generate | ○ | ○ |  |  |  |
 | Settlement batches | Confirm / schedule / pay / hold / release | ○ | ○ |  |  |  |
 | Settlement batches | Delete | ○ | ○ |  |  |  |
+| Invoices | Export | ○ | ○ |  |  |  |
 | Agent fees | View | ○ | ○ | ○ | ○ | ○ |
 | Reports | View | ○ | ○ | ○ | ○ | ○ |
 | Webhook deliveries | View | ○ | ○ | ○ | ○ | ○ |

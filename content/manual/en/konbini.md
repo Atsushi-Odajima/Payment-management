@@ -1,0 +1,50 @@
+# Konbini payments
+
+**Konbini payments** issue a **13-digit receipt number** and a **payment deadline** to a customer who chose "convenience store" at checkout, then wait for the payment at the till or the in-store kiosk. Like bank transfers they are one row of the transaction table (`Payment`); no new table is involved.
+
+## Fields
+
+| Field | Description |
+|---|---|
+| Store | 7-Eleven / Lawson / FamilyMart / Ministop / other, chosen by the customer (or on the dashboard) at creation |
+| Receipt number | 13 digits, never starting with 0, unique; shown on the lists, the detail and in global search |
+| Payment deadline | **Merchant setting** in days after the application (default 3, 1–30). Shares the column with the bank-transfer deadline |
+| Paid at | When the store's payment notification arrived |
+
+## Lifecycle
+
+| State | Meaning | Next |
+|---|---|---|
+| Applied (awaiting payment) | Receipt number issued, waiting for the customer | Deposit reconciliation / cancel / fail / expire (once overdue) |
+| Completed | Paid at the store | Refund / receipt |
+| Expired | Not paid by the deadline | — |
+
+On the payment-application list, waiting konbini payments share the **same lane as awaiting bank transfers** (nearest deadline first, overdue in red) and carry an "Awaiting payment" badge.
+
+## Payment notification
+
+The store network's notification is received by `POST /api/demo/cvs-notify`, which completes the transaction through the **same `deposit` action as a bank deposit**. A short amount leaves the slip waiting with a "short" flag.
+
+```
+POST /api/demo/cvs-notify
+Authorization: Bearer <DEPOSIT_NOTIFY_SECRET>
+{ "receiptNo": "4102993827716" }
+```
+
+- Authentication uses the same `DEPOSIT_NOTIFY_SECRET` as the bank notification. Without it the endpoint is open outside production and answers 404 in production
+- Completion sends the merchant a `payment.completed` webhook and the customer a payment-completed e-mail
+- The "Mark as paid at the store (demo)" button on the hosted payment page calls the same code
+
+## Expiry and notifications
+
+- The hourly job (`/api/cron/expire-transfers`) turns overdue receipt numbers into **Expired**, exactly like bank transfers
+- The notification centre receives one daily "Overdue konbini payments" (`cvs.overdue`) notification (admin / accounting / cs)
+
+## Customer instructions
+
+- Creation records the **Konbini payment instructions** e-mail template (`cvs_guide`) in the e-mail log (store, receipt number, amount, deadline)
+- The hosted payment page lets the customer choose the store and shows the receipt number and deadline after checkout
+
+## Merchant setting
+
+Merchant detail → Contract & fees tab → "Deadlines" has **Konbini payment deadline (days)** (roles: admin / accounting).

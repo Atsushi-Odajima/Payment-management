@@ -15,6 +15,7 @@ import { useFormatDateTime, useLang, useT } from "@/components/language-provider
 import { CATEGORIES, getProviderDefinition } from "@/lib/providers/registry";
 import { pickText } from "@/lib/i18n";
 import { PAYMENT_METHODS, type PaymentMethod } from "@/lib/payments/methods";
+import { formatCvsReceiptNo } from "@/lib/payments/konbini";
 import type { PaymentStatus } from "@/lib/payments/transitions";
 import type { TransactionFilters, TransactionListItem, MerchantOption } from "@/lib/payments/list";
 import { cn, formatYen } from "@/lib/utils";
@@ -201,7 +202,7 @@ export function TransactionsView(props: TransactionsViewProps) {
                             {p.pinnedNotes > 0 && <PinIcon className="ml-1 inline-block text-amber-600" aria-label={t("notes.pinnedBadge")} />}
                           </Link>
                           <p className="font-mono text-xs text-slate-500">
-                            {p.transferId ? t("transactions.transferIdValue", { id: p.transferId }) : (p.externalId ?? p.id)}
+                            {p.transferId ? t("transactions.transferIdValue", { id: p.transferId }) : p.cvsReceiptNo ? t("transactions.receiptNoValue", { no: formatCvsReceiptNo(p.cvsReceiptNo) }) : (p.externalId ?? p.id)}
                           </p>
                         </td>
                         <td className="px-5 py-3">
@@ -235,6 +236,7 @@ export function TransactionsView(props: TransactionsViewProps) {
                         <td className="px-5 py-3">
                           <span className="flex flex-wrap items-center gap-1">
                             <PaymentStatusBadge status={p.status} />
+                            {p.status === "pending" && p.cvsReceiptNo && <span className="badge bg-sky-100 text-sky-800 ring-sky-200">{t("transactions.cvsWaiting")}</span>}
                             {p.overdue && <span className="badge bg-rose-600 text-white ring-rose-700">{t("transactions.overdue")}</span>}
                             {p.failureReason?.startsWith("limit_exceeded") && <span className="badge bg-rose-100 text-rose-800 ring-rose-200">{t("transactions.limitExceeded")}</span>}
                             {p.depositDiff === "excess" && <span className="badge bg-amber-100 text-amber-800 ring-amber-200">{t("paymentDetail.diff_excess")}</span>}

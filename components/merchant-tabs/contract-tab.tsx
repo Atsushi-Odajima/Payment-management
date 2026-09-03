@@ -76,6 +76,7 @@ export function ContractTab({ merchantId, contract }: { merchantId: string; cont
 
   // Terms form
   const [transferDueDays, setTransferDueDays] = useState(String(contract.transferDueDays));
+  const [cvsDueDays, setCvsDueDays] = useState(String(contract.cvsDueDays));
   const [refundWindowDays, setRefundWindowDays] = useState(String(contract.refundWindowDays));
   const [termsBusy, setTermsBusy] = useState(false);
   const [termsError, setTermsError] = useState<string | null>(null);
@@ -87,7 +88,7 @@ export function ContractTab({ merchantId, contract }: { merchantId: string; cont
     const res = await apiJson(`/api/merchants/${merchantId}/terms`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ transferDueDays: Number(transferDueDays), refundWindowDays: Number(refundWindowDays) }),
+      body: JSON.stringify({ transferDueDays: Number(transferDueDays), cvsDueDays: Number(cvsDueDays), refundWindowDays: Number(refundWindowDays) }),
     });
     setTermsBusy(false);
     if (!res.ok) {
@@ -229,9 +230,12 @@ export function ContractTab({ merchantId, contract }: { merchantId: string; cont
 
       <form onSubmit={saveTerms} className="card space-y-4 p-5" aria-busy={termsBusy}>
         <h2 className="text-sm font-semibold text-slate-800">{t("contract.termsTitle")}</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <FormField id="transferDueDays" label={t("contract.transferDueDays")} help={t("contract.transferDueDaysHelp")}>
             <input id="transferDueDays" type="number" min={1} max={60} className="input w-32" value={transferDueDays} onChange={(e) => setTransferDueDays(e.target.value)} required />
+          </FormField>
+          <FormField id="cvsDueDays" label={t("contract.cvsDueDays")} help={t("contract.cvsDueDaysHelp")}>
+            <input id="cvsDueDays" type="number" min={1} max={30} className="input w-32" value={cvsDueDays} onChange={(e) => setCvsDueDays(e.target.value)} required />
           </FormField>
           <FormField id="refundWindowDays" label={t("contract.refundWindowDays")} help={t("contract.refundWindowDaysHelp")}>
             <input id="refundWindowDays" type="number" min={0} max={365} className="input w-32" value={refundWindowDays} onChange={(e) => setRefundWindowDays(e.target.value)} required />

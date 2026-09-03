@@ -5,7 +5,8 @@ import type { DataMode } from "@/lib/mode";
 import { parseSort, type QueryParams, type SortState } from "@/lib/query";
 import { nextDayInTz, parseDateInTz } from "@/lib/time";
 import { BATCH_SELECT } from "./service";
-import { isLineKind, isSettlementStatus, type LineKind, type SettlementStatus } from "./types";
+import { defaultTaxCategory } from "./tax";
+import { isLineKind, isSettlementStatus, isTaxCategory, type LineKind, type SettlementStatus, type TaxCategory } from "./types";
 
 export interface SettlementFilters {
   status: SettlementStatus | "";
@@ -47,6 +48,8 @@ export interface SettlementLineRow {
   amount: number;
   fee: number;
   occurredAt: Date;
+  /** standard10 | reduced8 | exempt (Phase K-3); older lines default per kind. */
+  taxCategory: TaxCategory;
 }
 
 export const SETTLEMENT_SORT_KEYS = ["periodFrom", "netAmount", "status", "scheduledAt"] as const;
@@ -140,18 +143,22 @@ export async function loadSettlement(id: string): Promise<{ batch: SettlementRow
   const { lines, ...rest } = r;
   return {
     batch: toSettlementRow(rest),
-    lines: lines.map((l) => ({
-      id: l.id,
-      kind: isLineKind(l.kind) ? l.kind : "payment",
-      paymentId: l.paymentId,
-      refundId: l.refundId,
-      chargebackId: l.chargebackId,
-      method: l.method,
-      description: l.description,
-      amount: l.amount,
-      fee: l.fee,
-      occurredAt: l.occurredAt,
-    })),
+    lines: lines.map((l) => {
+      const kind = isLineKind(l.kind) ? l.kind : "payment";
+      return {
+        id: l.id,
+        kind,
+        paymentId: l.paymentId,
+        refundId: l.refundId,
+        chargebackId: l.chargebackId,
+        method: l.method,
+        description: l.description,
+        amount: l.amount,
+        fee: l.fee,
+        occurredAt: l.occurredAt,
+        taxCategory: isTaxCategory(l.taxCategory) ? l.taxCategory : defaultTaxCategory(kind),
+      };
+    }),
   };
 }
 

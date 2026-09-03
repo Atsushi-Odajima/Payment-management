@@ -42,28 +42,33 @@ export function transferDueDate(from: Date, days: number | undefined = TRANSFER_
   return new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
-/** True when a transfer is still awaited but its deadline has passed. */
+/**
+ * True when a payment is still awaited (bank transfer awaiting_transfer, or a
+ * konbini slip still pending — Phase K) but its deadline has passed.
+ */
 export function isTransferOverdue(
   p: { status: PaymentStatus | string; transferDueAt: Date | null },
   now: Date = new Date(),
 ): boolean {
-  return p.status === "awaiting_transfer" && p.transferDueAt !== null && p.transferDueAt.getTime() < now.getTime();
+  return (p.status === "awaiting_transfer" || p.status === "pending") && p.transferDueAt !== null && p.transferDueAt.getTime() < now.getTime();
 }
 
 export interface DepositOutcome {
   /** Cumulative amount received including this deposit. */
   total: number;
-  status: Extract<PaymentStatus, "captured" | "awaiting_transfer">;
+  status: Extract<PaymentStatus, "captured" | "awaiting_transfer" | "pending">;
   diff: DepositDiff | null;
 }
 
 /**
  * Deposit reconciliation: exact → completed; short → stays awaiting with the short flag
  * (further deposits accumulate); excess → completed with the excess flag.
+ * `waiting` is the status a short deposit stays on (awaiting_transfer for bank
+ * transfers, pending for konbini slips).
  */
-export function reconcileDeposit(amount: number, alreadyDeposited: number, deposit: number): DepositOutcome {
+export function reconcileDeposit(amount: number, alreadyDeposited: number, deposit: number, waiting: "awaiting_transfer" | "pending" = "awaiting_transfer"): DepositOutcome {
   const total = alreadyDeposited + deposit;
-  if (total < amount) return { total, status: "awaiting_transfer", diff: "short" };
+  if (total < amount) return { total, status: waiting, diff: "short" };
   if (total === amount) return { total, status: "captured", diff: null };
   return { total, status: "captured", diff: "excess" };
 }

@@ -141,7 +141,7 @@ describe("providers", () => {
   it("never returns credentials from the list endpoint", async () => {
     const { body } = await read(await listProviders(new Request(BASE + "/api/providers"), {}));
     expect(JSON.stringify(body)).not.toContain("credentials");
-    expect(body.data.providers).toHaveLength(3);
+    expect(body.data.providers).toHaveLength(4);
   });
 
   it("keeps the existing ciphertext when a secret is saved blank", async () => {

@@ -30,6 +30,8 @@ export function SettlementTab({ merchantId, data }: { merchantId: string; data: 
   const [accountNumber, setAccountNumber] = useState(s.bankAccountNumber);
   const [holder, setHolder] = useState(s.bankAccountHolder);
   const [fee, setFee] = useState(String(s.settlementFee));
+  const [invoiceNumber, setInvoiceNumber] = useState(s.invoiceNumber);
+  const [address, setAddress] = useState(s.address);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -51,6 +53,8 @@ export function SettlementTab({ merchantId, data }: { merchantId: string; data: 
         bankAccountNumber: accountNumber,
         bankAccountHolder: holder,
         settlementFee: Number(fee),
+        invoiceNumber,
+        address,
       }),
     });
     setBusy(false);
@@ -113,6 +117,15 @@ export function SettlementTab({ merchantId, data }: { merchantId: string; data: 
           </FormField>
           <FormField id="st-fee" label={t("settlementTab.settlementFee")} help={t("settlementTab.settlementFeeHelp")} error={err("settlementFee")}>
             <input id="st-fee" type="number" min={0} max={10000} className="input w-40" value={fee} onChange={(e) => setFee(e.target.value)} />
+          </FormField>
+        </div>
+        <h3 className="border-t border-slate-100 pt-4 text-sm font-semibold text-slate-800">{t("settlementTab.invoiceTitle")}</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField id="st-invoice-no" label={t("settlementTab.invoiceNumber")} help={t("settlementTab.invoiceNumberHelp")} error={err("invoiceNumber")}>
+            <input id="st-invoice-no" className="input font-mono" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} maxLength={14} placeholder="T1234567890123" />
+          </FormField>
+          <FormField id="st-address" label={t("settlementTab.address")} help={t("settlementTab.addressHelp")} error={err("address")}>
+            <input id="st-address" className="input" value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200} />
           </FormField>
         </div>
         {error && (

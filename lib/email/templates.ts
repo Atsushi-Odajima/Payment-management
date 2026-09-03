@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 
-export const EMAIL_TEMPLATE_KEYS = ["transfer_guide", "payment_completed", "refund_completed", "deposit_short", "statement", "admin_invite", "subscription_failed", "subscription_suspended", "notification"] as const;
+export const EMAIL_TEMPLATE_KEYS = ["transfer_guide", "cvs_guide", "payment_completed", "refund_completed", "deposit_short", "statement", "admin_invite", "subscription_failed", "subscription_suspended", "notification"] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
 export function isEmailTemplateKey(v: unknown): v is EmailTemplateKey {
   return typeof v === "string" && (EMAIL_TEMPLATE_KEYS as readonly string[]).includes(v);
@@ -38,6 +38,8 @@ export const EMAIL_PLACEHOLDERS = [
   "title",
   "body",
   "link",
+  "receiptNo",
+  "cvsBrand",
 ] as const;
 export type EmailPlaceholder = (typeof EMAIL_PLACEHOLDERS)[number];
 export type EmailVars = Partial<Record<EmailPlaceholder, string>>;
@@ -70,7 +72,21 @@ export const SAMPLE_EMAIL_VARS: Required<EmailVars> = {
   link: "https://wire-pay.example.com/payment-method-controls",
   planName: "スタンダードプラン（月額）",
   retryDate: "2026/09/06",
+  receiptNo: "4102-9938-27716",
+  cvsBrand: "セブン-イレブン",
 };
+
+/** Konbini store names as printed in customer e-mails and PDFs (ja / en), Phase K-1. */
+export const CVS_BRAND_NAMES: Record<string, { ja: string; en: string }> = {
+  seven: { ja: "セブン-イレブン", en: "7-Eleven" },
+  lawson: { ja: "ローソン", en: "Lawson" },
+  familymart: { ja: "ファミリーマート", en: "FamilyMart" },
+  ministop: { ja: "ミニストップ", en: "Ministop" },
+  other: { ja: "その他のコンビニ", en: "Other convenience store" },
+};
+export function cvsBrandName(brand: string | null, lang: EmailLang): string {
+  return brand && brand in CVS_BRAND_NAMES ? CVS_BRAND_NAMES[brand][lang] : "";
+}
 
 export const emailTemplateUpdateSchema = z.object({
   subject: z.string().trim().min(1, "required").max(200, "tooLong"),
@@ -98,6 +114,18 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     lang: "en",
     subject: "[{{merchantName}}] Bank transfer instructions (order {{orderNumber}})",
     body: "Dear {{customerName}},\n\nThank you for your order at {{merchantName}}. Please transfer the amount below.\n\nAmount: {{amount}}\nTransfer ID: {{transferId}}\nDeadline: {{deadline}}\nProduct: {{productName}}\n\nEnter the transfer ID before your name on the remittance. Orders not paid by the deadline are cancelled automatically.",
+  },
+  {
+    key: "cvs_guide",
+    lang: "ja",
+    subject: "【{{merchantName}}】コンビニでのお支払い方法のご案内（注文番号 {{orderNumber}}）",
+    body: "{{customerName}} 様\n\n{{merchantName}} をご利用いただきありがとうございます。\n以下の受付番号でコンビニのレジまたは端末からお支払いください。\n\nお支払い店舗: {{cvsBrand}}\n受付番号: {{receiptNo}}\nお支払い金額: {{amount}}\nお支払い期限: {{deadline}}\n商品: {{productName}}\n\n期限を過ぎるとご注文は自動的にキャンセルされます。",
+  },
+  {
+    key: "cvs_guide",
+    lang: "en",
+    subject: "[{{merchantName}}] How to pay at the convenience store (order {{orderNumber}})",
+    body: "Dear {{customerName}},\n\nThank you for your order at {{merchantName}}. Please pay at the store counter or kiosk with the receipt number below.\n\nStore: {{cvsBrand}}\nReceipt number: {{receiptNo}}\nAmount: {{amount}}\nDeadline: {{deadline}}\nProduct: {{productName}}\n\nOrders not paid by the deadline are cancelled automatically.",
   },
   {
     key: "payment_completed",

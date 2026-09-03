@@ -118,6 +118,7 @@ export async function checkoutFromLink(db: PrismaClient, opts: { token: string; 
       customerEmail: opts.input.customerEmail || null,
       description: link.description,
       autoCapture: false,
+      cvsBrand: opts.input.cvsBrand,
     },
     { clientIp: opts.clientIp, audit: systemAuditContext("system"), source: "payment_link", paymentLinkId: link.id, now },
   );

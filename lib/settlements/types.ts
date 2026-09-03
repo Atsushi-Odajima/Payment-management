@@ -52,8 +52,31 @@ export const settlementSettingsSchema = z.object({
     .default(""),
   bankAccountHolder: z.string().trim().max(80, "tooLong").default(""),
   settlementFee: z.number({ invalid_type_error: "number" }).int("integer").min(0, "range").max(10_000, "range").default(0),
+  /** Qualified-invoice registration number of the merchant (Phase K-3): T + 13 digits, or empty. */
+  invoiceNumber: z
+    .string()
+    .trim()
+    .max(14, "tooLong")
+    .refine((v) => v === "" || REGISTRATION_NO_RE.test(v), "registrationNo")
+    .default(""),
+  /** Postal address printed on invoices (Phase K-3). */
+  address: z.string().trim().max(200, "tooLong").default(""),
 });
 export type SettlementSettingsInput = z.infer<typeof settlementSettingsSchema>;
+
+/** Qualified-invoice issuer registration number: "T" followed by 13 digits. */
+export const REGISTRATION_NO_RE = /^T\d{13}$/;
+
+/** Consumption-tax categories of settlement lines (Phase K-3). */
+export const TAX_CATEGORIES = ["standard10", "reduced8", "exempt"] as const;
+export type TaxCategory = (typeof TAX_CATEGORIES)[number];
+export const isTaxCategory = (v: unknown): v is TaxCategory => includes(TAX_CATEGORIES, v);
+export const TAX_RATE_PERCENT: Record<TaxCategory, number> = { standard10: 10, reduced8: 8, exempt: 0 };
+
+/** How the tax of each rate is rounded to the yen (GlobalSetting.taxRounding). */
+export const TAX_ROUNDINGS = ["floor", "round", "ceil"] as const;
+export type TaxRounding = (typeof TAX_ROUNDINGS)[number];
+export const isTaxRounding = (v: unknown): v is TaxRounding => includes(TAX_ROUNDINGS, v);
 
 export const generateBatchSchema = z.object({
   merchantId: z.string().min(1).max(64),

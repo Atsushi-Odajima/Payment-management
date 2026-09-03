@@ -6,7 +6,8 @@ import type { PrismaClient } from "@prisma/client";
 import { formatDateTime } from "@/lib/i18n";
 import { formatYen } from "@/lib/utils";
 import { CUSTOMER_EMAIL_LANG, sendTemplatedEmail } from "./send";
-import type { EmailVars } from "./templates";
+import { cvsBrandName, type EmailVars } from "./templates";
+import { formatCvsReceiptNo } from "@/lib/payments/konbini";
 
 const PAYMENT_SELECT = {
   id: true,
@@ -18,6 +19,8 @@ const PAYMENT_SELECT = {
   transferId: true,
   transferDueAt: true,
   depositAmount: true,
+  cvsBrand: true,
+  cvsReceiptNo: true,
   merchantId: true,
   merchant: { select: { siteName: true } },
 } as const;
@@ -38,11 +41,13 @@ async function paymentVars(db: PrismaClient, paymentId: string): Promise<{ to: s
       orderNumber: p.orderNumber,
       productName: p.productName ?? "",
       shortAmount: formatYen(Math.max(0, p.amount - (p.depositAmount ?? 0))),
+      receiptNo: p.cvsReceiptNo ? formatCvsReceiptNo(p.cvsReceiptNo) : "",
+      cvsBrand: cvsBrandName(p.cvsBrand, CUSTOMER_EMAIL_LANG),
     },
   };
 }
 
-async function sendForPayment(db: PrismaClient, paymentId: string, key: "transfer_guide" | "payment_completed" | "refund_completed" | "deposit_short", overrides: EmailVars = {}): Promise<void> {
+async function sendForPayment(db: PrismaClient, paymentId: string, key: "transfer_guide" | "cvs_guide" | "payment_completed" | "refund_completed" | "deposit_short", overrides: EmailVars = {}): Promise<void> {
   try {
     const ctx = await paymentVars(db, paymentId);
     if (!ctx || !ctx.to) return;
@@ -54,6 +59,8 @@ async function sendForPayment(db: PrismaClient, paymentId: string, key: "transfe
 
 /** A bank transfer id was issued at checkout. */
 export const notifyTransferIssued = (db: PrismaClient, paymentId: string) => sendForPayment(db, paymentId, "transfer_guide");
+/** A konbini receipt number was issued at checkout (Phase K-1). */
+export const notifyCvsIssued = (db: PrismaClient, paymentId: string) => sendForPayment(db, paymentId, "cvs_guide");
 /** The transaction completed (capture / matching deposit). */
 export const notifyPaymentCompleted = (db: PrismaClient, paymentId: string) => sendForPayment(db, paymentId, "payment_completed");
 /** A refund was approved and completed. */

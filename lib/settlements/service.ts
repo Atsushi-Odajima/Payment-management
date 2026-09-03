@@ -13,7 +13,8 @@ import { isUniqueViolation } from "@/lib/ids";
 import { calculateFee, currentScheduleIndex, isFeeMethod, parseFeeRates } from "@/lib/merchants/fees";
 import { nextDayInTz, parseDateInTz } from "@/lib/time";
 import { payoutDate } from "./schedule";
-import { SETTLEMENT_TRANSITIONS, isPayoutTerm, type SettlementAction } from "./types";
+import { defaultTaxCategory } from "./tax";
+import { SETTLEMENT_TRANSITIONS, isPayoutTerm, type SettlementAction, type TaxCategory } from "./types";
 
 export const BATCH_SELECT = {
   id: true,
@@ -47,6 +48,8 @@ export interface LineDraft {
   amount: number;
   fee: number;
   occurredAt: Date;
+  /** Tax category of the fee (Phase K-3); defaults per kind when omitted. */
+  taxCategory?: TaxCategory;
 }
 
 /** Pure aggregation used by generateBatch and tests. */
@@ -92,13 +95,13 @@ export async function collectLines(db: PrismaClient, opts: { merchantId: string;
     const idx = currentScheduleIndex(schedules, at);
     const rates = idx >= 0 ? parseFeeRates(schedules[idx].rates) : null;
     const fee = rates && isFeeMethod(p.method) ? calculateFee(rates, p.method, p.amount) : 0;
-    lines.push({ kind: "payment", paymentId: p.id, method: p.method, description: p.orderNumber, amount: p.amount, fee, occurredAt: at });
+    lines.push({ kind: "payment", paymentId: p.id, method: p.method, description: p.orderNumber, amount: p.amount, fee, occurredAt: at, taxCategory: defaultTaxCategory("payment") });
   }
   for (const r of refunds) {
-    lines.push({ kind: "refund", paymentId: r.paymentId, refundId: r.id, method: r.payment.method, description: r.payment.orderNumber, amount: -r.amount, fee: 0, occurredAt: r.completedAt ?? from });
+    lines.push({ kind: "refund", paymentId: r.paymentId, refundId: r.id, method: r.payment.method, description: r.payment.orderNumber, amount: -r.amount, fee: 0, occurredAt: r.completedAt ?? from, taxCategory: defaultTaxCategory("refund") });
   }
   for (const c of chargebacks) {
-    lines.push({ kind: "chargeback", paymentId: c.paymentId, chargebackId: c.id, method: c.payment.method, description: c.payment.orderNumber, amount: -c.amount, fee: 0, occurredAt: c.resolvedAt ?? from });
+    lines.push({ kind: "chargeback", paymentId: c.paymentId, chargebackId: c.id, method: c.payment.method, description: c.payment.orderNumber, amount: -c.amount, fee: 0, occurredAt: c.resolvedAt ?? from, taxCategory: defaultTaxCategory("chargeback") });
   }
   lines.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
   return lines;
