@@ -150,6 +150,58 @@ async function login(loginId, password) {
   await ctx.close();
 }
 
+// ── Risk (Phase F) ─────────────────────────────────────────────────────
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  await page.goto(BASE + "/chargebacks", { waitUntil: "networkidle" });
+  check("chargebacks: seeded received case first", (await page.locator("tbody tr").first().textContent()).includes("Received"));
+  await page.locator("tbody tr").first().click();
+  await page.waitForURL(/\/chargebacks\/[a-z0-9_]+$/);
+  await page.getByRole("button", { name: "Dispute", exact: true }).click();
+  await page.locator("dialog[open] #cb-note-field").fill("tracking number 1234");
+  await page.locator("dialog[open]").getByRole("button", { name: "Dispute", exact: true }).click();
+  await page.getByText("Dispute filed").waitFor({ timeout: 8000 });
+  await page.waitForTimeout(500);
+  check("chargeback dispute → Disputed", (await page.textContent("body")).includes("Disputed"));
+  await page.getByRole("button", { name: "Record loss" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "Record loss" }).click();
+  await page.getByText("Loss recorded").waitFor({ timeout: 8000 });
+  await page.waitForTimeout(500);
+  check("chargeback loss → transaction shows Chargeback", (await page.textContent("body")).includes("Chargeback"));
+  await page.screenshot({ path: `${OUT}/chargeback-detail-en.png` });
+
+  await page.goto(BASE + "/blacklist", { waitUntil: "networkidle" });
+  check("blacklist: seeded candidate first", (await page.locator("tbody tr").first().textContent()).includes("Candidate"));
+  await page.locator("tbody tr").first().getByRole("button", { name: "Approve" }).click();
+  await page.getByText("Entry enabled").waitFor({ timeout: 8000 });
+  await page.waitForTimeout(500);
+  check("candidate approved → Active", (await page.locator("tbody tr").filter({ hasText: "Active" }).count()) >= 2);
+  await page.fill("#bl-value", "203.0.113.99");
+  await page.fill("#bl-reason", "smoke");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByText("Added to the blacklist").waitFor({ timeout: 8000 });
+  check("manual blacklist entry added", true);
+  await page.fill("#rs-max", "4");
+  await page.getByRole("button", { name: "Save detection rule" }).click();
+  await page.getByText("Detection rule saved").waitFor({ timeout: 8000 });
+  check("detection rule saved", true);
+
+  // Deposit differences are seeded in live mode.
+  await page.getByRole("group", { name: "Data mode" }).getByRole("button", { name: "Live" }).click();
+  await page.waitForTimeout(800);
+  await page.goto(BASE + "/deposit-diffs", { waitUntil: "networkidle" });
+  check("deposit diffs: 2 open cases in live mode", (await page.textContent("body")).includes("2 open"));
+  await page.locator("tbody tr").filter({ hasText: "Excess" }).first().getByRole("button", { name: "Request refund of excess" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "Request refund of excess" }).click();
+  await page.getByText("Refund request for the excess filed").waitFor({ timeout: 8000 });
+  await page.waitForTimeout(500);
+  check("excess → refund arranged", (await page.textContent("body")).includes("Refund arranged"));
+  await page.screenshot({ path: `${OUT}/deposit-diffs-en.png` });
+  await page.getByRole("group", { name: "Data mode" }).getByRole("button", { name: "Test" }).click();
+  await page.waitForTimeout(800);
+  await ctx.close();
+}
+
 check("no page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 200));
 await browser.close();
 const failed = results.filter((r) => !r.ok);

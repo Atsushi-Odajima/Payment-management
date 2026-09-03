@@ -9,6 +9,9 @@ import { DEMO_LIMITS } from "@/lib/demo";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { checkLimit, limitFailureReason } from "@/lib/merchants/limits";
 import { emitPaymentWebhook } from "@/lib/webhooks/deliver";
+import { cardInputSchema } from "@/lib/risk/types";
+import { blockedFailureReason, cardFingerprint, checkBlacklist, detectRepeatedFailures } from "@/lib/risk/service";
+import { clientIpFromHeaders } from "@/lib/ip";
 
 const CreateSchema = z.object({
   providerId: z.string().min(1),
@@ -26,6 +29,8 @@ const CreateSchema = z.object({
   description: z.string().max(2000).nullable().optional(),
   autoCapture: z.boolean().default(true),
   idempotencyKey: z.string().min(8).max(128).optional(),
+  // Demo card details (Phase F): only a fingerprint and the last 4 digits are stored.
+  card: cardInputSchema.optional(),
 });
 
 /**
@@ -81,12 +86,18 @@ export const POST = withApiHandler(async (req) => {
   const externalId = generateDemoExternalId(provider.providerKey);
   const livemode = !provider.testMode;
 
+  // Risk keys (F-2): card fingerprint, source IP, email.
+  const cardHash = body.card ? cardFingerprint(body.card) : null;
+  const cardLast4 = body.card?.last4 ?? null;
+  const clientIp = clientIpFromHeaders((n) => req.headers.get(n));
+  const blocked = await checkBlacklist(prisma, { cardHash, clientIp, email: body.customerEmail });
+
   // Merchant limits (B-2): an exceeding transaction is still recorded — as
   // failed with the reason — so the merchant sees why the checkout stopped.
-  const limit = body.merchantId ? await checkLimit(prisma, { merchantId: body.merchantId, method, amount: body.amount, livemode, now }) : { ok: true as const };
-  const failureReason = limit.ok ? null : limitFailureReason(limit.reason);
-  const status = limit.ok ? initialStatus(provider.category, body.autoCapture) : "failed";
-  const isBank = method === "bank" && limit.ok;
+  const limit = !blocked && body.merchantId ? await checkLimit(prisma, { merchantId: body.merchantId, method, amount: body.amount, livemode, now }) : { ok: true as const };
+  const failureReason = blocked ? blockedFailureReason(blocked.kind) : limit.ok ? null : limitFailureReason(limit.reason);
+  const status = failureReason ? "failed" : initialStatus(provider.category, body.autoCapture);
+  const isBank = method === "bank" && !failureReason;
 
   // A random transfer id can collide with an existing one; the unique
   // constraint rejects it and we draw a new one once.
@@ -108,6 +119,9 @@ export const POST = withApiHandler(async (req) => {
           externalId,
           status,
           failureReason,
+          cardHash,
+          cardLast4,
+          clientIp,
           livemode,
           idempotencyKey: idempotencyKey ?? null,
           createdAt: now,
@@ -151,6 +165,10 @@ export const POST = withApiHandler(async (req) => {
       // Tell the merchant when their own limit stopped the checkout (Phase E).
       if (status === "failed" && body.merchantId && !limit.ok) {
         await emitPaymentWebhook(prisma, payment.id, "limit.exceeded", { status: `failed:${failureReason}` });
+      }
+      // Repeated failures from the same card / IP / email become blacklist candidates (F-2).
+      if (status === "failed") {
+        await detectRepeatedFailures(prisma, { cardHash, clientIp, email: body.customerEmail }, now).catch((e) => console.error("[risk] detect failed", e));
       }
       return ok({ ...payment, replayed: false }, { status: 201 });
     } catch (err) {

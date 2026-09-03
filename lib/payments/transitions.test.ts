@@ -22,12 +22,13 @@ const LEGAL: Record<PaymentStatus, PaymentAction[]> = {
   pending: ["capture", "cancel", "fail", "expire"],
   awaiting_transfer: ["capture", "cancel", "fail", "expire", "deposit"],
   authorized: ["capture", "cancel", "fail"],
-  captured: ["refund"],
-  partially_refunded: ["refund"],
-  refunded: [],
+  captured: ["refund", "chargeback"],
+  partially_refunded: ["refund", "chargeback"],
+  refunded: ["chargeback"],
   cancelled: [],
   failed: [],
   expired: [],
+  chargeback: [],
 };
 
 describe("payment state machine", () => {
@@ -38,7 +39,7 @@ describe("payment state machine", () => {
   });
 
   it("marks refunded / cancelled / failed / expired as terminal", () => {
-    expect([...TERMINAL_STATUSES].sort()).toEqual(["cancelled", "expired", "failed", "refunded"]);
+    expect([...TERMINAL_STATUSES].sort()).toEqual(["cancelled", "chargeback", "expired", "failed"]);
   });
 
   it("splits every status between the application list and the sales list", () => {

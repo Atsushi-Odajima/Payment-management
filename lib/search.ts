@@ -10,6 +10,7 @@ export interface SearchPayment {
   id: string;
   orderNumber: string;
   transferId: string | null;
+  cardLast4: string | null;
   customerName: string | null;
   customerEmail: string | null;
   amount: number;
@@ -71,6 +72,7 @@ export async function searchAll(raw: string, opts: { limit?: number; includeAdmi
           { id: q },
           { orderNumber: contains },
           { transferId: q },
+          { cardLast4: q },
           { externalId: q },
           { customerEmail: contains },
           { customerId: q },
@@ -83,6 +85,7 @@ export async function searchAll(raw: string, opts: { limit?: number; includeAdmi
         id: true,
         orderNumber: true,
         transferId: true,
+        cardLast4: true,
         customerName: true,
         customerEmail: true,
         amount: true,
@@ -121,6 +124,7 @@ export async function searchAll(raw: string, opts: { limit?: number; includeAdmi
       id: p.id,
       orderNumber: p.orderNumber,
       transferId: p.transferId,
+      cardLast4: p.cardLast4,
       customerName: p.customerName,
       customerEmail: p.customerEmail,
       amount: p.amount,
