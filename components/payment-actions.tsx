@@ -15,6 +15,8 @@ import { MASTER_ACTIONS, canTransition, type PaymentAction, type PaymentStatus }
 import type { TransactionDetail } from "@/lib/payments/detail";
 import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from "@/lib/webhooks/events";
 import { popFlash, pushFlash } from "@/lib/flash";
+import { REFUND_REASONS, type RefundReason } from "@/lib/refunds/types";
+import type { MessageKey } from "@/lib/i18n";
 
 export function PaymentActions({ payment }: { payment: TransactionDetail }) {
   const { id, orderNumber, status, amount, amountRefunded } = payment;
@@ -27,17 +29,20 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
   const [error, setError] = useState<string | null>(null);
   // Survives the remount that router.refresh() can cause (see lib/flash.ts).
   const [notice, setNotice] = useState<string | null>(() => popFlash(`payment:${id}`) ?? null);
-  const refundRef = useRef<{ amount: number; reason: string }>({ amount: 0, reason: "" });
+  const refundRef = useRef<{ amount: number; reasonCode: RefundReason; reason: string; force: boolean }>({ amount: 0, reasonCode: "customer", reason: "", force: false });
   const depositRef = useRef<{ amount: number }>({ amount: 0 });
 
   const isBank = payment.transferId !== null;
-  const remaining = amount - amountRefunded;
+  // Refundable balance minus requests still waiting for a decision.
+  const remaining = amount - amountRefunded - payment.pendingRefundAmount;
+  const deadlinePassed = payment.refundDeadlineAt !== null && payment.refundDeadlineAt.getTime() < Date.now();
   const deposited = payment.depositAmount ?? 0;
   const outstanding = Math.max(0, amount - deposited);
 
   // Which actions this screen offers, in display order.
   const offered: PaymentAction[] = isBank ? ["deposit", "expire", "cancel", "refund"] : ["capture", "fail", "cancel", "refund"];
-  const possible = (a: PaymentAction) => canTransition(status, a) && (a !== "expire" || payment.overdue);
+  const possible = (a: PaymentAction) =>
+    canTransition(status, a) && (a !== "expire" || payment.overdue) && (a !== "refund" || (remaining > 0 && (!deadlinePassed || isMaster)));
   const allowed = (a: PaymentAction) => possible(a) && (isMaster || !MASTER_ACTIONS.includes(a));
   const anyPossible = offered.some(possible);
   const needsMaster = offered.some((a) => possible(a) && MASTER_ACTIONS.includes(a)) && !isMaster;
@@ -93,16 +98,33 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
       if (!ok) return;
       body = { amount: depositRef.current.amount };
     } else if (action === "refund") {
-      refundRef.current = { amount: remaining, reason: "" };
+      // Phase C: refunds are requests (any operator) decided by a master.
+      refundRef.current = { amount: remaining, reasonCode: "customer", reason: "", force: false };
       const ok = await confirm({
         title: t("paymentActions.refund"),
         body: t("paymentActions.confirmRefundBody", { orderNumber, remaining: formatYen(remaining) }),
         confirmLabel: t("paymentActions.refund"),
         tone: "danger",
-        fields: <RefundFields remaining={remaining} valueRef={refundRef} />,
+        fields: <RefundFields remaining={remaining} deadlinePassed={deadlinePassed} isMaster={isMaster} valueRef={refundRef} />,
       });
       if (!ok) return;
-      body = { amount: refundRef.current.amount, reason: refundRef.current.reason || null };
+      setBusy(action);
+      const { amount: refundAmount, reasonCode, reason, force } = refundRef.current;
+      const res = await apiJson(`/api/refunds`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ paymentId: id, amount: refundAmount, reasonCode, reason, force }),
+      });
+      setBusy(null);
+      if (!res.ok) {
+        setError(res.error.message);
+        return;
+      }
+      const message = t("paymentActions.refundRequested");
+      setNotice(message);
+      pushFlash(`payment:${id}`, message);
+      router.refresh();
+      return;
     }
 
     setBusy(action);
@@ -245,22 +267,29 @@ function DepositFields({ outstanding, valueRef }: { outstanding: number; valueRe
 
 function RefundFields({
   remaining,
+  deadlinePassed,
+  isMaster,
   valueRef,
 }: {
   remaining: number;
-  valueRef: MutableRefObject<{ amount: number; reason: string }>;
+  deadlinePassed: boolean;
+  isMaster: boolean;
+  valueRef: MutableRefObject<{ amount: number; reasonCode: RefundReason; reason: string; force: boolean }>;
 }) {
   const t = useT();
   const { update } = useConfirm();
   const [amount, setAmount] = useState(String(remaining));
+  const [reasonCode, setReasonCode] = useState<RefundReason>("customer");
   const [reason, setReason] = useState("");
+  const [force, setForce] = useState(false);
   const n = Number(amount);
-  const valid = Number.isInteger(n) && n > 0 && n <= remaining;
+  const reasonRequired = reasonCode === "other" || deadlinePassed;
+  const valid = Number.isInteger(n) && n > 0 && n <= remaining && (!reasonRequired || reason.trim().length > 0) && (!deadlinePassed || (isMaster && force));
 
   useEffect(() => {
-    valueRef.current = { amount: n, reason };
+    valueRef.current = { amount: n, reasonCode, reason, force };
     update({ confirmDisabled: !valid });
-  }, [n, reason, valid, update, valueRef]);
+  }, [n, reasonCode, reason, force, valid, update, valueRef]);
 
   return (
     <>
@@ -278,7 +307,7 @@ function RefundFields({
           className="input"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          aria-invalid={!valid}
+          aria-invalid={!(Number.isInteger(n) && n > 0 && n <= remaining)}
           aria-describedby="refund-amount-help"
         />
         <p id="refund-amount-help" className="help">
@@ -286,11 +315,34 @@ function RefundFields({
         </p>
       </div>
       <div>
-        <label htmlFor="refund-reason" className="label">
-          {t("paymentActions.refundReason")}
+        <label htmlFor="refund-reason-code" className="label">
+          {t("paymentActions.refundReasonCode")}
         </label>
-        <input id="refund-reason" className="input" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+        <select id="refund-reason-code" className="input" value={reasonCode} onChange={(e) => setReasonCode(e.target.value as RefundReason)}>
+          {REFUND_REASONS.map((r) => (
+            <option key={r} value={r}>
+              {t(`refundEnums.reason.${r}` as MessageKey)}
+            </option>
+          ))}
+        </select>
       </div>
+      <div>
+        <label htmlFor="refund-reason" className="label">
+          {reasonRequired ? t("paymentActions.refundReasonRequired") : t("paymentActions.refundReason")}
+        </label>
+        <input id="refund-reason" className="input" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} aria-invalid={reasonRequired && reason.trim().length === 0} />
+      </div>
+      {deadlinePassed && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+          <p>{t("paymentActions.refundDeadlinePassed")}</p>
+          {isMaster && (
+            <label className="mt-2 flex items-center gap-2 font-medium">
+              <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
+              {t("paymentActions.refundForce")}
+            </label>
+          )}
+        </div>
+      )}
     </>
   );
 }

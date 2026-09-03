@@ -74,6 +74,13 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - **APIキー**: `ApiKey`（`mode` test | live、`kind` api_key | signing_secret、`keyPrefix` 表示用、`keyHash` SHA-256 @unique、`expiresAt` / `revokedAt` / `lastUsedAt`）。平文は `generateApiKey`（`wp_<mode>_<ak|ss>_<32 文字>`）で発行時に 1 回だけ返し **保存しない**。`POST .../api-keys`（`api_key.issue`）、`POST .../api-keys/[keyId]/rotate`（旧キーに `expiresAt` = 猶予 `ROTATION_GRACE_DAYS`、`api_key.rotate`）、`.../revoke`（`api_key.revoke`）。加盟店向け認証は `app/api/merchant-api/ping/route.ts`（Bearer → `hashApiKey` で検索 → `apiKeyUsable` → `merchant_api` の IP ルール → `lastUsedAt`）。`/api/merchant-api/*` は middleware の `SIGNATURE_AUTH_PREFIXES`（セッション不要）。seed の固定平文は `SEED_API_KEYS`
 - **テスト / 本番モード**: `lib/mode.ts`（Cookie `wirepay.mode`、既定 test、`modeFromCookieStore(cookies())`）。ヘッダーの `ModeToggle`（`components/mode-provider.tsx`）が Cookie を書いて `router.refresh()`。決済一覧・申請一覧・ダッシュボード・限度額の利用状況は **常に `livemode` で絞る**（旧 `?mode=all` チップは廃止）。seed に本番モードの取引（payment8 / payment9）あり
 
+## 返金管理（フェーズC）
+
+- **返金 = `Refund` テーブルの申請行**。列: `amount`, `kind`（full | partial）, `reasonCode`（customer | defect | duplicate | other。other は `reason` 必須）, `status`（requested | approved | rejected | processing | completed | failed）, `forced`（返金可能期限超過をマスターが強制）, `requestedById` / `approvedById`（AdminUser）, `decisionNote`, `merchantId` / `livemode` スナップショット。語彙と Zod は `lib/refunds/types.ts`
+- **フロー**: `POST /api/refunds`（`requireAdmin`。一般権限も可）が `lib/refunds/service.ts` の `createRefundRequest` で申請（残額 − 返金済 − 審査待ち額を検証、期限超過は master + `force` + 理由のみ）。`POST /api/refunds/[id]/approve`（`requireMaster`）は `applyPaymentAction(refund, { refund: { id, approvedById } })` で **同じ状態遷移** を通して取引を `partially_refunded` / `refunded` にし、行を completed にする（デモは即時完了）。`.../reject` は rejected。監査 `refund.request` / `refund.approve` / `refund.reject`（`payment.refund` も承認時に記録）
+- 取引詳細の「返金申請」ダイアログ（`components/payment-actions.tsx`）は `/api/refunds` に POST する。旧 `POST /api/payments/[id]/refund` は Webhook / API 互換のため残し、`applyPaymentAction` が `refund` 指定なしのとき completed 行を直接作る
+- 一覧 `/refunds`（`lib/refunds/list.ts`、既定順 = requested 先頭、CSV `?format=csv`）と詳細 `/refunds/[id]`。取消（void）は既存の `cancel` アクション（UI 表示「キャンセル」）で、返金とは別ボタン
+
 ## 代理店・決済申請・IP制限・マニュアル
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
@@ -130,8 +137,8 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 
 - [x] **フェーズA 基盤**（完了）: AdminUser ログイン + TOTP 二段階認証、`RoleToggle` 廃止、AuditLog + `recordAudit` を全更新系に適用、横断検索（Ctrl+K）、`lib/nav.ts` によるグループ化ナビとトップカード、共通 `DataTable`（管理者一覧・操作ログで使用）
 - [x] **フェーズB 加盟店設定の拡張**（完了）: 加盟店詳細のタブ化、契約プラン / 手数料率の履歴、限度額（作成時判定 + 失敗理由）、振込期限（毎時 cron で期限切れ）・返金可能期限（表示）、API キー / 署名シークレット（発行・ローテーション・失効・`/api/merchant-api/ping`）、ヘッダーの test / live スイッチ
-- [ ] **フェーズC 返金・取消管理**（未着手。次はここ）: 返金可能期限の強制（`refundDeadlineAt` を `applyPaymentAction(refund)` で検査）、返金理由・返金一覧、取消（void）の整理
-- [ ] フェーズD 精算管理（`calculateFee` と `MerchantFeeSchedule` を使う） / [ ] フェーズE Webhook 送信ログと再送（限度額超過の加盟店通知もここ） / [ ] フェーズF 不正・リスク対策 / [ ] フェーズG レポート・通知 / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
+- [x] **フェーズC 返金・取消管理**（完了）: 返金申請（理由コード・全額/一部・残額と審査待ち額の検証・返金可能期限の強制はマスターのみ）→ マスターの承認/否認、返金管理一覧/詳細、取引詳細の返金申請ダイアログ、KPI（審査待ち件数）
+- [ ] **フェーズD 精算管理**（未着手。次はここ。`calculateFee` と `MerchantFeeSchedule` を使う） / [ ] フェーズE Webhook 送信ログと再送（限度額超過の加盟店通知もここ） / [ ] フェーズF 不正・リスク対策 / [ ] フェーズG レポート・通知 / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
 - 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う
 - 検索対象「カード下4桁」はフェーズF（カードハッシュ列）で追加する

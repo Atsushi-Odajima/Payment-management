@@ -26,6 +26,11 @@ export interface ApplyActionInput {
   amount?: number;
   /** refund only */
   reason?: string | null;
+  /**
+   * refund only: complete an existing refund request (Phase C) instead of
+   * creating a completed Refund row. The row's amount is used.
+   */
+  refund?: { id: string; approvedById: string | null };
   actor: Exclude<PaymentActor, "seed">;
   /** When given, an AuditLog row is written in the same transaction. */
   audit?: AuditContext;
@@ -56,6 +61,8 @@ export async function applyPaymentAction(
       transferId: true,
       transferDueAt: true,
       depositAmount: true,
+      merchantId: true,
+      livemode: true,
       provider: { select: { status: true } },
     },
   });
@@ -112,9 +119,28 @@ export async function applyPaymentAction(
       throw new ApiError(409, "invalid_transition", `errors.${transitionErrorKey(action)}`);
     }
     if (action === "refund") {
-      await tx.refund.create({
-        data: { paymentId, amount: eventAmount, reason: input.reason ?? null },
-      });
+      if (input.refund) {
+        // Approving a request: the row already exists; mark it completed.
+        await tx.refund.update({
+          where: { id: input.refund.id },
+          data: { status: "completed", completedAt: now, approvedById: input.refund.approvedById },
+        });
+      } else {
+        // Direct refund (webhook / legacy API): recorded as completed at once.
+        await tx.refund.create({
+          data: {
+            paymentId,
+            merchantId: payment.merchantId,
+            livemode: payment.livemode,
+            amount: eventAmount,
+            kind: eventAmount >= payment.amount ? "full" : "partial",
+            reasonCode: "other",
+            reason: input.reason ?? null,
+            status: "completed",
+            completedAt: now,
+          },
+        });
+      }
     }
     await tx.paymentEvent.create({
       data: {
