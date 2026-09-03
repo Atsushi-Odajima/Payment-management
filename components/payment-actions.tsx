@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { useApiJson, useT } from "./language-provider";
 import { useConfirm } from "./confirm-dialog";
-import { useRole } from "./role-provider";
+import { useRole } from "./session-provider";
 import { formatYen } from "@/lib/utils";
 import { MASTER_ACTIONS, canTransition, type PaymentAction, type PaymentStatus } from "@/lib/payments/transitions";
 import type { TransactionDetail } from "@/lib/payments/detail";

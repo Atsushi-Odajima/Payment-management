@@ -11,6 +11,8 @@ import type { PrismaClient } from "@prisma/client";
 import { buildCredentialStore } from "../lib/providers/credentials";
 import { encryptMerchantPassword } from "../lib/merchants/secrets";
 import { transferDueDate } from "../lib/payments/transfer";
+import { hashPassword } from "../lib/admin/password";
+import { DEMO_ADMIN_ACCOUNTS } from "./seed-accounts";
 
 export const SEED_IDS = {
   stripeProvider: "prov_stripe_demo",
@@ -32,6 +34,11 @@ export const SEED_IDS = {
   ip2: "ip_demo_002",
   ip3: "ip_demo_003",
   ip4: "ip_demo_004",
+  adminMaster: DEMO_ADMIN_ACCOUNTS.master.id,
+  adminGeneral: DEMO_ADMIN_ACCOUNTS.general.id,
+  audit1: "aud_demo_001",
+  audit2: "aud_demo_002",
+  audit3: "aud_demo_003",
 } as const;
 
 /** Demo merchant passwords (fixed so the master-role reveal is reproducible). */
@@ -59,6 +66,8 @@ export interface SeedSummary {
   merchants: number;
   agents: number;
   ipRestrictions: number;
+  admins: number;
+  auditLogs: number;
 }
 
 type EventSeed = { type: string; fromStatus: string | null; toStatus: string; amount: number; actor: string; createdAt: Date };
@@ -379,17 +388,85 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     await prisma.ipRestriction.upsert({ where: { id: r.id }, update: {}, create: r });
   }
 
+  // ── Admin users ───────────────────────────────────────────────────────
+  // Passwords are hashed with scrypt on every run; `update: {}` keeps a
+  // password changed through the UI.
+  const admins = [DEMO_ADMIN_ACCOUNTS.master, DEMO_ADMIN_ACCOUNTS.general];
+  for (const a of admins) {
+    await prisma.adminUser.upsert({
+      where: { id: a.id },
+      update: {},
+      create: {
+        id: a.id,
+        loginId: a.loginId,
+        name: a.name,
+        email: a.email,
+        role: a.role,
+        status: "active",
+        passwordHash: hashPassword(a.password),
+        createdAt: daysAgo(70),
+      },
+    });
+  }
+
+  // ── Audit log samples ─────────────────────────────────────────────────
+  const audits = [
+    {
+      id: SEED_IDS.audit1,
+      actorType: "admin",
+      actorId: DEMO_ADMIN_ACCOUNTS.master.id,
+      action: "merchant.update",
+      targetType: "merchant",
+      targetId: SEED_IDS.merchant2,
+      before: JSON.stringify({ emailNotification: "per_payment", transferIdDigits: 7 }),
+      after: JSON.stringify({ emailNotification: "daily", transferIdDigits: 8 }),
+      ip: "203.0.113.10",
+      createdAt: daysAgo(11),
+    },
+    {
+      id: SEED_IDS.audit2,
+      actorType: "bank",
+      actorId: null,
+      action: "payment.deposit",
+      targetType: "payment",
+      targetId: SEED_IDS.payment7,
+      before: JSON.stringify({ status: "awaiting_transfer", depositAmount: null }),
+      after: JSON.stringify({ status: "captured", depositAmount: 12000, depositDiff: null, amount: 12000 }),
+      ip: null,
+      createdAt: daysAgo(1),
+    },
+    {
+      id: SEED_IDS.audit3,
+      actorType: "admin",
+      actorId: DEMO_ADMIN_ACCOUNTS.master.id,
+      action: "ip_restriction.create",
+      targetType: "ip_restriction",
+      targetId: SEED_IDS.ip4,
+      before: null,
+      after: JSON.stringify({ target: "admin", cidr: "203.0.113.200", mode: "deny", enabled: true, label: "blocked source" }),
+      ip: "203.0.113.10",
+      createdAt: daysAgo(3),
+    },
+  ];
+  for (const a of audits) {
+    await prisma.auditLog.upsert({ where: { id: a.id }, update: {}, create: a });
+  }
+
   return {
     providers: 3,
     payments: payments.length,
     merchants: merchants.length,
     agents: agents.length,
     ipRestrictions: ips.length,
+    admins: admins.length,
+    auditLogs: audits.length,
   };
 }
 
 /** Remove all demo data (used by the demo reset endpoint and tests). */
 export async function truncateAll(prisma: PrismaClient): Promise<void> {
+  await prisma.auditLog.deleteMany();
+  await prisma.adminUser.deleteMany();
   await prisma.ipRestriction.deleteMany();
   await prisma.webhookEvent.deleteMany();
   await prisma.paymentEvent.deleteMany();

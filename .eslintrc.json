@@ -22,6 +22,7 @@
       "files": [
         "lib/providers/credentials.ts",
         "lib/merchants/secrets.ts",
+        "lib/admin/secrets.ts",
         "lib/api/handler.ts",
         "lib/crypto.test.ts",
         "tests/**/*.ts"

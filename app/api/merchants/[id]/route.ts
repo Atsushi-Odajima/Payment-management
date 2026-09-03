@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateMerchantInput } from "@/lib/merchants/schema";
 import { MERCHANT_SELECT, serialize, toMerchantData } from "../select";
+import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 
 type Ctx = { params: { id: string } };
 
@@ -23,12 +24,13 @@ export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
       throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: { agentId: "invalid" } });
     }
   }
-  const exists = await prisma.merchant.findUnique({ where: { id: params.id }, select: { id: true } });
-  if (!exists) throw new ApiError(404, "not_found", "errors.notFound");
-  const updated = await prisma.merchant.update({
-    where: { id: params.id },
-    data: toMerchantData(v.data),
-    select: MERCHANT_SELECT,
+  const existing = await prisma.merchant.findUnique({ where: { id: params.id }, select: MERCHANT_SELECT });
+  if (!existing) throw new ApiError(404, "not_found", "errors.notFound");
+  const audit = await auditContextFromRequest(req);
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.merchant.update({ where: { id: params.id }, data: toMerchantData(v.data), select: MERCHANT_SELECT });
+    await recordAudit(tx, audit, { action: "merchant.update", targetType: "merchant", targetId: row.id, before: existing, after: row });
+    return row;
   });
   return ok(serialize(updated));
 });

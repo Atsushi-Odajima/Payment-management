@@ -6,6 +6,7 @@ import { getProviderDefinition } from "@/lib/providers/registry";
 import { credentialSchemaFor, missingRequiredFields } from "@/lib/providers/validation";
 import { langFromRequest, pickText } from "@/lib/i18n";
 import { DEMO_LIMITS } from "@/lib/demo";
+import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 
 const CreateSchema = z.object({
   providerKey: z.string().min(1),
@@ -43,8 +44,9 @@ export const POST = withApiHandler(async (req) => {
       credentials: JSON.stringify(store),
       testMode: body.testMode,
     },
-    select: { id: true },
+    select: { id: true, providerKey: true, category: true, displayName: true, testMode: true, status: true },
   });
+  await recordAudit(prisma, await auditContextFromRequest(req), { action: "provider.create", targetType: "provider", targetId: record.id, after: record });
   return ok({ id: record.id }, { status: 201 });
 });
 

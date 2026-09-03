@@ -11,10 +11,11 @@ import { POST as depositNotify } from "@/app/api/demo/deposit-notify/route";
 import { loadTransactions, parseTransactionFilters } from "@/lib/payments/list";
 import { APPLICATION_STATUSES, SALES_STATUSES } from "@/lib/payments/transitions";
 import { TRANSFER_DUE_DAYS } from "@/lib/payments/transfer";
+import { sessionHeaders } from "../helpers/session";
 
 const BASE = "http://localhost";
 const NOW = new Date("2026-09-01T03:00:00Z");
-const MASTER = { cookie: "wirepay.role=master" };
+let MASTER: Record<string, string> = {};
 
 function json(path: string, method: string, body?: unknown, headers: Record<string, string> = {}) {
   return new Request(BASE + path, {
@@ -26,12 +27,13 @@ function json(path: string, method: string, body?: unknown, headers: Record<stri
 async function read(res: Response) {
   return { status: res.status, body: (await res.json()) as Record<string, any> };
 }
-const act = (id: string, action: string, body?: unknown, headers: Record<string, string> = MASTER) =>
-  paymentAction(json(`/api/payments/${id}/${action}`, "POST", body, headers), { params: { id, action } });
+const act = (id: string, action: string, body?: unknown, headers: Record<string, string> | null = null) =>
+  paymentAction(json(`/api/payments/${id}/${action}`, "POST", body, headers ?? MASTER), { params: { id, action } });
 
 beforeEach(async () => {
   await truncateAll(prisma);
   await seed(prisma, { now: NOW });
+  MASTER = await sessionHeaders("master");
 });
 afterEach(() => {
   vi.unstubAllEnvs();

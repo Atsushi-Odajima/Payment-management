@@ -4,6 +4,7 @@ import { validateIpRestrictionInput } from "@/lib/ip-restrictions/schema";
 import { assertNotSelfBlock } from "@/lib/ip-restrictions/self-block";
 import { normalizeCidr } from "@/lib/ip";
 import { IP_RESTRICTION_SELECT } from "../select";
+import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 
 type Ctx = { params: { id: string } };
 
@@ -21,19 +22,28 @@ export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
     if (!m) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: { merchantId: "invalid" } });
   }
   assertNotSelfBlock(req, v.data);
-  const exists = await prisma.ipRestriction.findUnique({ where: { id: params.id }, select: { id: true } });
-  if (!exists) throw new ApiError(404, "not_found", "errors.notFound");
-  const updated = await prisma.ipRestriction.update({
-    where: { id: params.id },
-    data: { ...v.data, cidr: normalizeCidr(v.data.cidr) ?? v.data.cidr },
-    select: IP_RESTRICTION_SELECT,
+  const existing = await prisma.ipRestriction.findUnique({ where: { id: params.id }, select: IP_RESTRICTION_SELECT });
+  if (!existing) throw new ApiError(404, "not_found", "errors.notFound");
+  const audit = await auditContextFromRequest(req);
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.ipRestriction.update({
+      where: { id: params.id },
+      data: { ...v.data, cidr: normalizeCidr(v.data.cidr) ?? v.data.cidr },
+      select: IP_RESTRICTION_SELECT,
+    });
+    await recordAudit(tx, audit, { action: "ip_restriction.update", targetType: "ip_restriction", targetId: row.id, before: existing, after: row });
+    return row;
   });
   return ok(updated);
 });
 
-export const DELETE = withApiHandler<Ctx>(async (_req, { params }) => {
-  const exists = await prisma.ipRestriction.findUnique({ where: { id: params.id }, select: { id: true } });
-  if (!exists) throw new ApiError(404, "not_found", "errors.notFound");
-  await prisma.ipRestriction.delete({ where: { id: params.id } });
+export const DELETE = withApiHandler<Ctx>(async (req, { params }) => {
+  const existing = await prisma.ipRestriction.findUnique({ where: { id: params.id }, select: IP_RESTRICTION_SELECT });
+  if (!existing) throw new ApiError(404, "not_found", "errors.notFound");
+  const audit = await auditContextFromRequest(req);
+  await prisma.$transaction(async (tx) => {
+    await tx.ipRestriction.delete({ where: { id: params.id } });
+    await recordAudit(tx, audit, { action: "ip_restriction.delete", targetType: "ip_restriction", targetId: params.id, before: existing });
+  });
   return ok({ deleted: true });
 });

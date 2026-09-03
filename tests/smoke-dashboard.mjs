@@ -1,13 +1,14 @@
 // Manual end-to-end smoke for the dashboard, agents, applications, IP
 // restrictions and manual screens (not part of `npm test`).
-//   ADMIN_PASSWORD=demo1234 npx next start -p 3010 &
-//   BASE=http://localhost:3010 PASSWORD=demo1234 node tests/smoke-dashboard.mjs
+//   DEMO_LOGIN_HINT=1 npx next start -p 3010 &
+//   BASE=http://localhost:3010 node tests/smoke-dashboard.mjs
 
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 
 const BASE = process.env.BASE ?? "http://localhost:3010";
-const PASSWORD = process.env.PASSWORD ?? "demo1234";
+const PASSWORD = process.env.PASSWORD ?? "atusi0130";
+const GENERAL_PASSWORD = process.env.GENERAL_PASSWORD ?? "general1234";
 const OUT = "docs/screenshots";
 mkdirSync(OUT, { recursive: true });
 
@@ -27,27 +28,42 @@ const page = await ctx.newPage();
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(e.message));
 
-// Login
+// Login (master)
 await page.goto(BASE + "/login", { waitUntil: "networkidle" });
+await page.fill("#loginId", "kuromaru");
 await page.fill("#password", PASSWORD);
 await page.getByRole("button", { name: "Log in" }).click();
 await page.waitForURL(BASE + "/");
 
-// Dashboard: six cards, pending badge, sidebar
+// Dashboard: grouped cards (one per implemented screen), overdue badge, sidebar
 const cards = page.locator("main ul[aria-label] > li > a");
-check("dashboard shows 6 cards", (await cards.count()) === 6, String(await cards.count()));
+check("dashboard shows 9 cards for master", (await cards.count()) === 9, String(await cards.count()));
 const cardHrefs = await cards.evaluateAll((els) => els.map((e) => e.getAttribute("href")));
 check(
-  "cards link to the 6 sections",
-  ["/merchants", "/agents", "/payments", "/applications", "/ip-restrictions", "/manual"].every((h) => cardHrefs.includes(h)),
+  "cards link to every implemented section",
+  ["/merchants", "/agents", "/payments", "/applications", "/ip-restrictions", "/manual", "/admins", "/audit-logs", "/providers"].every((h) => cardHrefs.includes(h)),
   cardHrefs.join(","),
 );
+check("cards are grouped under the nav group headings", (await page.locator("main section h2").allTextContents()).join("|").includes("Settings"));
 check("overdue badge on applications card", (await page.getByText("1 overdue").count()) === 1);
 check("applications card counts open transactions", (await page.getByText("3 open").count()) === 1);
 check("no payment table on the top page", (await page.locator("main table").count()) === 0);
 check("sidebar has Agents", await page.getByRole("link", { name: "Agents", exact: true }).first().isVisible());
 check("sidebar has IP Restrictions", await page.getByRole("link", { name: "IP Restrictions", exact: true }).first().isVisible());
+check("sidebar shows Admin Users for master", await page.getByRole("link", { name: "Admin Users", exact: true }).first().isVisible());
+check("no role toggle in the header", (await page.getByRole("button", { name: "Master" }).count()) === 0);
 await page.screenshot({ path: `${OUT}/dashboard-en.png` });
+
+// Global search: Ctrl+K focuses, transfer id finds the transaction
+await page.keyboard.press("Control+k");
+check("Ctrl+K focuses the search box", await page.locator("#global-search").evaluate((el) => document.activeElement === el));
+await page.fill("#global-search", "48213907");
+await page.getByText("ORD-DEMO-004").first().waitFor({ timeout: 8000 });
+check("search dropdown finds the transfer id", true);
+await page.keyboard.press("Enter");
+await page.waitForURL(/\/search\?q=48213907/);
+check("search results page lists the transaction", (await page.textContent("body")).includes("ORD-DEMO-004") && (await page.textContent("body")).includes("Results for"));
+await page.screenshot({ path: `${OUT}/search-en.png` });
 
 // Payments moved to /payments
 await page.goto(BASE + "/payments", { waitUntil: "networkidle" });
@@ -90,9 +106,6 @@ await page.goto(BASE + "/applications", { waitUntil: "networkidle" });
 await page.locator("tbody tr").nth(1).getByRole("link").first().click();
 await page.waitForURL(/\/applications\/[a-z0-9_]+$/);
 check("detail shows transfer ID and history", (await page.textContent("body")).includes("48213907") && (await page.getByText("Status history").count()) === 1);
-check("general role: reconcile disabled", await page.getByRole("button", { name: "Reconcile deposit" }).isDisabled());
-await page.getByRole("button", { name: "Master" }).click();
-await page.waitForTimeout(600);
 check("master role: reconcile enabled", await page.getByRole("button", { name: "Reconcile deposit" }).isEnabled());
 // Short deposit → still awaiting with the short flag
 await page.getByRole("button", { name: "Reconcile deposit" }).click();
@@ -169,13 +182,83 @@ await page.getByText("Rule deleted.").waitFor({ timeout: 8000 });
 await page.waitForTimeout(300);
 check("rule deleted → 4 rows", (await page.locator("tbody tr").count()) === 4);
 
+// Admin users (master only): list, invite with one-time password, detail
+await page.goto(BASE + "/admins", { waitUntil: "networkidle" });
+check("admins list shows the 2 seeded accounts", (await page.locator("tbody tr").count()) === 2);
+check("admins list has a CSV export link", (await page.locator("a[href='/api/admins?format=csv']").count()) === 1);
+await page.goto(BASE + "/admins/new", { waitUntil: "networkidle" });
+await page.getByLabel(/^Login ID/).fill("smoke.ops");
+await page.getByLabel(/^Name/).fill("Smoke Operator");
+await page.getByLabel(/^Email/).fill("smoke.ops@wirepay.demo");
+await page.getByRole("button", { name: "Invite" }).click();
+await page.getByText("Initial password issued").waitFor({ timeout: 8000 });
+const initialPw = (await page.locator("dd.font-semibold").textContent()).trim();
+check("invite shows a 12-char initial password once", initialPw.length === 12, initialPw);
+await page.getByRole("link", { name: "Open details" }).click();
+await page.waitForURL(/\/admins\/(?!new$)[a-z0-9]+$/);
+check("new admin is Invited", (await page.locator(".badge").allTextContents()).includes("Invited"));
+// The invited account can log in with the initial password (separate context) and becomes Active
+{
+  const ictx = await browser.newContext({ locale: "en-US" });
+  const ip = await ictx.newPage();
+  await ip.goto(BASE + "/login", { waitUntil: "networkidle" });
+  await ip.fill("#loginId", "smoke.ops");
+  await ip.fill("#password", initialPw);
+  await ip.getByRole("button", { name: "Log in" }).click();
+  await ip.waitForURL(BASE + "/");
+  check("invited admin logs in with the initial password", (await ip.locator("h1").textContent()) === "Dashboard");
+  check("general admin does not see Admin Users in the sidebar", (await ip.getByRole("link", { name: "Admin Users", exact: true }).count()) === 0);
+  await ictx.close();
+}
+await page.reload({ waitUntil: "networkidle" });
+check("first login turned the account Active", (await page.locator(".badge").allTextContents()).includes("Active"));
+
+// Account page: password section + 2FA enrolment shows a QR code
+await page.goto(BASE + "/account", { waitUntil: "networkidle" });
+check("account page shows the profile", (await page.textContent("body")).includes("kuromaru"));
+await page.getByRole("button", { name: "Set up an authenticator app" }).click();
+await page.locator("img[alt='QR code for the authenticator app']").waitFor({ timeout: 8000 });
+check("2FA setup renders a QR code and the manual key", (await page.textContent("body")).includes("Manual entry key"));
+await page.screenshot({ path: `${OUT}/account-2fa-en.png` });
+await page.getByRole("button", { name: "Cancel" }).click();
+
+// Audit log: the actions above are recorded; detail shows the diff
+await page.goto(BASE + "/audit-logs", { waitUntil: "networkidle" });
+const auditBody = await page.textContent("body");
+check("audit log lists login, invite and deposit entries", auditBody.includes("Logged in") && auditBody.includes("Invited admin") && auditBody.includes("Reconciled deposit"));
+await page.selectOption("select:near(:text('Action'))", "payment.deposit");
+await page.waitForURL(/action=payment.deposit/);
+await page.waitForTimeout(400);
+check("audit filter by action narrows the list", (await page.locator("tbody tr").count()) >= 2 && !(await page.locator("tbody").textContent()).includes("Invited admin"));
+await page.locator("tbody tr").first().click();
+await page.waitForURL(/\/audit-logs\/[a-z0-9_]+$/);
+check("audit detail shows before / after values", (await page.textContent("body")).includes("Before") && (await page.textContent("body")).includes("awaiting_transfer"));
+await page.screenshot({ path: `${OUT}/audit-log-detail-en.png` });
+
+// General role (separate session): read-only transaction actions, no admin menu
+{
+  const gctx = await browser.newContext({ locale: "en-US", extraHTTPHeaders: { "x-forwarded-for": "198.51.100.43" } });
+  const gp = await gctx.newPage();
+  await gp.goto(BASE + "/login", { waitUntil: "networkidle" });
+  await gp.fill("#loginId", "general");
+  await gp.fill("#password", GENERAL_PASSWORD);
+  await gp.getByRole("button", { name: "Log in" }).click();
+  await gp.waitForURL(BASE + "/");
+  check("general role sees 8 cards (no Admin Users)", (await gp.locator("main ul[aria-label] > li > a").count()) === 8);
+  await gp.goto(BASE + "/applications/pay_demo_003", { waitUntil: "networkidle" });
+  check("general role: Mark completed disabled with hint", await gp.getByRole("button", { name: "Mark completed" }).isDisabled());
+  const res = await gp.goto(BASE + "/admins", { waitUntil: "networkidle" });
+  check("general role is redirected away from /admins", !gp.url().endsWith("/admins"), gp.url());
+  await gctx.close();
+}
+
 // Manual
 await page.goto(BASE + "/manual", { waitUntil: "networkidle" });
 check("/manual redirects to the first chapter", page.url().endsWith("/manual/intro"));
-check("manual TOC lists 8 chapters", (await page.locator("nav ol > li").count()) === 8);
+check("manual TOC lists 9 chapters", (await page.locator("nav ol > li").count()) === 9);
 check("manual renders a heading", (await page.locator("article h2").count()) >= 1);
 await page.goto(BASE + "/manual/ip-restrictions", { waitUntil: "networkidle" });
-check("chapter label shows 7 of 8", (await page.getByText("Chapter 7 of 8").count()) === 1);
+check("chapter label shows 7 of 9", (await page.getByText("Chapter 7 of 9").count()) === 1);
 await page.screenshot({ path: `${OUT}/manual-en.png` });
 // Language switch flips the manual body
 await page.getByRole("button", { name: "日本語" }).click();
