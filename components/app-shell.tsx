@@ -12,6 +12,7 @@ import { WirePayIcon } from "./wire-pay-icon";
 import { LanguageToggle } from "./language-toggle";
 import { SearchBox } from "./search-box";
 import { ModeToggle } from "./mode-provider";
+import { AnnouncementBanner, type BannerItem } from "./announcement-banner";
 import { ConfirmProvider } from "./confirm-dialog";
 import { ToastProvider } from "./toast";
 import { Icon, type IconName } from "./icons";
@@ -20,7 +21,7 @@ import { useSession } from "./session-provider";
 import { MOBILE_TABS, visibleNavGroups } from "@/lib/nav";
 import type { MessageKey } from "@/lib/i18n";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, banner = [] }: { children: React.ReactNode; banner?: BannerItem[] }) {
   const t = useT();
   const { isMaster } = useSession();
   const groups = visibleNavGroups(isMaster);
@@ -29,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <ConfirmProvider>
       <ToastProvider>
         <div className="flex min-h-screen flex-col">
+          <AnnouncementBanner items={banner} />
           <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur md:px-6">
             <Link href="/" className="flex shrink-0 items-center gap-2 md:invisible md:w-0" aria-label="Wire Pay">
               <WirePayIcon className="h-7 w-7 shrink-0 rounded-md shadow-sm" />

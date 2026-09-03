@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { notifyAdminInvite } from "@/lib/email/hooks";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { requireMaster } from "@/lib/api/role-guard";
 import { validateAdminCreate } from "@/lib/admin/schema";
@@ -52,6 +53,8 @@ export const POST = withApiHandler(async (req) => {
       await recordAudit(tx, { actor: { type: "admin", id: actor.id }, ip: requestIp(req) }, { action: "admin.create", targetType: "admin_user", targetId: row.id, after: row });
       return row;
     });
+    // Invitation email (demo: logged, not sent) with the same initial password shown in the UI.
+    await notifyAdminInvite(prisma, { email: created.email, loginId: created.loginId, initialPassword, loginUrl: `${new URL(req.url).origin}/login`, lang: req.headers.get("x-lang") === "en" ? "en" : "ja" });
     return ok({ admin: toAdminView(created), initialPassword }, { status: 201 });
   } catch (err) {
     if (isUniqueViolation(err)) {

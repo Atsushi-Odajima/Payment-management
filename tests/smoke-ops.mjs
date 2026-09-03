@@ -202,6 +202,46 @@ async function login(loginId, password) {
   await ctx.close();
 }
 
+// ── Reports / emails / announcements (Phase G) ─────────────────────────
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  check("header banner shows the seeded maintenance announcement", (await page.locator("[role=region][aria-label='Announcement banner']").textContent()).includes("Maintenance"));
+  await page.goto(BASE + "/reports?granularity=custom&from=2026-08-01&to=2026-12-31", { waitUntil: "networkidle" });
+  check("reports: KPI tiles and charts rendered", (await page.locator("svg[role=img]").count()) >= 2 && (await page.textContent("body")).includes("Success rate"));
+  await page.screenshot({ path: `${OUT}/reports-en.png`, fullPage: true });
+
+  await page.goto(BASE + "/email-templates", { waitUntil: "networkidle" });
+  check("email templates: 12 rows", (await page.locator("tbody tr").count()) === 12);
+  await page.locator("tbody tr").first().getByRole("link").first().click();
+  await page.waitForURL(/\/email-templates\/[a-z0-9_]+$/);
+  await page.fill("#tpl-subject", "Smoke subject {{orderNumber}}");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByText("Template saved").waitFor({ timeout: 8000 });
+  check("email template saved with placeholder preview", (await page.textContent("body")).includes("Smoke subject ORD-DEMO-001"));
+
+  await page.goto(BASE + "/email-logs", { waitUntil: "networkidle" });
+  check("email log lists seeded + generated emails", (await page.locator("tbody tr").count()) >= 2);
+
+  await page.goto(BASE + "/announcements/new", { waitUntil: "networkidle" });
+  await page.selectOption("#an-kind", "incident");
+  await page.fill("#an-title", "Smoke incident");
+  await page.fill("#an-body", "Card authorizations are slow");
+  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await page.waitForURL(/\/announcements\/[a-z0-9_]+$/, { timeout: 10000 });
+  await page.getByText("Announcement published").waitFor({ timeout: 8000 });
+  await page.waitForTimeout(500);
+  check("incident published with an occurred entry", (await page.textContent("body")).includes("Occurred"));
+  await page.getByLabel("Update", { exact: true }).fill("Root cause found");
+  await page.getByLabel("Phase").selectOption("investigating");
+  await page.getByRole("button", { name: "Add update" }).click();
+  await page.getByText("Update added").waitFor({ timeout: 8000 });
+  await page.waitForTimeout(500);
+  check("incident timeline has the investigating update", (await page.textContent("body")).includes("Investigating"));
+  check("red incident banner visible", (await page.locator("[role=region][aria-label='Announcement banner']").textContent()).includes("Smoke incident"));
+  await page.screenshot({ path: `${OUT}/announcement-detail-en.png` });
+  await ctx.close();
+}
+
 check("no page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 200));
 await browser.close();
 const failed = results.filter((r) => !r.ok);
