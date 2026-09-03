@@ -8,6 +8,7 @@ import { isUniqueViolation } from "@/lib/ids";
 import { DEMO_LIMITS } from "@/lib/demo";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { checkLimit, limitFailureReason } from "@/lib/merchants/limits";
+import { emitPaymentWebhook } from "@/lib/webhooks/deliver";
 
 const CreateSchema = z.object({
   providerId: z.string().min(1),
@@ -147,6 +148,10 @@ export const POST = withApiHandler(async (req) => {
         targetId: payment.id,
         after: { ...payment, merchantId: body.merchantId ?? null, orderNumber: body.orderNumber, amount: body.amount, method, livemode },
       });
+      // Tell the merchant when their own limit stopped the checkout (Phase E).
+      if (status === "failed" && body.merchantId && !limit.ok) {
+        await emitPaymentWebhook(prisma, payment.id, "limit.exceeded", { status: `failed:${failureReason}` });
+      }
       return ok({ ...payment, replayed: false }, { status: 201 });
     } catch (err) {
       if (attempt === 0 && isBank && isUniqueViolation(err)) continue;

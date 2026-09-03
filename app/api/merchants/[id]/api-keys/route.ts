@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/api/role-guard";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { API_KEY_KINDS, API_KEY_MODES, API_KEY_SELECT, toApiKeyView } from "@/lib/merchants/api-keys";
 import { generateApiKey, hashApiKey } from "@/lib/merchants/api-keys-server";
+import { encryptSigningSecret } from "@/lib/merchants/secrets";
 import { DEMO_LIMITS } from "@/lib/demo";
 
 type Ctx = { params: { id: string } };
@@ -35,7 +36,16 @@ export const POST = withApiHandler<Ctx>(async (req, { params }) => {
   const audit = await auditContextFromRequest(req);
   const row = await prisma.$transaction(async (tx) => {
     const created = await tx.apiKey.create({
-      data: { merchantId: params.id, mode: body.mode, kind: body.kind, label: body.label || null, keyPrefix, keyHash: hashApiKey(plaintext) },
+      data: {
+        merchantId: params.id,
+        mode: body.mode,
+        kind: body.kind,
+        label: body.label || null,
+        keyPrefix,
+        keyHash: hashApiKey(plaintext),
+        // Signing secrets must stay recoverable to sign outbound webhooks (Phase E).
+        secretEnc: body.kind === "signing_secret" ? encryptSigningSecret(plaintext) : null,
+      },
       select: API_KEY_SELECT,
     });
     await recordAudit(tx, audit, { action: "api_key.issue", targetType: "api_key", targetId: created.id, after: { merchantId: params.id, mode: body.mode, kind: body.kind, keyPrefix, label: body.label ?? null } });
