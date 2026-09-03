@@ -13,9 +13,11 @@ const SELECT = {
   bankAccountNumber: true,
   bankAccountHolder: true,
   settlementFee: true,
+  invoiceNumber: true,
+  address: true,
 } as const;
 
-/** PATCH /api/merchants/:id/settlement — cycle, payout term, bank account, transfer fee. */
+/** PATCH /api/merchants/:id/settlement — cycle, payout term, bank account, transfer fee, invoice number / address (K-3). */
 export const PATCH = withApiHandler<{ params: { id: string } }>(async (req, { params }) => {
   await requirePermission(req, "merchant_contract", "update");
   const parsed = settlementSettingsSchema.safeParse(await readJson(req));
@@ -34,6 +36,8 @@ export const PATCH = withApiHandler<{ params: { id: string } }>(async (req, { pa
     bankAccountNumber: d.bankAccountNumber || null,
     bankAccountHolder: d.bankAccountHolder || null,
     settlementFee: d.settlementFee,
+    invoiceNumber: d.invoiceNumber || null,
+    address: d.address || null,
   };
   const audit = await auditContextFromRequest(req);
   const after = await prisma.$transaction(async (tx) => {

@@ -34,6 +34,13 @@ describe("bank transfer helpers", () => {
     expect(isTransferOverdue({ status: "awaiting_transfer", transferDueAt: new Date("2026-09-03T00:00:00Z") }, now)).toBe(false);
     expect(isTransferOverdue({ status: "captured", transferDueAt: new Date("2026-09-01T00:00:00Z") }, now)).toBe(false);
     expect(isTransferOverdue({ status: "awaiting_transfer", transferDueAt: null }, now)).toBe(false);
+    // Konbini slips (Phase K) reuse the deadline column while pending.
+    expect(isTransferOverdue({ status: "pending", transferDueAt: new Date("2026-09-01T00:00:00Z") }, now)).toBe(true);
+  });
+
+  it("keeps a short konbini payment pending instead of awaiting_transfer", () => {
+    expect(reconcileDeposit(10000, 0, 4000, "pending")).toEqual({ total: 4000, status: "pending", diff: "short" });
+    expect(reconcileDeposit(10000, 0, 10000, "pending")).toEqual({ total: 10000, status: "captured", diff: null });
   });
 
   it("reconciles deposits: short stays awaiting, exact completes, excess completes with a flag", () => {

@@ -34,10 +34,13 @@ export interface TransactionListItem {
   transferDueAt: Date | null;
   depositAmount: number | null;
   depositDiff: DepositDiff | null;
+  /** Konbini (Phase K-1): store brand and 13-digit receipt number; null for other methods. */
+  cvsBrand: string | null;
+  cvsReceiptNo: string | null;
   /** Number of pinned internal notes (Phase I-2). */
   pinnedNotes: number;
   failureReason: string | null;
-  /** awaiting_transfer with a deadline in the past. */
+  /** awaiting_transfer / pending konbini slip with a deadline in the past. */
   overdue: boolean;
 }
 
@@ -96,6 +99,8 @@ export const TRANSACTION_SELECT = {
   transferDueAt: true,
   depositAmount: true,
   depositDiff: true,
+  cvsBrand: true,
+  cvsReceiptNo: true,
   failureReason: true,
   provider: { select: { providerKey: true, displayName: true, category: true } },
   merchant: { select: { id: true, merchantCode: true, siteName: true } },
@@ -120,6 +125,8 @@ type Row = {
   transferDueAt: Date | null;
   depositAmount: number | null;
   depositDiff: string | null;
+  cvsBrand?: string | null;
+  cvsReceiptNo?: string | null;
   notes?: { id: string }[];
   failureReason: string | null;
   provider: { providerKey: string; displayName: string; category: string };
@@ -148,20 +155,27 @@ export function toTransactionListItem(p: Row, now: Date): TransactionListItem {
     transferDueAt: p.transferDueAt,
     depositAmount: p.depositAmount,
     depositDiff: isDepositDiff(p.depositDiff) ? p.depositDiff : null,
+    cvsBrand: p.cvsBrand ?? null,
+    cvsReceiptNo: p.cvsReceiptNo ?? null,
     pinnedNotes: p.notes?.length ?? 0,
     failureReason: p.failureReason,
     overdue: isTransferOverdue(p, now),
   };
 }
 
+/** Bank transfers awaiting a deposit and konbini slips awaiting payment (Phase K) share the "waiting" lane. */
+function waitingForPayment(p: TransactionListItem): boolean {
+  return p.transferDueAt !== null && (p.status === "awaiting_transfer" || (p.status === "pending" && p.cvsReceiptNo !== null));
+}
+
 /**
- * Ordering for the application list: transfers still awaited come first,
- * nearest deadline on top (overdue ones therefore at the very top), then
- * everything else newest first.
+ * Ordering for the application list: transfers / konbini slips still awaited
+ * come first, nearest deadline on top (overdue ones therefore at the very
+ * top), then everything else newest first.
  */
 export function compareApplications(a: TransactionListItem, b: TransactionListItem): number {
-  const aWait = a.status === "awaiting_transfer" && a.transferDueAt ? 0 : 1;
-  const bWait = b.status === "awaiting_transfer" && b.transferDueAt ? 0 : 1;
+  const aWait = waitingForPayment(a) ? 0 : 1;
+  const bWait = waitingForPayment(b) ? 0 : 1;
   if (aWait !== bWait) return aWait - bWait;
   if (aWait === 0) return a.transferDueAt!.getTime() - b.transferDueAt!.getTime();
   return b.createdAt.getTime() - a.createdAt.getTime();

@@ -10,6 +10,8 @@ export const MANUAL_CHAPTERS = [
   "agents",
   "payments",
   "applications",
+  "konbini",
+  "receipts",
   "refunds",
   "settlements",
   "webhooks",

@@ -214,7 +214,7 @@ async function login(loginId, password) {
   await page.screenshot({ path: `${OUT}/reports-en.png`, fullPage: true });
 
   await page.goto(BASE + "/email-templates", { waitUntil: "networkidle" });
-  check("email templates: 18 rows", (await page.locator("tbody tr").count()) === 18);
+  check("email templates: 20 rows", (await page.locator("tbody tr").count()) === 20);
   await page.locator("tbody tr").first().getByRole("link").first().click();
   await page.waitForURL(/\/email-templates\/[a-z0-9_]+$/);
   await page.fill("#tpl-subject", "Smoke subject {{orderNumber}}");
@@ -443,6 +443,83 @@ async function login(loginId, password) {
   await page.getByText("Global settings saved").waitFor({ timeout: 8000 });
   await page.goto(BASE + "/notifications/settings", { waitUntil: "networkidle" });
   check("settings: Slack column enabled once configured", await page.getByLabel("Slack: Settlement generated").isEnabled());
+  await ctx.close();
+}
+
+// ── Phase K: konbini, receipts, invoices ───────────────────────────────
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  await page.goto(BASE + "/applications", { waitUntil: "networkidle" });
+  const appsBody = await page.textContent("body");
+  check("applications: konbini slip listed as awaiting payment with its receipt number", appsBody.includes("Awaiting payment") && appsBody.includes("4102-9938-27716"));
+  await page.getByText("ORD-DEMO-014").first().click();
+  await page.waitForURL(/\/applications\/[a-z0-9_]+$/);
+  const cvsBody = await page.textContent("body");
+  check("konbini detail: store, receipt number and deadline", cvsBody.includes("Konbini payment") && cvsBody.includes("Lawson") && cvsBody.includes("4102-9938-27716"));
+  await page.screenshot({ path: `${OUT}/konbini-detail-en.png`, fullPage: true });
+
+  // Receipt already issued for ORD-DEMO-015 (seed) → PDF served; issue a new one for ORD-DEMO-001.
+  await page.goto(BASE + "/payments", { waitUntil: "networkidle" });
+  await page.getByText("ORD-DEMO-015").first().click();
+  await page.waitForURL(/\/payments\/[a-z0-9_]+$/);
+  check("receipt card shows the seeded receipt number", /RC-\d{6}-00001/.test(await page.textContent("body")));
+  const pdf15 = await page.request.get(page.url().replace(/\/payments\//, "/api/payments/") + "/receipt");
+  check("receipt PDF is served for the seeded receipt", pdf15.status() === 200 && (pdf15.headers()["content-type"] ?? "").includes("application/pdf"));
+  await page.goto(BASE + "/payments", { waitUntil: "networkidle" });
+  await page.getByText("ORD-DEMO-001").first().click();
+  await page.waitForURL(/\/payments\/[a-z0-9_]+$/);
+  await page.getByRole("button", { name: "Issue receipt" }).click();
+  const rdialog = page.locator("dialog[open]");
+  await rdialog.locator("#receipt-recipient").fill("Smoke Test Co.");
+  await rdialog.getByRole("button", { name: "Issue receipt" }).click();
+  await page.getByText(/Receipt RC-\d{6}-\d{5} issued/).waitFor({ timeout: 8000 });
+  check("receipt issued from the transaction detail", true);
+  await page.waitForTimeout(600);
+  check("receipt card shows the addressee and the re-issue button", (await page.textContent("body")).includes("Smoke Test Co.") && (await page.getByRole("button", { name: "Re-issue" }).count()) === 1);
+  await page.screenshot({ path: `${OUT}/receipt-card-en.png`, fullPage: true });
+
+  // Invoice PDF: confirmed batches only, from the settlement detail.
+  await page.goto(BASE + "/settlements", { waitUntil: "networkidle" });
+  await page.locator("tbody tr").first().click();
+  await page.waitForURL(/\/settlements\/[a-z0-9_]+$/, { timeout: 10000 });
+  await page.waitForLoadState("networkidle");
+  const settlementBody = await page.textContent("body");
+  check("settlement detail shows the invoice card and tax categories", settlementBody.includes("Invoice PDF") && settlementBody.includes("10%"));
+  const invoiceRes = await page.request.get(page.url().replace(/\/settlements\//, "/api/settlements/") + "/invoice");
+  check("invoice PDF served (confirmed) or refused (collecting)", (invoiceRes.status() === 200 && (invoiceRes.headers()["content-type"] ?? "").includes("application/pdf")) || invoiceRes.status() === 409, `status ${invoiceRes.status()}`);
+
+  // Global settings: issuer registration number validation.
+  await page.goto(BASE + "/global-settings", { waitUntil: "networkidle" });
+  await page.fill("#gs-issuer-reg", "T123");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByText("Enter T followed by 13 digits").waitFor({ timeout: 8000 });
+  check("global settings: invalid registration number rejected", true);
+  await page.fill("#gs-issuer-reg", "T9876543210987");
+  await page.selectOption("#gs-rounding", "round");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByText("Global settings saved").waitFor({ timeout: 8000 });
+  check("global settings: issuer details and rounding saved", true);
+  await page.screenshot({ path: `${OUT}/global-settings-invoice-en.png`, fullPage: true });
+  await ctx.close();
+}
+{
+  // Customer side: complete a payment-link checkout and download the receipt with the signed link (no admin session).
+  const ctx = await browser.newContext({ viewport: { width: 480, height: 900 }, locale: "en-US" });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => pageErrors.push(e.message));
+  await page.goto(BASE + "/pay/kotoridemolinktoken00001", { waitUntil: "networkidle" });
+  await page.fill("#pay-name", "Smoke Buyer");
+  await page.getByRole("button", { name: /^Pay / }).click();
+  await page.getByRole("button", { name: "Complete payment (demo)" }).click();
+  await page.getByText("Payment completed").waitFor({ timeout: 8000 });
+  const receiptLink = page.getByRole("link", { name: "Download receipt (PDF)" });
+  check("hosted page offers the receipt download after completion", (await receiptLink.count()) === 1);
+  const href = await receiptLink.getAttribute("href");
+  const customerPdf = await page.request.get(BASE + href);
+  check("customer receipt PDF served through the signed link", customerPdf.status() === 200 && (customerPdf.headers()["content-type"] ?? "").includes("application/pdf"));
+  const tampered = await page.request.get(BASE + href.replace(/&s=[^&]+$/, "&s=tampered"));
+  check("tampered receipt link refused", tampered.status() === 403);
+  await page.screenshot({ path: `${OUT}/pay-receipt-en.png`, fullPage: true });
   await ctx.close();
 }
 

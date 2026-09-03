@@ -185,7 +185,8 @@ describe("transaction lists", () => {
       order: "applications",
       now: NOW,
     });
-    expect(apps.items.map((i) => i.id)).toEqual([SEED_IDS.payment5, SEED_IDS.payment4, SEED_IDS.payment3, SEED_IDS.payment6]);
+    // The konbini slip (payment14, due in 2 days) shares the deadline lane with the awaiting transfers.
+    expect(apps.items.map((i) => i.id)).toEqual([SEED_IDS.payment5, SEED_IDS.payment14, SEED_IDS.payment4, SEED_IDS.payment3, SEED_IDS.payment6]);
     expect(apps.items[0].overdue).toBe(true);
     expect(apps.items[1].overdue).toBe(false);
 
@@ -197,7 +198,7 @@ describe("transaction lists", () => {
       order: "sales",
       now: NOW,
     });
-    expect(sales.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment1, SEED_IDS.payment2, SEED_IDS.payment7, SEED_IDS.payment12, SEED_IDS.payment13].sort());
+    expect(sales.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment1, SEED_IDS.payment2, SEED_IDS.payment7, SEED_IDS.payment12, SEED_IDS.payment13, SEED_IDS.payment15].sort());
   });
 
   it("filters by method, merchant and period", async () => {

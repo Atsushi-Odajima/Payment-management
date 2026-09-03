@@ -19,7 +19,7 @@ import {
 // The full legal matrix, written out so a change to TRANSITIONS is a
 // deliberate, reviewed change.
 const LEGAL: Record<PaymentStatus, PaymentAction[]> = {
-  pending: ["capture", "cancel", "fail", "expire"],
+  pending: ["capture", "cancel", "fail", "expire", "deposit"],
   awaiting_transfer: ["capture", "cancel", "fail", "expire", "deposit"],
   authorized: ["capture", "cancel", "fail"],
   captured: ["refund", "chargeback"],

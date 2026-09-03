@@ -9,19 +9,23 @@ type Ctx = { params: { id: string } };
 
 const Body = z.object({
   transferDueDays: z.number().int().min(TERMS_LIMITS.transferDueDays.min).max(TERMS_LIMITS.transferDueDays.max),
+  cvsDueDays: z.number().int().min(TERMS_LIMITS.cvsDueDays.min).max(TERMS_LIMITS.cvsDueDays.max).optional(),
   refundWindowDays: z.number().int().min(TERMS_LIMITS.refundWindowDays.min).max(TERMS_LIMITS.refundWindowDays.max),
 });
 
-/** PATCH /api/merchants/:id/terms — transfer deadline days and refund window days (B-3). */
+const SELECT = { transferDueDays: true, cvsDueDays: true, refundWindowDays: true } as const;
+
+/** PATCH /api/merchants/:id/terms — transfer / konbini deadline days and refund window days (B-3, K-1). */
 export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
   await requirePermission(req, "merchant_contract", "update");
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: Object.fromEntries(parsed.error.issues.map((i) => [i.path.join("."), "range"])) });
-  const existing = await prisma.merchant.findUnique({ where: { id: params.id }, select: { transferDueDays: true, refundWindowDays: true } });
+  const existing = await prisma.merchant.findUnique({ where: { id: params.id }, select: SELECT });
   if (!existing) throw new ApiError(404, "not_found", "errors.notFound");
   const audit = await auditContextFromRequest(req);
+  const data = { ...parsed.data, cvsDueDays: parsed.data.cvsDueDays ?? existing.cvsDueDays };
   const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.merchant.update({ where: { id: params.id }, data: parsed.data, select: { transferDueDays: true, refundWindowDays: true } });
+    const row = await tx.merchant.update({ where: { id: params.id }, data, select: SELECT });
     await recordAudit(tx, audit, { action: "merchant.terms_update", targetType: "merchant", targetId: params.id, before: existing, after: row });
     return row;
   });

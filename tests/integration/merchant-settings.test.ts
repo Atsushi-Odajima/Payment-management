@@ -139,7 +139,7 @@ describe("transfer deadline and refund window", () => {
 
     const res = await read(await patchTerms(json(`/api/merchants/${m2}/terms`, "PATCH", { transferDueDays: 10, refundWindowDays: 30 }, ADMIN), ctx(m2)));
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ transferDueDays: 10, refundWindowDays: 30 });
+    expect(res.body.data).toEqual({ transferDueDays: 10, cvsDueDays: 3, refundWindowDays: 30 });
     expect(await prisma.auditLog.count({ where: { action: "merchant.terms_update", targetId: m2 } })).toBe(1);
 
     const created = await create({ providerId: SEED_IDS.bankProvider, merchantId: m2, amount: 5000 });
@@ -234,13 +234,13 @@ describe("API keys", () => {
 describe("transfer expiry cron", () => {
   it("expires overdue bank transfers as actor cron and audits each", async () => {
     // Make every awaiting transfer overdue; seed dates are relative to NOW and may not be yet.
-    await prisma.payment.updateMany({ where: { status: "awaiting_transfer" }, data: { transferDueAt: new Date("2026-01-01T00:00:00Z") } });
+    await prisma.payment.updateMany({ where: { OR: [{ status: "awaiting_transfer" }, { status: "pending", cvsReceiptNo: { not: null } }] }, data: { transferDueAt: new Date("2026-01-01T00:00:00Z") } });
     const result = await expireOverdueTransfers();
-    expect(result).toEqual({ expired: 4, skipped: 0 }); // payment4, payment5 and the live payment9 / payment10
-    const rows = await prisma.payment.findMany({ where: { id: { in: [SEED_IDS.payment4, SEED_IDS.payment5, SEED_IDS.payment9, SEED_IDS.payment10] } }, select: { status: true } });
+    expect(result).toEqual({ expired: 5, skipped: 0 }); // payment4, payment5, the live payment9 / payment10 and the konbini slip payment14
+    const rows = await prisma.payment.findMany({ where: { id: { in: [SEED_IDS.payment4, SEED_IDS.payment5, SEED_IDS.payment9, SEED_IDS.payment10, SEED_IDS.payment14] } }, select: { status: true } });
     expect(rows.every((r) => r.status === "expired")).toBe(true);
-    expect(await prisma.auditLog.count({ where: { action: "payment.expire", actorType: "cron" } })).toBe(4);
-    expect(await prisma.paymentEvent.count({ where: { type: "expire", actor: "system" } })).toBe(4);
+    expect(await prisma.auditLog.count({ where: { action: "payment.expire", actorType: "cron" } })).toBe(5);
+    expect(await prisma.paymentEvent.count({ where: { type: "expire", actor: "system" } })).toBe(5);
     expect(await expireOverdueTransfers()).toEqual({ expired: 0, skipped: 0 });
   });
 
@@ -259,7 +259,7 @@ describe("transfer expiry cron", () => {
 describe("test / live mode", () => {
   it("lists only the selected mode's transactions", async () => {
     const test = await loadTransactions({ allowedStatuses: SALES_STATUSES, filters: parseTransactionFilters({}, SALES_STATUSES, "test"), page: 1, pageSize: 50, order: "sales", now: NOW });
-    expect(test.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment1, SEED_IDS.payment2, SEED_IDS.payment7, SEED_IDS.payment12, SEED_IDS.payment13].sort());
+    expect(test.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment1, SEED_IDS.payment2, SEED_IDS.payment7, SEED_IDS.payment12, SEED_IDS.payment13, SEED_IDS.payment15].sort());
     const live = await loadTransactions({ allowedStatuses: SALES_STATUSES, filters: parseTransactionFilters({}, SALES_STATUSES, "live"), page: 1, pageSize: 50, order: "sales", now: NOW });
     expect(live.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment8, SEED_IDS.payment11].sort());
     const liveOpen = await loadTransactions({ allowedStatuses: APPLICATION_STATUSES, filters: parseTransactionFilters({}, APPLICATION_STATUSES, "live"), page: 1, pageSize: 50, order: "applications", now: NOW });

@@ -22,7 +22,7 @@ Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Ve
 | `SESSION_SECRET` | 任意 | セッション Cookie の HMAC 鍵。未設定時は `ENCRYPTION_KEY` を流用 |
 | `DEMO_READONLY` | 任意 | `1` で DELETE とプロバイダの PATCH を 403 に（デモ荒らし対策） |
 | `CRON_SECRET` | 本番は ✅ | 設定すると `/api/demo/reset` と `/api/cron/*`（下表）が `Authorization: Bearer <CRON_SECRET>` で有効になる。Vercel Cron はこのヘッダーを自動で付ける。未設定だと cron 系はすべて 404 になり、**振込期限切れ・Webhook 再送・定期課金の課金が動かない** |
-| `DEPOSIT_NOTIFY_SECRET` | 任意 | `POST /api/demo/deposit-notify`（銀行の入金通知を模した消込 API）の Bearer トークン。未設定時は本番で 404、開発では認証なし |
+| `DEPOSIT_NOTIFY_SECRET` | 任意 | `POST /api/demo/deposit-notify`（銀行の入金通知）と `POST /api/demo/cvs-notify`（コンビニの入金通知）の Bearer トークン。未設定時は本番で 404、開発では認証なし |
 | `APP_URL` | 本番は推奨 | 公開 URL（例 `https://wire-pay.example.com`）。加盟店の相対 `notifyUrl`（seed の `/api/demo/webhook-receiver`）を絶対 URL に解決する。未設定時は `VERCEL_PROJECT_PRODUCTION_URL` → `VERCEL_URL` → `http://localhost:3000` |
 | `EMAIL_PROVIDER` | 任意 | `log`（既定。送信せず `EmailLog` に「デモ」として記録）/ `console`（記録 + 標準出力）。実サービスは `lib/email/send.ts` に `EmailProvider` を追加する |
 | `EMAIL_DEFAULT_LANG` | 任意 | 顧客向けメール（振込案内・決済完了・返金完了・追加入金案内・定期課金）の言語。`ja`（既定）/ `en` |
