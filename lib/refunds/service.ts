@@ -6,6 +6,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { ApiError } from "@/lib/api/handler";
 import { can, type Role } from "@/lib/role";
+import { emitNotification } from "@/lib/notifications/emit";
 import { recordAudit, type AuditContext } from "@/lib/audit";
 import { applyPaymentAction } from "@/lib/payments/actions";
 import { PENDING_REFUND_STATUSES, type RefundRequestInput } from "./types";
@@ -100,6 +101,7 @@ export async function createRefundRequest(
       targetId: row.id,
       after: { paymentId: payment.id, amount: input.amount, kind, reasonCode: input.reasonCode, reason: input.reason || null, forced },
     });
+    await emitNotification(tx, { kind: "refund.requested", title: `Refund requested: ¥${input.amount.toLocaleString("en-US")}`, body: `${kind} refund (${input.reasonCode}) awaiting a decision.`, href: `/refunds/${row.id}`, roles: ["admin", "accounting"], targetType: "refund", targetId: row.id });
     return row;
   });
 }

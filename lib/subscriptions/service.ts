@@ -11,6 +11,7 @@ import { ApiError } from "@/lib/api/handler";
 import { recordAudit, systemAuditContext, type AuditContext } from "@/lib/audit";
 import { notifySubscriptionFailed, notifySubscriptionSuspended } from "@/lib/email/hooks";
 import { createTransaction } from "@/lib/payments/create";
+import { emitNotification } from "@/lib/notifications/emit";
 import { emitPaymentWebhook } from "@/lib/webhooks/deliver";
 import { RISK_SETTINGS_ID } from "@/lib/risk/types";
 import { MAX_CHARGE_FAILURES, RETRY_DAYS, addInterval, isPlanInterval, type PlanInput, type SubscriptionAction, type SubscriptionInput } from "./types";
@@ -223,6 +224,7 @@ async function recordFailure(
   if (paymentId) await emitPaymentWebhook(db, paymentId, suspended ? "subscription.suspended" : "subscription.payment_failed", { status });
   if (suspended) await notifySubscriptionSuspended(db, sub.id);
   else await notifySubscriptionFailed(db, sub.id, next!);
+  await emitNotification(db, { kind: "subscription.payment_failed", severity: suspended ? "critical" : "warning", title: suspended ? `Subscription suspended: ${sub.customerName}` : `Subscription payment failed: ${sub.customerName}`, body: suspended ? `${sub.plan.name}: three consecutive failures, the subscription is suspended.` : `${sub.plan.name}: failure ${failCount}, retry scheduled for ${next!.toISOString().slice(0, 10)}.`, href: `/subscriptions/${sub.id}`, roles: ["admin", "accounting", "cs"], targetType: "subscription", targetId: `${sub.id}:${failCount}`, now });
   return { subscriptionId: sub.id, paymentId, ok: false, status, nextChargeAt: next };
 }
 

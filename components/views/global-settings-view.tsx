@@ -16,12 +16,25 @@ export function GlobalSettingsView({ settings }: { settings: GlobalSettingsInput
   const apiJson = useApiJson();
   const toast = useToast();
   const [viewerCsvExport, setViewerCsvExport] = useState(settings.viewerCsvExport);
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState(settings.slackWebhookUrl);
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  async function testSlack() {
+    setTesting(true);
+    const res = await apiJson<{ status: string; error: string | null }>("/api/global-settings/slack-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: slackWebhookUrl }) });
+    setTesting(false);
+    if (!res.ok) {
+      toast.show(res.error.message, "error");
+      return;
+    }
+    toast.show(res.data.status === "failed" ? t("globalSettings.slackTestFailed", { error: res.data.error ?? "" }) : t("globalSettings.slackTestOk", { status: res.data.status }), res.data.status === "failed" ? "error" : undefined);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const res = await apiJson("/api/global-settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ viewerCsvExport }) });
+    const res = await apiJson("/api/global-settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ viewerCsvExport, slackWebhookUrl }) });
     setBusy(false);
     if (!res.ok) {
       toast.show(res.error.message, "error");
@@ -44,6 +57,19 @@ export function GlobalSettingsView({ settings }: { settings: GlobalSettingsInput
               <span className="block text-xs text-slate-500">{t("globalSettings.viewerCsvExportHelp")}</span>
             </span>
           </label>
+        </fieldset>
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-semibold text-slate-800">{t("globalSettings.sectionSlack")}</legend>
+          <label htmlFor="gs-slack" className="label">
+            {t("globalSettings.slackWebhookUrl")}
+          </label>
+          <div className="flex gap-2">
+            <input id="gs-slack" className="input font-mono text-xs" value={slackWebhookUrl} onChange={(e) => setSlackWebhookUrl(e.target.value)} placeholder="https://hooks.slack.com/services/..." maxLength={500} />
+            <button type="button" className="btn-secondary whitespace-nowrap" disabled={testing || !slackWebhookUrl} onClick={testSlack}>
+              {testing ? t("common.processing") : t("globalSettings.slackTest")}
+            </button>
+          </div>
+          <p className="text-xs text-slate-500">{slackWebhookUrl ? t("globalSettings.slackHelp") : t("globalSettings.slackMissing")}</p>
         </fieldset>
         <div className="flex justify-end">
           <button type="submit" className="btn-primary" disabled={busy}>
