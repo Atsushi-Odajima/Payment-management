@@ -1,24 +1,24 @@
-# Notification Spec
+# Notification parameter specification
 
-When a payment result is final, Wire Pay sends a request to the merchant's **notification URL**. Three per-merchant settings determine what is sent. The merchant add / detail screens show a **live sample of the exact request**.
+Whenever a transaction, refund, chargeback or subscription changes state, Wire Pay sends a request (webhook) to the merchant's **notification URL**. Three per-merchant settings decide what is sent. The merchant add / detail screens (Notifications tab) show a **live sample of the exact request**. Delivery records and resends are covered in [Webhook delivery log](/manual/webhooks).
 
-## 1. Notification format (transport)
+## 1. Format (transport)
 
-| Setting | Method | Content-Type | Where parameters go |
-|---|---|---|---|
-| JSON (POST) | POST | `application/json` | JSON body |
-| form-urlencoded (POST) | POST | `application/x-www-form-urlencoded` | body |
-| Query parameters (GET) | GET | none | URL query string |
+| Setting | Method | Content-Type | Where the parameters go | Signed payload |
+|---|---|---|---|---|
+| JSON (POST) | POST | `application/json` | JSON body (`amount` is a number, everything else a string) | the raw request body |
+| form-urlencoded (POST) | POST | `application/x-www-form-urlencoded` | body | the raw request body |
+| Query parameters (GET) | GET | none | URL query string | the query string without the leading `?` |
 
 ## 2. Parameter set (cumulative)
 
 | Set | Parameters |
 |---|---|
-| Minimal | `merchant_id`, `amount`, `currency`, `paid_at`, `status` + identifiers |
+| Minimal | identifiers + `event`, `merchant_id`, `amount`, `currency`, `paid_at`, `status` |
 | Standard | Minimal + `payment_method`, `user_id`, `product_id` |
-| Full | Standard + `domain`, `transaction_id` (always, regardless of the identifier setting) |
+| Full | Standard + `domain`, `transaction_id` (regardless of the identifier setting) |
 
-## 3. Payment identifier
+## 3. Identifier format
 
 | Setting | Identifiers included |
 |---|---|
@@ -28,57 +28,100 @@ When a payment result is final, Wire Pay sends a request to the merchant's **not
 
 ## Parameters
 
+The order is fixed: identifiers → minimal → standard → full. Because the order matters for form / query signatures, receivers must sign **the body / query string exactly as received**, not a re-serialised copy.
+
 | Name | Type | Description |
 |---|---|---|
-| `payment_id` | string | Unique payment ID issued by Wire Pay (e.g. `pay_01J9X4M8K2Q7Z3T6`) |
-| `transaction_id` | string | Transaction ID on the PSP side |
+| `payment_id` | string | Wire Pay's unique transaction ID (e.g. `pay_01J9X4M8K2Q7Z3T6`) |
+| `transaction_id` | string | The PSP-side transaction ID; empty when not available yet |
+| `event` | string | Event name (table below). Branch on this first |
 | `merchant_id` | string | Merchant ID (`MER-00001`) |
-| `amount` | integer | Amount in yen. A number in JSON, a string otherwise |
-| `currency` | string | Currency code, always `JPY` |
-| `paid_at` | string | Payment time, ISO 8601 in JST (`2026-09-01T12:34:56+09:00`) |
-| `status` | string | `captured` / `refunded` / `partially_refunded` / `cancelled` / `failed` |
-| `payment_method` | string | `credit` / `qr` / `konbini` / `bank` / `other` |
-| `user_id` | string | Merchant-side user ID (passed when the payment was created) |
-| `product_id` | string | Product ID (passed when the payment was created) |
-| `domain` | string | Domain of the site where the payment happened |
+| `amount` | integer | Amount in yen. Number in JSON, string otherwise. Refund / chargeback notifications still carry the **transaction** amount |
+| `currency` | string | Always `JPY` |
+| `paid_at` | string | Completion time (last update for open transactions). ISO 8601 / UTC (`2026-09-01T03:34:56.000Z`) |
+| `status` | string | See the table below |
+| `payment_method` | string | `credit` / `qr` / `convenience` / `bank` / `other` |
+| `user_id` | string | The merchant's customer ID (`customerId` at creation; for payment links the e-mail or `guest_…`) |
+| `product_id` | string | Product name / ID (`productName` at creation) |
+| `domain` | string | Host name of the notification URL |
+
+### Events and `status` values
+
+| `event` | When | `status` |
+|---|---|---|
+| `payment.completed` | The transaction completed (manual capture, payment-link completion, exact / excess deposit, auto-capture from the merchant site) | `captured` |
+| `payment.failed` | The transaction failed | `failed` |
+| `payment.expired` | Expired after the transfer deadline (including the hourly job) | `expired` |
+| `payment.cancelled` | The transaction was cancelled (voided) | `cancelled` |
+| `refund.completed` | A refund was approved and completed (including the legacy direct refund API) | `partially_refunded` / `refunded` |
+| `limit.exceeded` | A transaction was recorded as failed because a merchant limit was exceeded | `failed:limit_exceeded:<per_transaction / daily / monthly>` |
+| `chargeback.opened` | A chargeback was registered | the transaction's current status |
+| `subscription.charged` | A subscription charge succeeded (`payment_id` is the charge transaction) | `captured` |
+| `subscription.payment_failed` | A subscription charge failed and a retry is scheduled | `past_due` |
+| `subscription.suspended` | The third failure suspended the subscription | `suspended` |
 
 ## Headers
 
-| Header | Value |
+| Header | Content |
 |---|---|
-| `Wirepay-Signature` | `t=<unix seconds>,v1=<signature>` (see below) |
+| `X-Timestamp` | Send time (UNIX seconds, as a string) |
+| `X-Signature` | `v1=<signature (64 hex characters)>` |
+| `Wirepay-Signature` | Compatibility: `t=<X-Timestamp>,v1=<same signature>` for receivers written against the first spec |
+| `Content-Type` | POST only (see above) |
 | `User-Agent` | `WirePay-Notify/1.0` |
 
 ## Verifying the signature
 
-`v1` is an **HMAC-SHA256** keyed with the **merchant password**.
-
 ```
-signed_payload = "<t>." + <request body>     # for GET: the query string without the leading ?
-v1 = hex( HMAC_SHA256( key = merchant password, message = signed_payload ) )
+signed_payload = "<X-Timestamp>" + "." + <signed payload>     # body, or the query string for GET
+v1 = hex( HMAC_SHA256( key = signing key, message = signed_payload ) )
 ```
 
-On the receiving side:
+The **signing key** is chosen in this order:
 
-1. Read `t` and `v1` from the header.
-2. Recompute `v1` the same way and compare in constant time.
-3. Reject if `t` differs from the current time by **more than 5 minutes** (replay protection).
+1. The merchant's **signing secret** (issued on the merchant detail → API keys tab, `wp_<test|live>_ss_…`): the newest one in the same mode (test / live) that is neither revoked nor expired
+2. The **merchant password** when the merchant has no signing secret
+
+Receiver steps:
+
+1. Read `X-Timestamp` and the `v1` value of `X-Signature`.
+2. Recompute `v1` over the **raw** body (or query string) without parsing it, and compare in **constant time**.
+3. Reject when `X-Timestamp` is more than **5 minutes** away from the current time (replay protection).
+4. On success, branch on `event` and `payment_id` and answer **2xx**.
+
+Node.js example:
+
+```js
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+export function verify(req, rawBody, secret) {
+  const ts = req.headers["x-timestamp"];
+  const v1 = String(req.headers["x-signature"] ?? "").replace(/^v1=/, "");
+  if (!ts || !v1 || Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;
+  const expected = createHmac("sha256", secret).update(`${ts}.${rawBody}`).digest("hex");
+  return expected.length === v1.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}
+```
 
 ## Retries and idempotency
 
-- On a non-2xx response or no response within 10 s, delivery is retried **up to 5 times** with exponential backoff.
-- A notification for the same `payment_id` (or `transaction_id`) **may arrive more than once**; process it idempotently.
+- A non-2xx response, or no response within **10 seconds**, is recorded as a failure and retried after **1 min → 5 min → 30 min → 2 h → 24 h**, five attempts at most. After the fifth failure the delivery is abandoned and can be resent manually from the dashboard.
+- The same `payment_id` + `event` **may arrive more than once** (retries, manual resends). Process notifications idempotently.
+- One transaction produces several events over time (e.g. `payment.completed` → `refund.completed`). Ordering is not guaranteed; decide from your own state and `event`, not from `paid_at` / `status`.
 
-## Sample (JSON / Standard / unique payment ID only)
+## Sample (JSON / standard / unique payment ID only)
 
 ```
 POST https://shop.example.jp/wirepay/notify
 Content-Type: application/json
+X-Timestamp: 1756697696
+X-Signature: v1=3f0c9c5d...
 Wirepay-Signature: t=1756697696,v1=3f0c9c5d...
 User-Agent: WirePay-Notify/1.0
 
 {
   "payment_id": "pay_01J9X4M8K2Q7Z3T6",
+  "event": "payment.completed",
   "merchant_id": "MER-00001",
   "amount": 4980,
   "currency": "JPY",
@@ -89,3 +132,5 @@ User-Agent: WirePay-Notify/1.0
   "product_id": "SKU-2026-0042"
 }
 ```
+
+In the demo the seeded merchants point at `/api/demo/webhook-receiver`; `?result=ok|error|timeout` switches its answer so the retry behaviour can be observed.

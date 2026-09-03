@@ -1,43 +1,48 @@
-# Admins, Audit Log & Search
+# Admin users, audit log and search
 
 This chapter covers the **admin accounts** that operate the dashboard, the **audit log** that records every change, and the **global search** in the header.
 
 ## Login and roles
 
-- Sign in with a **login ID and password**. Opening the top page shows the login screen; the session then lasts 12 hours.
-- The role belongs to the account (there is no toggle in the UI).
+- Login is **login ID + password**. The top page shows the login form; a session lasts 12 hours (the cookie is HMAC-signed and the server re-reads the user row on every request, so disabling an account takes effect immediately).
+- Roles (master / general) belong to the account; there is no switch in the UI. See the **permission matrix** in [Introduction](/manual/intro) for what each role may do. Master-only APIs answer 403 (`role_required`); anonymous mutations answer 401.
 
-| Feature | Master | General |
-|---|---|---|
-| View every screen | ✓ | ✓ |
-| Create / edit merchants, agents, IP rules | ✓ | ✓ |
-| Reveal / regenerate a merchant password | ✓ | ✗ |
-| Complete / fail / cancel / expire a transaction, reconcile deposits | ✓ | ✗ |
-| Refund | ✓ | ✓ |
-| Invite / edit admins, issue temporary passwords, reset two-factor | ✓ | ✗ |
-| View the audit log | ✓ | ✓ |
+## Admin management (Settings → Admin users, master only)
 
-## Admin Users (Settings → Admin Users, master only)
+- **Invite**: enter login ID, name, e-mail and role; the initial password is **shown once** (the e-mail is recorded in the e-mail log). The account is "Invited" until the person logs in for the first time, then "Active".
+- **Edit**: name, e-mail, role and active / disabled. The login ID cannot change. You cannot change your own role or status, and the **last active master** cannot be disabled or demoted.
+- **Reissue temporary password**: generates a new password for the user and shows it once.
+- **Reset two-factor**: removes two-factor for a user who lost their device; they can enrol again.
 
-- **Invite**: enter login ID, name, email and role; the initial password is **shown once** (the demo shows it instead of emailing it). The account starts as “Invited” and becomes “Active” on the first login.
-- **Edit**: name, email, role and active / disabled. The login ID cannot be changed. You cannot change your own role or status, and the **last active master** cannot be disabled or demoted.
-- **Issue temporary password**: generates a new password for the user, shown once.
-- **Reset two-factor**: turns two-factor off for a user who lost their device; they can enrol again.
-
-## Account settings (your name in the header → Account settings)
+## Account settings (your name → Account settings)
 
 - **Change password**: confirm the current password and set a new one of at least 8 characters.
-- **Two-factor authentication (TOTP, RFC 6238)**: “Set up an authenticator app” shows a QR code and a manual-entry key. Scan it with Google Authenticator or similar and enter the 6-digit code to enable it. Logins then ask for a code after the password (the code step expires after 5 minutes; a ±30 s clock skew is tolerated). Disabling requires the password again.
+- **Two-factor (TOTP / RFC 6238)**: "Register authenticator" shows a QR code and a manual key. Scan it with Google Authenticator or similar and enter the 6-digit code to enable. Later logins ask for the code after the password (the code step expires after 5 minutes; a ±30-second drift is tolerated). Disabling requires the password again.
 
-## Audit Log (Settings → Audit Log)
+## Audit log (Settings → Audit log)
 
-Every data change is recorded: who (an admin, or a system actor such as a webhook, the deposit notification or cron), when, which action, on what, from which IP, and the **before / after** values. Sensitive fields such as passwords and credentials are stored as `[redacted]`.
+Every data change is recorded **inside the same transaction**: who (an admin, or system / webhook / bank deposit notification / cron / seed), when, which action, on which record, from which IP, and the **before / after** values. Sensitive fields — passwords, credentials, API keys, signing secrets — are stored as `[redacted]`.
 
-- The list filters by actor, action, target type and period, sorts by column and exports to **CSV**.
-- Clicking a row opens the entry with the before / after values side by side; changed fields are highlighted.
+- The list filters by actor, action, target type and period, sorts by column and exports **CSV**.
+- Clicking a row opens the detail with before / after values side by side; changed fields are highlighted.
 
-Recorded actions: login / logout, password change, enabling / disabling two-factor, admin invitation / update / temporary password, merchant create / update / password regeneration, agent create / update, transaction create / complete / cancel / refund / fail / expire / deposit reconciliation, provider connect / update / delete, IP rule add / update / delete, demo reset.
+Recorded actions (values of the `action` column):
+
+| Area | Actions |
+|---|---|
+| Authentication / account | `auth.login`, `auth.logout`, `account.password_change`, `account.totp_enable`, `account.totp_disable` |
+| Admin users | `admin.create`, `admin.update`, `admin.password_reset`, `admin.totp_reset` |
+| Merchants | `merchant.create`, `merchant.update`, `merchant.password_regenerate`, `merchant.fee_update`, `merchant.limit_update`, `merchant.terms_update`, `merchant.settlement_update`, `api_key.issue`, `api_key.rotate`, `api_key.revoke` |
+| Agents | `agent.create`, `agent.update` |
+| Transactions | `payment.create`, `payment.capture`, `payment.cancel`, `payment.refund`, `payment.fail`, `payment.expire`, `payment.deposit`, `payment.chargeback`, `payment.deposit_diff_update` |
+| Refunds | `refund.request`, `refund.approve`, `refund.reject` |
+| Settlements | `settlement.generate`, `settlement.confirm`, `settlement.schedule`, `settlement.pay`, `settlement.hold`, `settlement.release`, `settlement.delete` |
+| Webhooks | `webhook.resend` |
+| Risk | `chargeback.create`, `chargeback.dispute`, `chargeback.resolve`, `chargeback.confirm`, `blacklist.create`, `blacklist.update`, `risk.settings_update` |
+| Notices | `email_template.update`, `announcement.create`, `announcement.update`, `announcement.publish`, `announcement.end`, `announcement.add_update` |
+| Subscriptions / payment links | `plan.create`, `plan.update`, `subscription.create`, `subscription.charge`, `subscription.pause`, `subscription.resume`, `subscription.cancel`, `payment_link.create`, `payment_link.disable` |
+| Settings | `provider.create`, `provider.update`, `provider.delete`, `ip_restriction.create`, `ip_restriction.update`, `ip_restriction.delete`, `demo.reset` |
 
 ## Global search
 
-Type at least 2 characters into the header search box (**Ctrl+K / Cmd+K** focuses it) to search transactions (transaction ID, order number, transfer ID, user ID, email, user name), merchants (ID, site name, company, email), agents (ID, name, company, email) and admins (master only) at once, grouped by category. Enter opens the full results page.
+Type two or more characters into the header search box (**Ctrl+K / Cmd+K** focuses it) to search transactions (ID, order number, transfer ID, customer ID, e-mail, customer name, last 4 card digits), merchants (ID, site name, company, e-mail), agents (ID, name, company, e-mail) and admins (master only) at once, grouped by category. Enter opens the full results page.

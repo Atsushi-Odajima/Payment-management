@@ -38,7 +38,7 @@ The detail screen opens in **read-only mode**. Press **Edit** (top right) to swi
 
 ## Tabs
 
-The detail screen has five tabs. **Basic** and **Notifications** open the merchant form via **Edit** (top right); the other tabs carry their own small forms.
+The detail screen has seven tabs. **Basic** and **Notifications** open the merchant form via **Edit** (top right); the other tabs carry their own small forms.
 
 | Tab | Contents |
 |---|---|
@@ -47,6 +47,8 @@ The detail screen has five tabs. **Basic** and **Notifications** open the mercha
 | Limits | Per-transaction / daily / monthly limits per payment method with today's and this month's usage |
 | API keys | API keys the merchant site uses to call the payment API, and signing secrets for notifications |
 | Notifications | Notification URL, format, parameter set, identifier and the sample request |
+| Settlement | Settlement cycle, payout term, bank account, settlement fee and this merchant's batches ([Settlements](/manual/settlements)) |
+| Webhook log | Recent notifications sent to this merchant and their results ([Webhook delivery log](/manual/webhooks)) |
 
 ## Contract & fees
 
@@ -82,3 +84,36 @@ Use `GET /api/merchant-api/ping` as a connectivity check: called with `Authoriza
 ## Test / live switch
 
 The **Test / Live** switch in the header selects the data mode used by Payments, Payment Applications, the dashboard and the limit usage cards (the choice is stored in a cookie). Each transaction snapshots its provider's mode when it is created, so live transactions never appear in test mode.
+
+## Merchant API reference
+
+Common rules of the **merchant API** (`/api/merchant-api/*`) that a merchant's site calls. No dashboard session is involved; requests are authenticated with an API key.
+
+| Item | Detail |
+|---|---|
+| Authentication | `Authorization: Bearer wp_<test or live>_ak_<32 chars>` (an API key; signing secrets `wp_…_ss_…` are for webhook verification only and are refused here) |
+| Key check | Looked up by SHA-256 hash; revoked and expired keys (end of the rotation grace period) are refused. A successful call stamps "last used" |
+| Mode | The key's mode (test / live) is the mode of the returned data |
+| IP restrictions | Requests matching the merchant's own [IP restriction](/manual/ip-restrictions) rules (target = merchant API, block) are refused |
+| Response shape | Success `{ "ok": true, "data": … }` / failure `{ "ok": false, "error": { "code", "message" } }`. `message` follows the `Accept-Language` or `x-lang` header |
+| Rate limit | Per IP; 429 (`rate_limited`) when exceeded |
+
+| Error | HTTP | Meaning |
+|---|---|---|
+| `invalid_api_key` | 401 | Header missing, malformed, unknown, revoked or expired |
+| `ip_blocked` | 403 | Matched a block rule for the merchant API |
+| `not_found` | 404 | Another merchant's resource, another mode, or an unknown ID |
+| `rate_limited` | 429 | Too many requests in a short time |
+
+| Endpoint | Purpose | Response `data` |
+|---|---|---|
+| `GET /api/merchant-api/ping` | Connectivity / key check | `{ merchantCode, siteName, mode, kind, keyPrefix, status }` |
+| `GET /api/merchant-api/settlements[?id=]` | Settlement batches / lines ([Settlements](/manual/settlements)) | list: `{ merchantCode, mode, settlements: [...] }` / one: `{ batch, lines }` |
+| `GET /api/merchant-api/announcements` | Announcements addressed to the merchant ([Announcements](/manual/announcements)) | `{ merchantCode, announcements: [ { id, kind, title, body, publishFrom, publishUntil, updates } ] }` |
+
+```
+curl https://<host>/api/merchant-api/ping \
+  -H 'Authorization: Bearer wp_test_ak_KotoriDemoTestKey000000000000001'
+```
+
+The seeded merchant `MER-00001` already has that test key. A merchant-key API for creating payments (the checkout call from the merchant's site) is not implemented in the demo — the dashboard's "Create payment" and `POST /api/payments` (admin session) stand in for it (see the open items in the README).
