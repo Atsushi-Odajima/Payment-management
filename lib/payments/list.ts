@@ -11,7 +11,7 @@ import { isPaymentMethod, toPaymentMethod, type PaymentMethod } from "@/lib/paym
 import { isPaymentStatus, toPaymentStatus, type PaymentStatus } from "@/lib/payments/transitions";
 import { isDepositDiff, isTransferOverdue, type DepositDiff } from "@/lib/payments/transfer";
 import { nextDayInTz, parseDateInTz } from "@/lib/time";
-import { toModeFilter, type ModeFilter } from "@/lib/utils";
+import type { DataMode } from "@/lib/mode";
 
 export interface TransactionListItem {
   id: string;
@@ -34,6 +34,7 @@ export interface TransactionListItem {
   transferDueAt: Date | null;
   depositAmount: number | null;
   depositDiff: DepositDiff | null;
+  failureReason: string | null;
   /** awaiting_transfer with a deadline in the past. */
   overdue: boolean;
 }
@@ -45,7 +46,8 @@ export interface TransactionFilters {
   /** YYYY-MM-DD (business time zone), inclusive. */
   from: string;
   to: string;
-  mode: ModeFilter;
+  /** Test / live data (header toggle, cookie). */
+  mode: DataMode;
 }
 
 export interface MerchantOption {
@@ -65,12 +67,13 @@ export interface TransactionListResult {
 export function parseTransactionFilters(
   q: Record<string, string | undefined> | undefined,
   allowedStatuses: readonly PaymentStatus[],
+  mode: DataMode = "test",
 ): TransactionFilters {
   const status = isPaymentStatus(q?.status) && allowedStatuses.includes(q.status) ? q.status : "";
   const method = isPaymentMethod(q?.method) ? q.method : "";
   const from = parseDateInTz(q?.from) ? q!.from!.trim() : "";
   const to = parseDateInTz(q?.to) ? q!.to!.trim() : "";
-  return { status, method, merchant: (q?.merchant ?? "").trim().slice(0, 64), from, to, mode: toModeFilter(q?.mode) };
+  return { status, method, merchant: (q?.merchant ?? "").trim().slice(0, 64), from, to, mode };
 }
 
 export const TRANSACTION_SELECT = {
@@ -91,6 +94,7 @@ export const TRANSACTION_SELECT = {
   transferDueAt: true,
   depositAmount: true,
   depositDiff: true,
+  failureReason: true,
   provider: { select: { providerKey: true, displayName: true, category: true } },
   merchant: { select: { id: true, merchantCode: true, siteName: true } },
 } as const;
@@ -113,6 +117,7 @@ type Row = {
   transferDueAt: Date | null;
   depositAmount: number | null;
   depositDiff: string | null;
+  failureReason: string | null;
   provider: { providerKey: string; displayName: string; category: string };
   merchant: { id: string; merchantCode: string; siteName: string } | null;
 };
@@ -139,6 +144,7 @@ export function toTransactionListItem(p: Row, now: Date): TransactionListItem {
     transferDueAt: p.transferDueAt,
     depositAmount: p.depositAmount,
     depositDiff: isDepositDiff(p.depositDiff) ? p.depositDiff : null,
+    failureReason: p.failureReason,
     overdue: isTransferOverdue(p, now),
   };
 }
@@ -176,7 +182,7 @@ export async function loadTransactions(opts: {
     status: { in: filters.status ? [filters.status] : [...opts.allowedStatuses] },
     ...(filters.method ? { method: filters.method } : {}),
     ...(filters.merchant ? { merchantId: filters.merchant } : {}),
-    ...(filters.mode === "all" ? {} : { livemode: filters.mode === "live" }),
+    livemode: filters.mode === "live",
     ...(from || to
       ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: nextDayInTz(to) } : {}) } }
       : {}),

@@ -45,8 +45,11 @@ export interface TransactionDetail {
   transferDueAt: Date | null;
   depositAmount: number | null;
   depositDiff: DepositDiff | null;
+  failureReason: string | null;
+  /** capturedAt + merchant.refundWindowDays (null when not completed or no merchant). */
+  refundDeadlineAt: Date | null;
   overdue: boolean;
-  merchant: { id: string; merchantCode: string; siteName: string; transferIdDigits: number } | null;
+  merchant: { id: string; merchantCode: string; siteName: string; transferIdDigits: number; refundWindowDays: number } | null;
   provider: {
     id: string;
     displayName: string;
@@ -80,7 +83,8 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
       transferDueAt: true,
       depositAmount: true,
       depositDiff: true,
-      merchant: { select: { id: true, merchantCode: true, siteName: true, transferIdDigits: true } },
+      failureReason: true,
+      merchant: { select: { id: true, merchantCode: true, siteName: true, transferIdDigits: true, refundWindowDays: true } },
       provider: {
         select: { id: true, displayName: true, providerKey: true, category: true, credentials: true },
       },
@@ -119,6 +123,9 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
     transferDueAt: payment.transferDueAt,
     depositAmount: payment.depositAmount,
     depositDiff: isDepositDiff(payment.depositDiff) ? payment.depositDiff : null,
+    failureReason: payment.failureReason,
+    refundDeadlineAt:
+      payment.capturedAt && payment.merchant ? new Date(payment.capturedAt.getTime() + payment.merchant.refundWindowDays * 86_400_000) : null,
     overdue: isTransferOverdue(payment, now),
     merchant: payment.merchant,
     provider: {

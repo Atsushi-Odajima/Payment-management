@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { livemodeWhere, modeFromCookieStore } from "@/lib/mode";
 import { prisma } from "@/lib/db";
 import { DashboardView, type DashboardStats } from "@/components/views/dashboard-view";
 import { currentAdminFromCookies } from "@/lib/admin/page-guard";
@@ -15,6 +17,7 @@ export default async function DashboardPage() {
 
   const now = new Date();
   const today = startOfDayInTz(now);
+  const modeWhere = livemodeWhere(modeFromCookieStore(cookies()));
   const [merchantCount, agentCount, todayAgg, openCount, overdueCount, activeIpRuleCount, adminCount, auditTodayCount, providerCount] =
     await Promise.all([
       prisma.merchant.count(),
@@ -22,10 +25,10 @@ export default async function DashboardPage() {
       prisma.payment.aggregate({
         _sum: { amount: true },
         _count: true,
-        where: { status: { in: [...SALES_STATUSES] }, capturedAt: { gte: today } },
+        where: { ...modeWhere, status: { in: [...SALES_STATUSES] }, capturedAt: { gte: today } },
       }),
-      prisma.payment.count({ where: { status: { in: [...OPEN_STATUSES] } } }),
-      prisma.payment.count({ where: { status: "awaiting_transfer", transferDueAt: { lt: now } } }),
+      prisma.payment.count({ where: { ...modeWhere, status: { in: [...OPEN_STATUSES] } } }),
+      prisma.payment.count({ where: { ...modeWhere, status: "awaiting_transfer", transferDueAt: { lt: now } } }),
       prisma.ipRestriction.count({ where: { enabled: true } }),
       prisma.adminUser.count(),
       prisma.auditLog.count({ where: { createdAt: { gte: today } } }),

@@ -37,7 +37,8 @@ export function isTransferIdFormat(s: string): boolean {
   return /^[1-9]\d{6,7}$/.test(s);
 }
 
-export function transferDueDate(from: Date, days: number = TRANSFER_DUE_DAYS): Date {
+export function transferDueDate(from: Date, days: number | undefined = TRANSFER_DUE_DAYS): Date {
+  if (days === undefined) days = TRANSFER_DUE_DAYS;
   return new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
 }
 

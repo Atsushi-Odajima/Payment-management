@@ -9,7 +9,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { Pagination } from "@/components/pagination";
-import { ModeFilterChips } from "@/components/mode-filter";
 import { PaymentStatusBadge } from "@/components/payment-status-badge";
 import { useFormatDateTime, useLang, useT } from "@/components/language-provider";
 import { CATEGORIES, getProviderDefinition } from "@/lib/providers/registry";
@@ -60,7 +59,6 @@ export function TransactionsView(props: TransactionsViewProps) {
     merchant: filters.merchant || undefined,
     from: filters.from || undefined,
     to: filters.to || undefined,
-    mode: filters.mode === "all" ? undefined : filters.mode,
   };
   const href = (next: Record<string, string | undefined>) => {
     const q = new URLSearchParams();
@@ -120,7 +118,6 @@ export function TransactionsView(props: TransactionsViewProps) {
               <FilterLink key={s} href={href({ status: s })} active={filters.status === s} label={t(`status.${s}`)} />
             ))}
           </div>
-          <ModeFilterChips basePath={basePath} current={filters.mode} params={{ ...params, mode: undefined }} />
         </div>
         <div className="flex flex-wrap items-end gap-3 text-xs text-slate-600">
           <label className="flex flex-col gap-1">
@@ -223,9 +220,6 @@ export function TransactionsView(props: TransactionsViewProps) {
                         <td className="px-5 py-3 text-slate-700">
                           <span className="flex items-center gap-1.5">
                             {methodLabel(p.method, lang)}
-                            {!p.livemode && (
-                              <span className="whitespace-nowrap rounded bg-amber-50 px-1 text-[10px] text-amber-700">{t("common.test")}</span>
-                            )}
                           </span>
                           <p className="text-xs text-slate-500">{def ? pickText(def.name, lang) : p.providerDisplayName}</p>
                         </td>
@@ -240,6 +234,7 @@ export function TransactionsView(props: TransactionsViewProps) {
                           <span className="flex flex-wrap items-center gap-1">
                             <PaymentStatusBadge status={p.status} />
                             {p.overdue && <span className="badge bg-rose-600 text-white ring-rose-700">{t("transactions.overdue")}</span>}
+                            {p.failureReason?.startsWith("limit_exceeded") && <span className="badge bg-rose-100 text-rose-800 ring-rose-200">{t("transactions.limitExceeded")}</span>}
                             {p.depositDiff === "excess" && <span className="badge bg-amber-100 text-amber-800 ring-amber-200">{t("paymentDetail.diff_excess")}</span>}
                           </span>
                         </td>

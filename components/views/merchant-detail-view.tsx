@@ -1,10 +1,11 @@
 "use client";
 
-// Merchant detail: read-only by default; "Edit" switches to the form, "Update"
-// saves and returns to read-only with a toast. ID and password are never
-// editable (password has reveal / regenerate for the master role).
+// Merchant detail with tabs: basic / contract & fees / limits / API keys /
+// notifications. Basic and notification tabs use the shared MerchantForm in
+// edit mode (Edit → Update); the other tabs have their own small forms.
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { MerchantForm } from "@/components/merchant-form";
@@ -13,12 +14,28 @@ import { NotificationPreview } from "@/components/notification-preview";
 import { DetailRow } from "@/components/ui/detail-row";
 import { useFormatDateTime, useLang, useT } from "@/components/language-provider";
 import { useToast } from "@/components/toast";
-import Link from "next/link";
+import { ContractTab } from "@/components/merchant-tabs/contract-tab";
+import { LimitsTab } from "@/components/merchant-tabs/limits-tab";
+import { ApiKeysTab } from "@/components/merchant-tabs/api-keys-tab";
 import type { AgentOption, MerchantView } from "@/lib/merchants/types";
+import { MERCHANT_TABS, type MerchantContract, type MerchantLimits, type MerchantTab } from "@/lib/merchants/tabs";
+import type { ApiKeyView } from "@/lib/merchants/api-keys";
+import type { DataMode } from "@/lib/mode";
 import { CATEGORIES } from "@/lib/providers/registry";
-import { pickText } from "@/lib/i18n";
+import { pickText, type MessageKey } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
-export function MerchantDetailView({ merchant: initial, agents }: { merchant: MerchantView; agents: AgentOption[] }) {
+export interface MerchantDetailProps {
+  merchant: MerchantView;
+  agents: AgentOption[];
+  tab: MerchantTab;
+  contract: MerchantContract;
+  limits: MerchantLimits;
+  apiKeys: ApiKeyView[];
+  mode: DataMode;
+}
+
+export function MerchantDetailView({ merchant: initial, agents, tab, contract, limits, apiKeys, mode }: MerchantDetailProps) {
   const t = useT();
   const { lang } = useLang();
   const router = useRouter();
@@ -26,12 +43,9 @@ export function MerchantDetailView({ merchant: initial, agents }: { merchant: Me
   const formatDate = useFormatDateTime();
   const [merchant, setMerchant] = useState<MerchantView>(initial);
   const [editing, setEditing] = useState(false);
+  const editable = tab === "basic" || tab === "notify";
 
-  const passwordSlot = (
-    <>
-      <MerchantPasswordField merchantId={merchant.id} />
-    </>
-  );
+  const tabHref = (k: MerchantTab) => (k === "basic" ? `/merchants/${merchant.id}` : `/merchants/${merchant.id}?tab=${k}`);
 
   return (
     <div>
@@ -43,13 +57,30 @@ export function MerchantDetailView({ merchant: initial, agents }: { merchant: Me
         actions={
           editing ? (
             <span className="badge bg-amber-100 text-amber-800 ring-amber-200">{t("merchantDetail.editing")}</span>
-          ) : (
+          ) : editable ? (
             <button type="button" className="btn-primary" onClick={() => setEditing(true)}>
               {t("merchantDetail.edit")}
             </button>
-          )
+          ) : null
         }
       />
+
+      <nav aria-label={t("merchantTabs.label")} className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200">
+        {MERCHANT_TABS.map((k) => (
+          <Link
+            key={k}
+            href={tabHref(k)}
+            aria-current={tab === k ? "page" : undefined}
+            onClick={() => setEditing(false)}
+            className={cn(
+              "whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition",
+              tab === k ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800",
+            )}
+          >
+            {t(`merchantTabs.${k}` as MessageKey)}
+          </Link>
+        ))}
+      </nav>
 
       {editing ? (
         <MerchantForm
@@ -58,7 +89,7 @@ export function MerchantDetailView({ merchant: initial, agents }: { merchant: Me
           merchantCode={merchant.merchantCode}
           initial={merchant}
           agents={agents}
-          passwordSlot={passwordSlot}
+          passwordSlot={<MerchantPasswordField merchantId={merchant.id} />}
           onCancel={() => setEditing(false)}
           onSaved={(saved) => {
             setMerchant(saved);
@@ -67,7 +98,7 @@ export function MerchantDetailView({ merchant: initial, agents }: { merchant: Me
             router.refresh();
           }}
         />
-      ) : (
+      ) : tab === "basic" ? (
         <div className="space-y-6">
           <section className="card divide-y divide-slate-100" aria-labelledby="sec-account">
             <h2 id="sec-account" className="px-5 py-3 text-sm font-semibold text-slate-800">
@@ -77,9 +108,7 @@ export function MerchantDetailView({ merchant: initial, agents }: { merchant: Me
               <span className="font-mono">{merchant.merchantCode}</span>
             </DetailRow>
             <div className="px-5 py-3 text-sm">
-              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
-                {t("merchantForm.password")}
-              </p>
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">{t("merchantForm.password")}</p>
               <MerchantPasswordField merchantId={merchant.id} />
             </div>
             <DetailRow label={t("merchants.thCreatedAt")}>{formatDate(merchant.createdAt)}</DetailRow>
@@ -142,34 +171,32 @@ export function MerchantDetailView({ merchant: initial, agents }: { merchant: Me
                 {merchant.statementEmail}
               </a>
             </DetailRow>
-            <DetailRow label={t("merchantForm.emailNotification")}>
-              {t(`merchantEnums.emailNotification.${merchant.emailNotification}`)}
-            </DetailRow>
-          </section>
-
-          <section className="card" aria-labelledby="sec-notify">
-            <div className="divide-y divide-slate-100">
-              <h2 id="sec-notify" className="px-5 py-3 text-sm font-semibold text-slate-800">
-                {t("merchantForm.sectionNotify")}
-              </h2>
-              <DetailRow label={t("merchantForm.notifyUrl")}>
-                <span className="break-all font-mono text-xs">{merchant.notifyUrl}</span>
-              </DetailRow>
-              <DetailRow label={t("merchantForm.notifyFormat")}>
-                {t(`merchantEnums.notifyFormat.${merchant.notifyFormat}`)}
-              </DetailRow>
-              <DetailRow label={t("merchantForm.notifyParamSet")}>
-                {t(`merchantEnums.notifyParamSet.${merchant.notifyParamSet}`)}
-              </DetailRow>
-              <DetailRow label={t("merchantForm.notifyIdFormat")}>
-                {t(`merchantEnums.notifyIdFormat.${merchant.notifyIdFormat}`)}
-              </DetailRow>
-            </div>
-            <div className="p-5">
-              <NotificationPreview config={merchant} merchantCode={merchant.merchantCode} />
-            </div>
+            <DetailRow label={t("merchantForm.emailNotification")}>{t(`merchantEnums.emailNotification.${merchant.emailNotification}`)}</DetailRow>
           </section>
         </div>
+      ) : tab === "contract" ? (
+        <ContractTab merchantId={merchant.id} contract={contract} />
+      ) : tab === "limits" ? (
+        <LimitsTab merchantId={merchant.id} data={limits} mode={mode} />
+      ) : tab === "apikeys" ? (
+        <ApiKeysTab merchantId={merchant.id} merchantCode={merchant.merchantCode} keys={apiKeys} />
+      ) : (
+        <section className="card" aria-labelledby="sec-notify">
+          <div className="divide-y divide-slate-100">
+            <h2 id="sec-notify" className="px-5 py-3 text-sm font-semibold text-slate-800">
+              {t("merchantForm.sectionNotify")}
+            </h2>
+            <DetailRow label={t("merchantForm.notifyUrl")}>
+              <span className="break-all font-mono text-xs">{merchant.notifyUrl}</span>
+            </DetailRow>
+            <DetailRow label={t("merchantForm.notifyFormat")}>{t(`merchantEnums.notifyFormat.${merchant.notifyFormat}`)}</DetailRow>
+            <DetailRow label={t("merchantForm.notifyParamSet")}>{t(`merchantEnums.notifyParamSet.${merchant.notifyParamSet}`)}</DetailRow>
+            <DetailRow label={t("merchantForm.notifyIdFormat")}>{t(`merchantEnums.notifyIdFormat.${merchant.notifyIdFormat}`)}</DetailRow>
+          </div>
+          <div className="p-5">
+            <NotificationPreview config={merchant} merchantCode={merchant.merchantCode} />
+          </div>
+        </section>
       )}
     </div>
   );

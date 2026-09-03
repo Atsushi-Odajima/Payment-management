@@ -21,7 +21,7 @@ Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Ve
 | `DEMO_GENERAL_PASSWORD` | 任意 | seed が作る一般権限アカウント `general` のパスワード（既定 `general1234`） |
 | `SESSION_SECRET` | 任意 | セッション Cookie の HMAC 鍵。未設定時は `ENCRYPTION_KEY` を流用 |
 | `DEMO_READONLY` | 任意 | `1` で DELETE とプロバイダの PATCH を 403 に（デモ荒らし対策） |
-| `CRON_SECRET` | 任意 | 設定すると `GET/POST /api/demo/reset` が有効になり、Vercel Cron（毎日 03:00 JST）がデモデータを初期化 |
+| `CRON_SECRET` | 任意 | 設定すると `GET/POST /api/demo/reset` と `GET/POST /api/cron/expire-transfers` が有効になり、Vercel Cron がデモデータの初期化（毎日 03:00 JST）と期限超過の振込待ちの期限切れ処理（毎時）を実行 |
 | `DEPOSIT_NOTIFY_SECRET` | 任意 | `POST /api/demo/deposit-notify`（銀行の入金通知を模した消込 API）の Bearer トークン。未設定時は本番で 404、開発では認証なし |
 
 鍵の生成:
