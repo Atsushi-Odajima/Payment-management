@@ -50,6 +50,9 @@ export interface TransactionDetail {
   depositAmount: number | null;
   depositDiff: DepositDiff | null;
   failureReason: string | null;
+  cardLast4: string | null;
+  clientIp: string | null;
+  depositDiffStatus: string | null;
   /** capturedAt + merchant.refundWindowDays (null when not completed or no merchant). */
   refundDeadlineAt: Date | null;
   /** Amount reserved by refund requests not decided yet. */
@@ -90,6 +93,9 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
       depositAmount: true,
       depositDiff: true,
       failureReason: true,
+      cardLast4: true,
+      clientIp: true,
+      depositDiffStatus: true,
       merchant: { select: { id: true, merchantCode: true, siteName: true, transferIdDigits: true, refundWindowDays: true } },
       provider: {
         select: { id: true, displayName: true, providerKey: true, category: true, credentials: true },
@@ -133,6 +139,9 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
     depositAmount: payment.depositAmount,
     depositDiff: isDepositDiff(payment.depositDiff) ? payment.depositDiff : null,
     failureReason: payment.failureReason,
+    cardLast4: payment.cardLast4,
+    clientIp: payment.clientIp,
+    depositDiffStatus: payment.depositDiffStatus,
     refundDeadlineAt:
       payment.capturedAt && payment.merchant ? new Date(payment.capturedAt.getTime() + payment.merchant.refundWindowDays * 86_400_000) : null,
     pendingRefundAmount,

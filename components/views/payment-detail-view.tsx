@@ -92,6 +92,16 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
             <DetailRow label={t("paymentDetail.customerId")}>
               <span className="font-mono text-xs">{payment.customerId ?? "—"}</span>
             </DetailRow>
+            {payment.cardLast4 && (
+              <DetailRow label={t("paymentDetail.cardLast4")}>
+                <span className="font-mono text-xs">•••• {payment.cardLast4}</span>
+              </DetailRow>
+            )}
+            {payment.clientIp && (
+              <DetailRow label={t("paymentDetail.clientIp")}>
+                <span className="font-mono text-xs">{payment.clientIp}</span>
+              </DetailRow>
+            )}
             <DetailRow label={t("paymentDetail.method")}>{methodLabel(payment.method, lang)}</DetailRow>
             <DetailRow label={t("paymentDetail.provider")}>
               <Link href={`/providers/${payment.provider.id}`} className="text-brand-700 hover:underline">
@@ -113,7 +123,9 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
                 <span className="badge bg-rose-100 text-rose-800 ring-rose-200">
                   {payment.failureReason.startsWith("limit_exceeded:")
                     ? t(`paymentDetail.failure_limit_${payment.failureReason.slice("limit_exceeded:".length)}` as MessageKey)
-                    : payment.failureReason}
+                    : payment.failureReason.startsWith("blocked:")
+                      ? t(`paymentDetail.failure_blocked_${payment.failureReason.slice("blocked:".length)}` as MessageKey)
+                      : payment.failureReason}
                 </span>
               </DetailRow>
             )}
@@ -228,6 +240,15 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
               <PaymentActions payment={payment} />
             </div>
           </div>
+          {(payment.status === "captured" || payment.status === "partially_refunded" || payment.status === "refunded") && (
+            <div className="card p-4 text-xs text-slate-600">
+              <p className="font-semibold text-slate-800">{t("paymentDetail.chargebackTitle")}</p>
+              <p className="mt-1">{t("paymentDetail.chargebackBody")}</p>
+              <Link href={`/chargebacks/new?paymentId=${payment.id}`} className="btn-secondary mt-3 inline-flex w-full justify-center">
+                {t("paymentDetail.chargebackRegister")}
+              </Link>
+            </div>
+          )}
           <div className="card p-4 text-xs text-slate-600">
             <p className="font-semibold text-slate-800">{t("paymentDetail.demoNoteTitle")}</p>
             <p className="mt-1">{t("paymentDetail.demoNoteBody")}</p>

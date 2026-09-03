@@ -11,6 +11,7 @@ export const MANUAL_CHAPTERS = [
   "refunds",
   "settlements",
   "webhooks",
+  "risk",
   "ip-restrictions",
   "notification-spec",
   "admins",
