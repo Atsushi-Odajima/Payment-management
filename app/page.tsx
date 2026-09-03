@@ -18,7 +18,7 @@ export default async function DashboardPage() {
   const now = new Date();
   const today = startOfDayInTz(now);
   const modeWhere = livemodeWhere(modeFromCookieStore(cookies()));
-  const [merchantCount, agentCount, todayAgg, openCount, overdueCount, activeIpRuleCount, adminCount, auditTodayCount, providerCount, pendingRefundCount, settlementOpenCount, settlementScheduled, webhookFailedCount] =
+  const [merchantCount, agentCount, todayAgg, openCount, overdueCount, activeIpRuleCount, adminCount, auditTodayCount, providerCount, pendingRefundCount, settlementOpenCount, settlementScheduled, webhookFailedCount, chargebackOpenCount, blacklistCandidateCount, depositDiffOpenCount] =
     await Promise.all([
       prisma.merchant.count(),
       prisma.agent.count(),
@@ -37,11 +37,17 @@ export default async function DashboardPage() {
       prisma.settlementBatch.count({ where: { ...modeWhere, status: { in: ["collecting", "confirmed", "held"] } } }),
       prisma.settlementBatch.aggregate({ _sum: { netAmount: true }, where: { ...modeWhere, status: "scheduled" } }),
       prisma.webhookDelivery.count({ where: { ...modeWhere, status: { in: ["failed", "abandoned", "retrying"] } } }),
+      prisma.chargeback.count({ where: { ...modeWhere, status: { in: ["received", "disputed"] } } }),
+      prisma.blacklist.count({ where: { status: "candidate" } }),
+      prisma.payment.count({ where: { ...modeWhere, depositDiff: { in: ["short", "excess"] }, depositDiffStatus: "open" } }),
     ]);
 
   const stats: DashboardStats = {
     pendingRefundCount,
     webhookFailedCount,
+    chargebackOpenCount,
+    blacklistCandidateCount,
+    depositDiffOpenCount,
     settlementOpenCount,
     settlementScheduledAmount: settlementScheduled._sum.netAmount ?? 0,
     merchantCount,

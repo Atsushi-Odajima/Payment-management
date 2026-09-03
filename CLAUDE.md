@@ -98,6 +98,13 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - **リトライ**: `RETRY_DELAYS_MS` = 1分 / 5分 / 30分 / 2時間 / 24時間、`MAX_ATTEMPTS` 5 → abandoned。`GET/POST /api/cron/webhook-retry`（`CRON_SECRET`、`vercel.json` 毎時 30 分）が `processDueRetries`。手動再送は `POST /api/webhook-logs/[id]/resend`（`requireMaster`、監査 `webhook.resend`、trigger dashboard）
 - 画面: `/webhook-logs`（失敗 / 断念 / リトライ待ちを先頭に、CSV）、`/webhook-logs/[id]`、加盟店詳細の `webhooks` タブ。デモ受信 `/api/demo/webhook-receiver?result=ok|error|timeout`（middleware の `PUBLIC_PATHS`）。KPI「失敗件数」
 
+## リスク対策（フェーズF）
+
+- **チャージバック**: `Chargeback`（`reasonCode` fraud | not_received | not_as_described | duplicate | other、`status` received | disputed | won | lost | confirmed、`disputeDeadlineAt` 既定 14 日、`evidenceNote`、`resolvedAt`）。`lib/chargebacks/{types,service,list}.ts`。登録 `POST /api/chargebacks`（`requireMaster`、完了系の取引のみ、対応中の重複不可、Webhook `chargeback.opened`）、`POST /api/chargebacks/[id]/dispute|resolve|confirm`。敗訴・確定は `applyPaymentAction(chargeback)` で取引を **`chargeback` ステータス**（`PAYMENT_STATUSES` / `TRANSITIONS.chargeback`: captured | partially_refunded | refunded →、UI アクションではない）にし、精算の `collectLines` が `resolvedAt` 期間内の lost / confirmed を控除。画面 `/chargebacks`（対応中→期限順）、`/chargebacks/new`（`requireMasterPage`、取引詳細からのリンク付き）、`/chargebacks/[id]`
+- **ブラックリスト / 連続失敗検知**: `Payment.cardHash`（`cardFingerprint` = sha256(brand|last4|expiry)。`POST /api/payments` の `card` 入力）/ `cardLast4`（横断検索の対象）/ `clientIp`（`clientIpFromHeaders`）。`RiskSetting`（id `global`: `windowMinutes` / `maxFailures`、`GET/PUT /api/risk-settings` マスター）、`Blacklist`（`kind` card | ip | email、`source` auto | manual、`status` candidate | active | disabled | rejected、`@@unique([kind, value])`）。`lib/risk/service.ts`: `checkBlacklist`（作成時、active 一致 → `failed` + `failureReason "blocked:<kind>"`、限度額判定より先）、`detectRepeatedFailures`（作成時の失敗と `applyPaymentAction(fail)` の後に呼ぶ。window 内の失敗数 ≥ 閾値で candidate を upsert、監査 actor system）。`/api/blacklist`（GET、POST マスター）、`PATCH /api/blacklist/[id]`（approve = active / reject / disable / enable）。画面 `/blacklist`（候補を先頭、手動追加・検知ルールのフォーム）
+- **過不足入金**: `Payment.depositDiffStatus`（open | refund_arranged | notified | resolved。`applyPaymentAction(deposit)` が過不足発生時に `open` をセット）。`lib/risk/deposit-diffs.ts`（一覧ローダと `applyDepositDiffAction`: excess → `createRefundRequest`（理由 duplicate）で refund_arranged、short → `lib/email/hooks.ts` の `notifyDepositShort`（フェーズG でメール送信ログ）で notified、resolve）。`/api/deposit-diffs`、`POST /api/deposit-diffs/[id]/refund|notify|resolve`（`requireAdmin`、監査 `payment.deposit_diff_update`）。画面 `/deposit-diffs`。seed の過不足サンプルは **本番モード**（payment10 / payment11）
+- KPI: チャージバック対応中件数、ブラックリスト候補件数、過不足未対応件数
+
 ## 代理店・決済申請・IP制限・マニュアル
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
@@ -157,7 +164,8 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **フェーズC 返金・取消管理**（完了）: 返金申請（理由コード・全額/一部・残額と審査待ち額の検証・返金可能期限の強制はマスターのみ）→ マスターの承認/否認、返金管理一覧/詳細、取引詳細の返金申請ダイアログ、KPI（審査待ち件数）
 - [x] **フェーズD 精算管理**（完了）: 精算設定タブ、SettlementBatch / Line の生成（契約料率で手数料計算・返金/チャージバック控除）、確定 → 振込予定 → 振込済 / 保留（マスター）、一覧・詳細・明細 CSV、加盟店 API での精算参照、KPI
 - [x] **フェーズE Webhook 送信ログと再送**（完了）: 実送信（通知設定に従うペイロード、X-Signature / X-Timestamp、10 秒タイムアウト）、指数バックオフの自動再送（cron）と断念、手動再送、送信ログ一覧 / 詳細 / 加盟店タブ、デモ受信エンドポイント、限度額超過通知、KPI
-- [ ] **フェーズF 不正・リスク対策**（未着手。次はここ。Chargeback テーブルは作成済み） / [ ] フェーズG レポート・通知 / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
+- [x] **フェーズF 不正・リスク対策**（完了）: チャージバック（登録 → 異議申立て → 勝訴/敗訴 → 確定、取引ステータス `chargeback`、精算控除、Webhook）、カード識別ハッシュ / 接続元 IP と連続失敗検知（閾値設定）→ ブラックリスト候補 / 承認 / 手動追加 / 作成時ブロック、過不足入金一覧と対応ステータス（差額返金申請・追加入金案内）、KPI
+- [ ] **フェーズG レポート・通知**（未着手。次はここ。`lib/email/hooks.ts` の `notifyDepositShort` を実装する） / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
 - 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う
 - 検索対象「カード下4桁」はフェーズF（カードハッシュ列）で追加する

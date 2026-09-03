@@ -15,6 +15,9 @@ import { formatYen } from "@/lib/utils";
 export interface DashboardStats {
   pendingRefundCount: number;
   webhookFailedCount: number;
+  chargebackOpenCount: number;
+  blacklistCandidateCount: number;
+  depositDiffOpenCount: number;
   settlementOpenCount: number;
   settlementScheduledAmount: number;
   merchantCount: number;
@@ -51,6 +54,12 @@ export function DashboardView({ stats }: { stats: DashboardStats }) {
         };
       case "settlements":
         return { value: t("dashboard.valueSettlements", { count: stats.settlementOpenCount, amount: formatYen(stats.settlementScheduledAmount) }) };
+      case "chargebacks":
+        return { value: t("dashboard.valueChargebacks", { count: stats.chargebackOpenCount }), badge: stats.chargebackOpenCount > 0 ? t("dashboard.disputeBadge") : undefined };
+      case "blacklist":
+        return { value: t("dashboard.valueCandidates", { count: stats.blacklistCandidateCount }), badge: stats.blacklistCandidateCount > 0 ? t("dashboard.reviewBadge") : undefined };
+      case "depositDiffs":
+        return { value: t("dashboard.valueDepositDiffs", { count: stats.depositDiffOpenCount }), badge: stats.depositDiffOpenCount > 0 ? t("dashboard.openBadge") : undefined };
       case "webhookLogs":
         return {
           value: t("dashboard.valueWebhookFailed", { count: stats.webhookFailedCount }),

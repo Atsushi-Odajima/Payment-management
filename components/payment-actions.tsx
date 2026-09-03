@@ -165,8 +165,8 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
     }
   }
 
-  const label = (a: PaymentAction) => (busy === a ? t("common.processing") : t(`paymentActions.${a}`));
-  const hint = (a: PaymentAction) => t(`paymentActions.${a}Hint`);
+  const label = (a: PaymentAction) => (busy === a ? t("common.processing") : t(`paymentActions.${a}` as MessageKey));
+  const hint = (a: PaymentAction) => t(`paymentActions.${a}Hint` as MessageKey);
   const style: Record<PaymentAction, string> = {
     capture: "btn-primary",
     deposit: "btn-primary",
@@ -174,6 +174,7 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
     fail: "btn-secondary",
     expire: "btn-secondary",
     refund: "btn-danger",
+    chargeback: "btn-secondary",
   };
 
   return (

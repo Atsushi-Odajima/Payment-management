@@ -21,6 +21,7 @@ export const PAYMENT_STATUSES = [
   "cancelled", // キャンセル
   "failed", // 失敗
   "expired", // 期限切れ
+  "chargeback", // チャージバック (lost / confirmed dispute, Phase F)
 ] as const;
 
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
@@ -51,12 +52,12 @@ export const APPLICATION_STATUSES: readonly PaymentStatus[] = [
 ];
 
 /** Statuses shown on the 決済一覧 (completed sales, including refunds). */
-export const SALES_STATUSES: readonly PaymentStatus[] = ["captured", "partially_refunded", "refunded"];
+export const SALES_STATUSES: readonly PaymentStatus[] = ["captured", "partially_refunded", "refunded", "chargeback"];
 
 /** Statuses that still expect an outcome (counted as "open" on the dashboard). */
 export const OPEN_STATUSES: readonly PaymentStatus[] = ["pending", "awaiting_transfer", "authorized"];
 
-export const PAYMENT_ACTIONS = ["capture", "cancel", "refund", "fail", "expire", "deposit"] as const;
+export const PAYMENT_ACTIONS = ["capture", "cancel", "refund", "fail", "expire", "deposit", "chargeback"] as const;
 export type PaymentAction = (typeof PAYMENT_ACTIONS)[number];
 
 export function isPaymentAction(value: unknown): value is PaymentAction {
@@ -108,6 +109,12 @@ export const TRANSITIONS: Record<PaymentAction, Transition> = {
     from: ["awaiting_transfer"],
     to: "captured",
     stampField: "capturedAt",
+  },
+  // チャージバック — applied by lib/chargebacks/service.ts when a dispute is
+  // lost or confirmed; never offered as a direct UI action.
+  chargeback: {
+    from: ["captured", "partially_refunded", "refunded"],
+    to: "chargeback",
   },
 };
 
