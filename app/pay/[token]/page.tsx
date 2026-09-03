@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function PayPage({ params }: { params: { token: string } }) {
   const link = await loadPublicLink(params.token);
   if (!link) notFound();
-  const raw = await prisma.paymentLink.findUnique({ where: { token: params.token }, select: { livemode: true, merchant: { select: { enabledMethods: true } } } });
+  const raw = await prisma.paymentLink.findUnique({ where: { token: params.token }, select: { livemode: true, merchant: { select: { id: true, enabledMethods: true } } } });
   const methods = raw && !link.unavailable ? (await checkoutMethods(prisma, raw)).map((m) => m.method) : [];
   return (
     <PayPageView

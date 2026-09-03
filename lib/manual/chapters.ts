@@ -3,7 +3,9 @@
 
 export const MANUAL_CHAPTERS = [
   "intro",
+  "roles",
   "dashboard",
+  "payment-methods",
   "merchants",
   "agents",
   "payments",

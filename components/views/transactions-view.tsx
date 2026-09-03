@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
+import { PinIcon } from "@/components/payment-timeline";
 import { Pagination } from "@/components/pagination";
 import { PaymentStatusBadge } from "@/components/payment-status-badge";
 import { useFormatDateTime, useLang, useT } from "@/components/language-provider";
@@ -197,6 +198,7 @@ export function TransactionsView(props: TransactionsViewProps) {
                         <td className="px-5 py-3">
                           <Link href={detail} className="font-medium text-slate-900 hover:text-brand-700">
                             {p.orderNumber}
+                            {p.pinnedNotes > 0 && <PinIcon className="ml-1 inline-block text-amber-600" aria-label={t("notes.pinnedBadge")} />}
                           </Link>
                           <p className="font-mono text-xs text-slate-500">
                             {p.transferId ? t("transactions.transferIdValue", { id: p.transferId }) : (p.externalId ?? p.id)}

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { API_KEY_KINDS, API_KEY_MODES, API_KEY_SELECT, toApiKeyView } from "@/lib/merchants/api-keys";
 import { generateApiKey, hashApiKey } from "@/lib/merchants/api-keys-server";
@@ -25,7 +25,7 @@ export const GET = withApiHandler<Ctx>(async (_req, { params }) => {
 
 /** POST /api/merchants/:id/api-keys — issue a key; the plaintext is returned exactly once. */
 export const POST = withApiHandler<Ctx>(async (req, { params }) => {
-  await requireAdmin(req);
+  await requirePermission(req, "api_key", "issue");
   const body = Body.parse(await readJson(req));
   const merchant = await prisma.merchant.findUnique({ where: { id: params.id }, select: { id: true, _count: { select: { apiKeys: true } } } });
   if (!merchant) throw new ApiError(404, "not_found", "errors.notFound");

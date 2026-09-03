@@ -13,7 +13,7 @@ import { ModeBadge, PaymentStatusBadge } from "@/components/payment-status-badge
 import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useToast } from "@/components/toast";
-import { useRole } from "@/components/session-provider";
+import { useCan } from "@/components/session-provider";
 import type { ChargeRow, SubscriptionRow } from "@/lib/subscriptions/list";
 import { isPaymentStatus } from "@/lib/payments/transitions";
 import type { MessageKey } from "@/lib/i18n";
@@ -30,7 +30,7 @@ export function SubscriptionDetailView({ subscription: s, charges }: { subscript
   const formatDate = useFormatDateTime();
   const [busy, setBusy] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { isMaster } = useRole();
+  const isMaster = useCan("subscription", "action");
 
   const canCharge = s.status === "trialing" || s.status === "active" || s.status === "past_due";
   const available: Action[] = isMaster ? [...(canCharge ? (["charge", "chargeFail", "pause"] as Action[]) : []), ...(s.status === "suspended" ? (["resume"] as Action[]) : []), ...(s.status !== "cancelled" ? (["cancel"] as Action[]) : [])] : [];

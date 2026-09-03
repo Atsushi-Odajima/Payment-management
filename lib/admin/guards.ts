@@ -1,8 +1,10 @@
 // Invariants for editing admin accounts: you cannot lock yourself out, and
-// the last active master can neither be demoted nor disabled.
+// the last active admin (full-permission role) can neither be demoted nor
+// disabled. Legacy "master" rows count as admin until the seed migrates them.
 
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { ApiError } from "@/lib/api/handler";
+import { normalizeRole } from "@/lib/role";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -11,16 +13,16 @@ export async function assertNotLastMaster(
   target: { id: string; role: string; status: string },
   next: { role: string; status: string },
 ): Promise<void> {
-  const wasActiveMaster = target.role === "master" && target.status !== "disabled";
-  const staysActiveMaster = next.role === "master" && next.status !== "disabled";
-  if (!wasActiveMaster || staysActiveMaster) return;
-  const others = await db.adminUser.count({ where: { role: "master", status: { not: "disabled" }, id: { not: target.id } } });
+  const wasActiveAdmin = normalizeRole(target.role) === "admin" && target.status !== "disabled";
+  const staysActiveAdmin = normalizeRole(next.role) === "admin" && next.status !== "disabled";
+  if (!wasActiveAdmin || staysActiveAdmin) return;
+  const others = await db.adminUser.count({ where: { role: { in: ["admin", "master"] }, status: { not: "disabled" }, id: { not: target.id } } });
   if (others === 0) throw new ApiError(400, "last_master", "errors.lastMaster");
 }
 
 export function assertNotSelfDemotion(actorId: string, target: { id: string; role: string; status: string }, next: { role: string; status: string }): void {
   if (actorId !== target.id) return;
-  if (next.role !== target.role || next.status === "disabled") {
+  if (normalizeRole(next.role) !== normalizeRole(target.role) || next.status === "disabled") {
     throw new ApiError(400, "self_change", "errors.adminSelfChange");
   }
 }

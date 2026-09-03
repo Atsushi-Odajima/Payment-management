@@ -24,7 +24,7 @@ let MASTER: Record<string, string> = {};
 let GENERAL: Record<string, string> = {};
 
 function json(path: string, method: string, body?: unknown, headers: Record<string, string> = {}) {
-  return new Request(BASE + path, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
+  return new Request(BASE + path, { method, headers: { "content-type": "application/json", ...MASTER, ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
 }
 async function read(res: Response) {
   return { status: res.status, body: (await res.json()) as Record<string, any> };
@@ -55,10 +55,10 @@ describe("reports", () => {
     expect(monthly.body.data.series.every((p: any) => /^\d{4}-\d{2}$/.test(p.bucket))).toBe(true);
     expect(monthly.body.data.totals.applications).toBe(2);
 
-    const summary = await getReport(new Request(BASE + "/api/reports?granularity=custom&from=2026-08-01&to=2026-09-02&format=csv"), {});
+    const summary = await getReport(new Request(BASE + "/api/reports?granularity=custom&from=2026-08-01&to=2026-09-02&format=csv", { headers: MASTER }), {});
     expect(summary.headers.get("content-type")).toContain("text/csv");
     expect((await summary.text())).toContain("bucket,applications,completed,amount");
-    const detail = await getReport(new Request(BASE + "/api/reports?granularity=custom&from=2026-08-01&to=2026-09-02&format=csv&kind=detail"), {});
+    const detail = await getReport(new Request(BASE + "/api/reports?granularity=custom&from=2026-08-01&to=2026-09-02&format=csv&kind=detail", { headers: MASTER }), {});
     expect((await detail.text()).split("\r\n").filter(Boolean)).toHaveLength(8);
   });
 });
@@ -100,7 +100,7 @@ describe("email templates and log", () => {
 
     const logs = await read(await getEmailLogs(new Request(BASE + "/api/email-logs?template=transfer_guide"), {}));
     expect(logs.body.data.total).toBe(2); // seeded + ORD-MAIL-1
-    const csv = await getEmailLogs(new Request(BASE + "/api/email-logs?format=csv"), {});
+    const csv = await getEmailLogs(new Request(BASE + "/api/email-logs?format=csv", { headers: MASTER }), {});
     expect(csv.headers.get("content-type")).toContain("text/csv");
   });
 });

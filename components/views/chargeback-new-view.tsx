@@ -8,7 +8,7 @@ import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { FormField } from "@/components/ui/form-field";
 import { useApiJson, useT } from "@/components/language-provider";
-import { useRole } from "@/components/session-provider";
+import { useCan } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import { CHARGEBACK_REASONS, type ChargebackReason } from "@/lib/chargebacks/types";
 import type { MessageKey } from "@/lib/i18n";
@@ -26,7 +26,7 @@ export function ChargebackNewView({ candidates, initialPaymentId, defaultDeadlin
   const router = useRouter();
   const apiJson = useApiJson();
   const toast = useToast();
-  const { isMaster } = useRole();
+  const isMaster = useCan("chargeback", "create");
   const [paymentId, setPaymentId] = useState(initialPaymentId && candidates.some((c) => c.id === initialPaymentId) ? initialPaymentId : candidates[0]?.id ?? "");
   const selected = candidates.find((c) => c.id === paymentId);
   const [amount, setAmount] = useState(selected ? String(selected.amount) : "");

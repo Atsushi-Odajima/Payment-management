@@ -1,12 +1,12 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, withApiHandler } from "@/lib/api/handler";
-import { requireMaster } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { resendDelivery } from "@/lib/webhooks/deliver";
 
 /** POST /api/webhook-logs/:id/resend — master: send again now (recorded as a new attempt, audited). */
 export const POST = withApiHandler<{ params: { id: string } }>(async (req, { params }) => {
-  await requireMaster(req);
+  await requirePermission(req, "webhook", "resend");
   const before = await prisma.webhookDelivery.findUnique({ where: { id: params.id }, select: { id: true, status: true, attempts: true, merchantId: true, event: true } });
   if (!before) throw new ApiError(404, "not_found", "errors.notFound");
   const result = await resendDelivery(prisma, before.id);

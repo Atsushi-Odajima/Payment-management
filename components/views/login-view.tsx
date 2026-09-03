@@ -4,6 +4,7 @@
 // account has two-factor enabled. Demo credentials are listed when the
 // server passes them (DEMO_LOGIN_HINT is set).
 
+import type { MessageKey } from "@/lib/i18n";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
@@ -15,7 +16,7 @@ export interface DemoAccount {
   password: string;
 }
 
-export function LoginView({ demo }: { demo?: { master: DemoAccount; general: DemoAccount } }) {
+export function LoginView({ demo }: { demo?: { accounts: Array<DemoAccount & { role: string }> } }) {
   const t = useT();
   const router = useRouter();
   const apiJson = useApiJson();
@@ -90,8 +91,11 @@ export function LoginView({ demo }: { demo?: { master: DemoAccount; general: Dem
           {demo && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
               <p className="font-medium text-slate-700">{t("auth.demoAccounts")}</p>
-              <p className="mt-1 font-mono">{t("auth.demoMaster", { id: demo.master.loginId, password: demo.master.password })}</p>
-              <p className="font-mono">{t("auth.demoGeneral", { id: demo.general.loginId, password: demo.general.password })}</p>
+              {demo.accounts.map((a) => (
+                <p key={a.loginId} className="mt-1 font-mono">
+                  {t(`role.${a.role}` as MessageKey)}: {a.loginId} / {a.password}
+                </p>
+              ))}
             </div>
           )}
           {error && (

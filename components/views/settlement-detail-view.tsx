@@ -12,7 +12,7 @@ import { SettlementStatusBadge } from "@/components/settlement-badges";
 import { ModeBadge } from "@/components/payment-status-badge";
 import { useApiJson, useFormatDateTime, useLang, useT } from "@/components/language-provider";
 import { useConfirm } from "@/components/confirm-dialog";
-import { useRole } from "@/components/session-provider";
+import { useCan } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import { methodLabel } from "@/components/views/transactions-view";
 import type { SettlementLineRow, SettlementRow } from "@/lib/settlements/list";
@@ -28,7 +28,7 @@ export function SettlementDetailView({ batch, lines }: { batch: SettlementRow; l
   const apiJson = useApiJson();
   const toast = useToast();
   const { confirm } = useConfirm();
-  const { isMaster } = useRole();
+  const isMaster = useCan("settlement", "transition");
   const formatDate = useFormatDateTime();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

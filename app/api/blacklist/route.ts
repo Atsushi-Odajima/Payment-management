@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireMaster } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest } from "@/lib/audit";
 import { CSV_MAX_ROWS, csvResponse, toCsv } from "@/lib/csv";
 import { DEFAULT_PAGE_SIZE, parsePage } from "@/lib/pagination";
@@ -34,7 +34,7 @@ export const GET = withApiHandler(async (req) => {
 
 /** POST /api/blacklist — manual entry (master), active immediately. */
 export const POST = withApiHandler(async (req) => {
-  const admin = await requireMaster(req);
+  const admin = await requirePermission(req, "blacklist", "create");
   const parsed = blacklistCreateSchema.safeParse(await readJson(req));
   if (!parsed.success) {
     throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: Object.fromEntries(parsed.error.issues.map((i) => [i.path.join("."), i.message])) });

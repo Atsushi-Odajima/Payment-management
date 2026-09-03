@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireAdmin } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
 import { FEE_METHODS } from "@/lib/merchants/fees";
 import { limitsInputSchema, limitsView, usageFor } from "@/lib/merchants/limits";
@@ -19,7 +19,7 @@ export const GET = withApiHandler<Ctx>(async (req, { params }) => {
 
 /** PUT /api/merchants/:id/limits — replace the whole limit set (one row per method). */
 export const PUT = withApiHandler<Ctx>(async (req, { params }) => {
-  await requireAdmin(req);
+  await requirePermission(req, "merchant_contract", "update");
   const parsed = limitsInputSchema.safeParse(await readJson(req));
   if (!parsed.success) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: Object.fromEntries(parsed.error.issues.map((i) => [i.path.join("."), i.message])) });
   const merchant = await prisma.merchant.findUnique({ where: { id: params.id }, select: { id: true } });

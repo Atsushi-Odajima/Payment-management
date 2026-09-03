@@ -50,7 +50,7 @@ describe("unmatched deposits", () => {
     expect(created.body.data).toMatchObject({ status: "unmatched", source: "manual", livemode: true, givenTransferId: "4821" });
     expect(await prisma.auditLog.count({ where: { action: "deposit.register", targetId: created.body.data.id } })).toBe(1);
 
-    const csv = await listDeposits(new Request(BASE + "/api/unmatched-deposits?mode=test&format=csv"), {});
+    const csv = await listDeposits(new Request(BASE + "/api/unmatched-deposits?mode=test&format=csv", { headers: MASTER }), {});
     expect(csv.headers.get("content-type")).toContain("text/csv");
     expect(await csv.text()).toContain("und_demo_001");
   });
@@ -77,7 +77,7 @@ describe("unmatched deposits", () => {
   it("match by transfer id (master) reconciles the transaction and notifies the merchant's API", async () => {
     const id = SEED_IDS.unmatched1;
     const transferId = SEED_TRANSFER_IDS[SEED_IDS.payment5];
-    expect((await match(id, transferId, {})).status).toBe(403);
+    expect((await match(id, transferId, {})).status).toBe(401);
     expect((await match(id, transferId, GENERAL)).status).toBe(403);
     expect((await match(id, "1234567", MASTER)).status).toBe(404);
     expect((await match(id, "abc", MASTER)).status).toBe(400);
@@ -127,8 +127,9 @@ describe("unmatched deposits", () => {
 describe("API re-notify (bank transfers only)", () => {
   it("re-sends payment.completed for a completed bank transfer and refuses everything else", async () => {
     // payment7 is a completed bank transfer of merchant3; payment1 is a completed card payment; payment5 is still awaiting.
-    expect((await renotifyReq(SEED_IDS.payment7, {})).status).toBe(403);
-    expect((await renotifyReq(SEED_IDS.payment7, GENERAL)).status).toBe(403);
+    expect((await renotifyReq(SEED_IDS.payment7, {})).status).toBe(401);
+    // cs may re-notify (support action); accounting may not.
+    expect((await renotifyReq(SEED_IDS.payment7, await sessionHeaders("accounting"))).status).toBe(403);
     const card = await renotifyReq(SEED_IDS.payment1, MASTER);
     expect(card.status).toBe(409);
     expect(card.body.error.code).toBe("not_bank_transfer");

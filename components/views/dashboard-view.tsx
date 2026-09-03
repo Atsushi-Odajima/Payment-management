@@ -7,7 +7,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Icon } from "@/components/icons";
 import { useT } from "@/components/language-provider";
-import { useSession } from "@/components/session-provider";
+import { useRole } from "@/components/session-provider";
 import { visibleNavGroups, type NavItem } from "@/lib/nav";
 import type { MessageKey } from "@/lib/i18n";
 import { formatYen } from "@/lib/utils";
@@ -45,8 +45,8 @@ export interface DashboardStats {
 
 export function DashboardView({ stats }: { stats: DashboardStats }) {
   const t = useT();
-  const { isMaster } = useSession();
-  const groups = visibleNavGroups(isMaster);
+  const { can } = useRole();
+  const groups = visibleNavGroups(can);
 
   const figure = (item: NavItem): { value: string; badge?: string } => {
     switch (item.key) {

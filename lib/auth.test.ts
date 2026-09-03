@@ -9,13 +9,13 @@ import {
   verifyTwoFactorToken,
 } from "./auth";
 
-const USER = { id: "adm_1", role: "master" as const };
+const USER = { id: "adm_1", role: "admin" as const };
 
 describe("session tokens", () => {
   it("verifies a freshly created token and returns its payload", async () => {
     const token = await createSessionToken(USER, 1_000_000);
     const p = await verifySessionToken(token, 1_000_000 + 60);
-    expect(p).toMatchObject({ sub: "adm_1", role: "master", purpose: "session" });
+    expect(p).toMatchObject({ sub: "adm_1", role: "admin", purpose: "session" });
   });
 
   it("rejects an expired token", async () => {

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { requirePermission } from "@/lib/api/role-guard";
 import { ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { auditContextFromRequest } from "@/lib/audit";
 import { clientIpFromHeaders } from "@/lib/ip";
@@ -10,6 +11,7 @@ import { createTransaction, createTransactionSchema } from "@/lib/payments/creat
  * payment-link checkouts and subscription charges.
  */
 export const POST = withApiHandler(async (req) => {
+    await requirePermission(req, "payment", "create");
   const body = createTransactionSchema.parse(await readJson(req));
   const idempotencyKey = req.headers.get("idempotency-key") ?? body.idempotencyKey;
   const result = await createTransaction(prisma, { ...body, idempotencyKey }, { clientIp: clientIpFromHeaders((n) => req.headers.get(n)), audit: await auditContextFromRequest(req) });

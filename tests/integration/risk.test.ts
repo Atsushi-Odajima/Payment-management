@@ -23,6 +23,7 @@ const BASE = "http://localhost";
 const NOW = new Date("2026-09-01T03:00:00Z");
 let MASTER: Record<string, string> = {};
 let GENERAL: Record<string, string> = {};
+let ACCOUNTING: Record<string, string> = {};
 
 function json(path: string, method: string, body?: unknown, headers: Record<string, string> = {}) {
   return new Request(BASE + path, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -32,6 +33,7 @@ async function read(res: Response) {
 }
 const CARD = { brand: "visa" as const, last4: "4242", expiry: "12/28" };
 async function checkout(extra: Record<string, unknown>, headers: Record<string, string> = {}) {
+  headers = { ...MASTER, ...headers };
   return read(
     await createPayment(
       json("/api/payments", "POST", { providerId: SEED_IDS.stripeProvider, merchantId: SEED_IDS.merchant1, orderNumber: `ORD-${Math.random().toString(36).slice(2, 8)}`, amount: 1200, customerName: "T", customerId: "u_t", ...extra }, headers),
@@ -44,6 +46,7 @@ beforeEach(async () => {
   await truncateAll(prisma);
   await seed(prisma, { now: NOW });
   MASTER = await sessionHeaders("master");
+  ACCOUNTING = await sessionHeaders("accounting");
   GENERAL = await sessionHeaders("general");
 });
 
@@ -91,7 +94,7 @@ describe("blacklist and repeated-failure detection", () => {
     expect(stored.clientIp).toBe("198.51.100.77");
 
     // Manual entry (master) for an email; general is refused.
-    expect((await read(await addBlacklist(json("/api/blacklist", "POST", { kind: "email", value: "Bad@Example.com" }, GENERAL), {}))).status).toBe(403);
+    expect((await read(await addBlacklist(json("/api/blacklist", "POST", { kind: "email", value: "Bad@Example.com" }, ACCOUNTING), {}))).status).toBe(403);
     const added = await read(await addBlacklist(json("/api/blacklist", "POST", { kind: "email", value: "Bad@Example.com", reason: "fraud ring" }, MASTER), {}));
     expect(added.status).toBe(201);
     expect(added.body.data.value).toBe("bad@example.com");

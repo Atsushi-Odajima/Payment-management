@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { requirePermission } from "@/lib/api/role-guard";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { buildCredentialStore } from "@/lib/providers/credentials";
 import { getProviderDefinition } from "@/lib/providers/registry";
@@ -16,6 +17,7 @@ const CreateSchema = z.object({
 });
 
 export const POST = withApiHandler(async (req) => {
+    await requirePermission(req, "provider", "create");
   const lang = langFromRequest(req);
   const body = CreateSchema.parse(await readJson(req));
   const def = getProviderDefinition(body.providerKey);

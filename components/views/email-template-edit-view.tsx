@@ -9,7 +9,7 @@ import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { FormField } from "@/components/ui/form-field";
 import { useApiJson, useT } from "@/components/language-provider";
-import { useRole } from "@/components/session-provider";
+import { useCan } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import type { EmailTemplateRow } from "@/lib/email/list";
 import { EMAIL_PLACEHOLDERS, SAMPLE_EMAIL_VARS, placeholdersIn, renderTemplate } from "@/lib/email/templates";
@@ -21,7 +21,7 @@ export function EmailTemplateEditView({ template }: { template: EmailTemplateRow
   const router = useRouter();
   const apiJson = useApiJson();
   const toast = useToast();
-  const { isMaster } = useRole();
+  const isMaster = useCan("email_template", "update");
   const [subject, setSubject] = useState(template.subject);
   const [body, setBody] = useState(template.body);
   const [enabled, setEnabled] = useState(template.enabled);

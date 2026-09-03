@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
-import { requireMaster } from "@/lib/api/role-guard";
+import { requirePermission } from "@/lib/api/role-guard";
 import { applyPaymentAction } from "@/lib/payments/actions";
-import { MASTER_ACTIONS, UI_ACTIONS, isPaymentAction } from "@/lib/payments/transitions";
+import { UI_ACTIONS, isPaymentAction } from "@/lib/payments/transitions";
 import { auditContextFromRequest } from "@/lib/audit";
 
 const RefundBody = z.object({
@@ -19,7 +19,8 @@ const DepositBody = z.object({
  * POST /api/payments/:id/:action
  *   action = capture | cancel | refund | fail | expire | deposit
  *
- * Application-stage actions (everything but refund) require the master role.
+ * Permissions follow lib/role.ts: refund → refund.request, deposit → payment.deposit,
+ * the other state changes → payment.state.
  * Every action goes through applyPaymentAction, which enforces the state
  * machine with a status-conditioned updateMany and writes a PaymentEvent.
  */
@@ -28,7 +29,9 @@ export const POST = withApiHandler<{ params: { id: string; action: string } }>(
     if (!isPaymentAction(params.action) || !UI_ACTIONS.includes(params.action)) {
       throw new ApiError(404, "invalid_action", "errors.invalidAction");
     }
-    if (MASTER_ACTIONS.includes(params.action)) await requireMaster(req);
+    if (params.action === "refund") await requirePermission(req, "refund", "request");
+    else if (params.action === "deposit") await requirePermission(req, "payment", "deposit");
+    else await requirePermission(req, "payment", "state");
 
     let amount: number | undefined;
     let reason: string | null = null;

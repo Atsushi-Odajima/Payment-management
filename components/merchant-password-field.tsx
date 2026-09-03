@@ -6,7 +6,7 @@
 
 import { useState } from "react";
 import { useApiJson, useT } from "./language-provider";
-import { useRole } from "./session-provider";
+import { useCan } from "./session-provider";
 import { useConfirm } from "./confirm-dialog";
 import { useToast } from "./toast";
 import { PASSWORD_MASK } from "@/lib/merchants/password-mask";
@@ -20,7 +20,7 @@ export function MerchantPasswordField({
   allowRegenerate?: boolean;
 }) {
   const t = useT();
-  const { isMaster } = useRole();
+  const isMaster = useCan("merchant", "reveal_password");
   const apiJson = useApiJson();
   const { confirm } = useConfirm();
   const toast = useToast();
