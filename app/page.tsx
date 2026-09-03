@@ -7,6 +7,7 @@ import { currentAdminFromCookies } from "@/lib/admin/page-guard";
 import { OPEN_STATUSES, SALES_STATUSES } from "@/lib/payments/transitions";
 import { MANUAL_CHAPTERS } from "@/lib/manual/chapters";
 import { startOfDayInTz, startOfMonthInTz } from "@/lib/time";
+import { buildAgentFees, parseAgentFeeFilters } from "@/lib/agent-fees/service";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +18,9 @@ export default async function DashboardPage() {
 
   const now = new Date();
   const today = startOfDayInTz(now);
-  const modeWhere = livemodeWhere(modeFromCookieStore(cookies()));
-  const [merchantCount, agentCount, todayAgg, openCount, overdueCount, activeIpRuleCount, adminCount, auditTodayCount, providerCount, pendingRefundCount, settlementOpenCount, settlementScheduled, webhookFailedCount, chargebackOpenCount, blacklistCandidateCount, depositDiffOpenCount, monthAgg, emailTodayCount, announcementActiveCount, templateEnabledCount] =
+  const mode = modeFromCookieStore(cookies());
+  const modeWhere = livemodeWhere(mode);
+  const [merchantCount, agentCount, todayAgg, openCount, overdueCount, activeIpRuleCount, adminCount, auditTodayCount, providerCount, pendingRefundCount, settlementOpenCount, settlementScheduled, webhookFailedCount, chargebackOpenCount, blacklistCandidateCount, depositDiffOpenCount, monthAgg, emailTodayCount, announcementActiveCount, templateEnabledCount, subscriptionActiveCount, subscriptionAttentionCount, paymentLinkActiveCount, agentFees] =
     await Promise.all([
       prisma.merchant.count(),
       prisma.agent.count(),
@@ -44,9 +46,17 @@ export default async function DashboardPage() {
       prisma.emailLog.count({ where: { createdAt: { gte: today } } }),
       prisma.announcement.count({ where: { status: "published", publishFrom: { lte: now }, OR: [{ publishUntil: null }, { publishUntil: { gt: now } }] } }),
       prisma.emailTemplate.count({ where: { enabled: true } }),
+      prisma.subscription.count({ where: { ...modeWhere, status: { in: ["trialing", "active"] } } }),
+      prisma.subscription.count({ where: { ...modeWhere, status: { in: ["past_due", "suspended"] } } }),
+      prisma.paymentLink.count({ where: { ...modeWhere, status: "active", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } }),
+      buildAgentFees(parseAgentFeeFilters(undefined, mode, now)),
     ]);
 
   const stats: DashboardStats = {
+    subscriptionActiveCount,
+    subscriptionAttentionCount,
+    paymentLinkActiveCount,
+    agentFeeMonthAmount: agentFees.rows.reduce((s, r) => s + r.fee, 0),
     pendingRefundCount,
     webhookFailedCount,
     chargebackOpenCount,
