@@ -8,6 +8,7 @@
 //   components/language-toggle.tsx   the literal "日本語" toggle label
 //   app/manifest.ts                  bilingual PWA metadata
 //   prisma/seed-data.ts              demo data is intentionally Japanese
+//   lib/email/templates.ts           default email texts for both languages
 //
 // Additionally, in registry.ts every {ja, en} pair whose ja side contains
 // Japanese must have a *different* en side (identical proper nouns like
@@ -21,6 +22,7 @@ const SCAN_DIRS = ["app", "components", "lib", "middleware.ts"];
 const ALLOW = new Set([
   "lib/i18n/messages/ja.ts",
   "lib/providers/registry.ts",
+  "lib/email/templates.ts",
   "components/language-toggle.tsx",
   "app/manifest.ts",
 ]);

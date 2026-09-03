@@ -60,16 +60,16 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     key: "reports",
     items: [
-      { key: "reports", href: "/reports", icon: "chart", implemented: false },
+      { key: "reports", href: "/reports", icon: "chart", implemented: true },
       { key: "webhookLogs", href: "/webhook-logs", icon: "plug", implemented: true },
-      { key: "emailLogs", href: "/email-logs", icon: "mail", implemented: false },
+      { key: "emailLogs", href: "/email-logs", icon: "mail", implemented: true },
     ],
   },
   {
     key: "notices",
     items: [
-      { key: "announcements", href: "/announcements", icon: "bell", implemented: false },
-      { key: "emailTemplates", href: "/email-templates", icon: "mail", implemented: false },
+      { key: "announcements", href: "/announcements", icon: "bell", implemented: true },
+      { key: "emailTemplates", href: "/email-templates", icon: "mail", implemented: true },
     ],
   },
   {
