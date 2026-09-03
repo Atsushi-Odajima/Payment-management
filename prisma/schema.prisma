@@ -100,6 +100,9 @@ model Payment {
   // Origin (Phase H): the payment link or subscription that produced the transaction.
   paymentLinkId     String?
   paymentLink       PaymentLink?  @relation(fields: [paymentLinkId], references: [id], onDelete: SetNull)
+  // Bank transfer only: the last manual "re-notify" of the merchant (API 再通知) and how many were sent.
+  renotifiedAt      DateTime?
+  renotifyCount     Int       @default(0)
   subscriptionId    String?
   subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   createdAt         DateTime  @default(now())
@@ -112,6 +115,7 @@ model Payment {
   refunds     Refund[]
   events      PaymentEvent[]
   chargebacks Chargeback[]
+  unmatchedDeposits UnmatchedDeposit[]
 
   @@unique([providerId, externalId])
   @@index([providerId])
@@ -706,4 +710,37 @@ model PaymentLink {
   payments Payment[]
 
   @@index([merchantId, status])
+}
+
+/// Bank deposits that arrived without a usable transfer id (振込ID の付け忘れ
+/// など). Support attaches the transfer id, which reconciles the transaction
+/// and re-notifies the merchant's API so the customer is credited without a
+/// manual update on the merchant side.
+model UnmatchedDeposit {
+  id                String    @id @default(cuid())
+  livemode          Boolean   @default(false)
+  amount            Int
+  payerName         String
+  receivedAt        DateTime
+  bankReference     String?
+  /// What the customer actually wrote on the remittance (wrong / partial), if anything.
+  givenTransferId   String?
+  note              String?
+  /// bank (deposit notification API) | manual (registered by support)
+  source            String    @default("manual")
+  /// unmatched | matched | dismissed
+  status            String    @default("unmatched")
+  paymentId         String?
+  payment           Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  matchedTransferId String?
+  matchedById       String?
+  matchedAt         DateTime?
+  dismissReason     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status])
+  @@index([livemode])
+  @@index([receivedAt])
+  @@index([paymentId])
 }

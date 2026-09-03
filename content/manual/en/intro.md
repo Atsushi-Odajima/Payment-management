@@ -38,6 +38,8 @@ Roles (master / general) belong to the signed-in admin account and are enforced 
 | Chargebacks | ○ | M | — | M (dispute / resolve / confirm) | — |
 | Blacklist and detection rule | ○ | M | M | M (approve / reject / disable) | — |
 | Deposit-difference follow-up | ○ | — | ○ (refund request / notify / resolve) | — | — |
+| Unmatched deposits (register / match by transfer ID / dismiss) | ○ | ○ | ○ (dismiss) | M (match) | — |
+| API re-notify (completed bank transfers) | ○ | — | — | M | — |
 | Reports and CSV | ○ | — | — | — | — |
 | E-mail templates | ○ | — | M | — | — |
 | E-mail log | ○ | — | — | — | — |
