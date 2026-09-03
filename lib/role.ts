@@ -74,6 +74,7 @@ export const PERMISSIONS = {
   global_setting: { view: ADMIN, update: ADMIN },
   csv: { export: STAFF },
   pii: { unmask: ADMIN_CS },
+  api_docs: { view: ALL },
 } as const satisfies Record<string, Record<string, readonly Role[]>>;
 
 export type Resource = keyof typeof PERMISSIONS;

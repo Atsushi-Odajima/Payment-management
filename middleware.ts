@@ -16,6 +16,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isLang, type Lang } from "@/lib/i18n";
 import { failResponse } from "@/lib/api/envelope";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
+import { MERCHANT_COOKIE, verifyMerchantToken } from "@/lib/merchant-portal/token";
 import { rateLimit } from "@/lib/rate-limit";
 import { isDemoReadonly } from "@/lib/demo";
 
@@ -24,8 +25,11 @@ export const config = {
 };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-// Own authentication: PSP webhook signatures, merchant API keys.
-const SIGNATURE_AUTH_PREFIXES = ["/api/webhooks/", "/api/merchant-api/"];
+// Own authentication: PSP webhook signatures, merchant API keys (legacy merchant-api and the public v1 API).
+const SIGNATURE_AUTH_PREFIXES = ["/api/webhooks/", "/api/merchant-api/", "/api/v1/"];
+// Merchant portal (Phase L-2): CSRF-protected like the dashboard, but authenticated by the merchant cookie.
+const MERCHANT_PORTAL_PREFIX = "/api/merchant-portal/";
+const MERCHANT_LOGIN_PATH = "/api/merchant-portal/login";
 // Bearer secrets: cron / demo endpoints.
 const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify", "/api/demo/cvs-notify", "/api/cron/expire-transfers", "/api/cron/webhook-retry", "/api/cron/subscriptions"];
 // Public demo endpoints without authentication (the webhook receiver is only an echo).
@@ -59,7 +63,7 @@ export async function middleware(req: NextRequest) {
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     req.headers.get("x-real-ip") ||
     "unknown";
-  const isLogin = LOGIN_PATHS.includes(pathname);
+  const isLogin = LOGIN_PATHS.includes(pathname) || pathname === MERCHANT_LOGIN_PATH;
   const rl = rateLimit(`${isLogin ? "login" : "mutate"}:${ip}`, {
     limit: isLogin ? 10 : 60,
     windowMs: 60_000,
@@ -82,6 +86,15 @@ export async function middleware(req: NextRequest) {
   }
 
   if (isLogin || publicCheckout) return NextResponse.next();
+
+  // Merchant portal mutations: the merchant cookie, never the operator session.
+  if (pathname.startsWith(MERCHANT_PORTAL_PREFIX)) {
+    const token = req.cookies.get(MERCHANT_COOKIE)?.value;
+    if (!(await verifyMerchantToken(token))) {
+      return failResponse(lang, 401, "unauthorized", "errors.unauthorized");
+    }
+    return NextResponse.next();
+  }
 
   // 3. Demo read-only mode
   if (isDemoReadonly()) {

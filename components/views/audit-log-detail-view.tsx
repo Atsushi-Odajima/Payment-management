@@ -48,6 +48,10 @@ export function AuditLogDetailView({ log }: { log: AuditDetail }) {
               <span>
                 {log.actor.name} <span className="font-mono text-xs text-slate-500">{log.actor.loginId}</span>
               </span>
+            ) : log.merchant ? (
+              <span>
+                {labels.actorType(log.actorType)} <span className="font-mono text-xs text-slate-500">{log.merchant.merchantCode}</span> <span className="text-xs text-slate-500">{log.merchant.siteName}</span>
+              </span>
             ) : (
               labels.actorType(log.actorType)
             )}

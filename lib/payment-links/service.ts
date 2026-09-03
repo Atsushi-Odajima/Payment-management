@@ -38,7 +38,7 @@ export const PAYMENT_LINK_SELECT = {
   merchant: { select: { id: true, merchantCode: true, siteName: true, enabledMethods: true } },
 } as const;
 
-export async function createPaymentLink(db: PrismaClient, opts: { input: PaymentLinkInput; livemode: boolean; actorId: string; audit: AuditContext }) {
+export async function createPaymentLink(db: PrismaClient, opts: { input: PaymentLinkInput; livemode: boolean; actorId: string | null; audit: AuditContext }) {
   const merchant = await db.merchant.findUnique({ where: { id: opts.input.merchantId }, select: { id: true } });
   if (!merchant) throw new ApiError(404, "not_found", "errors.notFound");
   const expiresAt = opts.input.expiresAt ? nextDayInTz(parseDateInTz(opts.input.expiresAt)!) : null;

@@ -11,6 +11,8 @@
 //   lib/email/templates.ts           default email texts for both languages
 //   lib/pdf/receipt.ts, invoice.ts   receipt / invoice PDF copy (Japanese legal
 //                                    documents with English sub-labels)
+//   lib/public-api/openapi.ts,       {ja, en} descriptions of the public API
+//   lib/public-api/test-cards.ts     endpoints and test cards (data, like the registry)
 //
 // Additionally, in registry.ts every {ja, en} pair whose ja side contains
 // Japanese must have a *different* en side (identical proper nouns like
@@ -27,6 +29,8 @@ const ALLOW = new Set([
   "lib/email/templates.ts",
   "lib/pdf/receipt.ts",
   "lib/pdf/invoice.ts",
+  "lib/public-api/openapi.ts",
+  "lib/public-api/test-cards.ts",
   "components/language-toggle.tsx",
   "app/manifest.ts",
 ]);

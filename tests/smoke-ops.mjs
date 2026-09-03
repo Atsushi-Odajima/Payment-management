@@ -523,6 +523,95 @@ async function login(loginId, password) {
   await ctx.close();
 }
 
+// ── Phase L: public API docs, merchant portal, sandbox ─────────────────
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 1000 }, locale: "en-US", extraHTTPHeaders: { "x-forwarded-for": "10.98.0.1" } });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => pageErrors.push(e.message));
+  // Public docs: no login, generated reference present.
+  await page.goto(BASE + "/docs/api", { waitUntil: "networkidle" });
+  await page.waitForURL(/\/docs\/api\/intro$/);
+  const docsBody = await page.textContent("body");
+  check("API docs: intro chapter and generated endpoint reference", docsBody.includes("Getting started") && docsBody.includes("/transactions/{id}") && docsBody.includes("createTransaction"));
+  await page.goto(BASE + "/docs/api/test-cards", { waitUntil: "networkidle" });
+  check("API docs: test card table", (await page.textContent("body")).includes("4000000000000002"));
+  const spec = await page.request.get(BASE + "/api/v1/openapi.json");
+  check("OpenAPI JSON served", spec.status() === 200 && (await spec.json()).openapi === "3.0.3");
+  await page.screenshot({ path: `${OUT}/api-docs-en.png`, fullPage: true });
+
+  // Merchant login: wrong password, then the seeded credentials.
+  await page.goto(BASE + "/merchant/login", { waitUntil: "networkidle" });
+  await page.fill("#merchantCode", "MER-00001");
+  await page.fill("#merchantPassword", "wrong-password");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("alert").waitFor({ timeout: 8000 });
+  check("merchant login: wrong password rejected", true);
+  await page.fill("#merchantPassword", "Kotori2026Demo");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await page.waitForURL(BASE + "/merchant", { timeout: 10000 });
+  const home = await page.textContent("body");
+  check("merchant portal home: KPIs and recent transactions", home.includes("Completed today") && home.includes("ORD-DEMO-001"));
+  check("merchant portal: no operator navigation", !home.includes("Admin users") && !home.includes("Audit log"));
+  await page.screenshot({ path: `${OUT}/merchant-portal-home-en.png`, fullPage: true });
+
+  // Transactions → refund request.
+  await page.goto(BASE + "/merchant/transactions", { waitUntil: "networkidle" });
+  check("merchant transactions: only own rows", (await page.textContent("body")).includes("ORD-DEMO-001") && !(await page.textContent("body")).includes("ORD-DEMO-004"));
+  await page.goto(BASE + "/merchant/transactions?status=captured", { waitUntil: "networkidle" });
+  await page.getByText("SUB-DEMO-0001").first().click();
+  await page.waitForURL(/\/merchant\/transactions\/[a-z0-9_]+$/);
+  await page.fill("#mp-refund-amount", "280");
+  await page.getByRole("button", { name: "Request refund" }).click();
+  await page.getByText("Refund requested").waitFor({ timeout: 8000 });
+  check("merchant: refund requested from the transaction detail", true);
+  await page.goto(BASE + "/merchant/refunds", { waitUntil: "networkidle" });
+  check("merchant refunds list shows the request", (await page.textContent("body")).includes("SUB-DEMO-0001"));
+
+  // Webhook resend, settlements + invoice, API keys rotation, methods, announcements.
+  await page.goto(BASE + "/merchant/webhooks", { waitUntil: "networkidle" });
+  await page.waitForTimeout(500);
+  const [resendRes] = await Promise.all([page.waitForResponse((r) => r.url().includes("/api/merchant-portal/webhooks/") && r.url().endsWith("/resend"), { timeout: 20000 }), page.getByRole("button", { name: "Resend" }).first().click()]);
+  const resendJson = await resendRes.json();
+  check("merchant: webhook re-sent through the portal API", resendRes.status() === 200 && resendJson.ok === true, `status ${resendRes.status()}`);
+  await page.getByText(/Re-sent/).first().waitFor({ timeout: 15000 });
+  await page.goto(BASE + "/merchant/settlements", { waitUntil: "networkidle" });
+  await page.locator("tbody tr a").first().click();
+  await page.waitForURL(/\/merchant\/settlements\/[a-z0-9_]+$/);
+  const inv = await page.request.get(page.url().replace("/merchant/settlements/", "/api/merchant-portal/settlements/") + "/invoice");
+  check("merchant: invoice PDF served (confirmed) or refused (collecting)", inv.status() === 200 || inv.status() === 409, `status ${inv.status()}`);
+  await page.goto(BASE + "/merchant/api-keys", { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Rotate" }).first().click();
+  await page.locator("dialog[open]").getByRole("button", { name: "Rotate" }).click();
+  await page.getByText("New key issued").waitFor({ timeout: 8000 });
+  const rotated = await page.locator("code").first().textContent();
+  check("merchant: test key rotated and shown once", /^wp_test_ak_/.test(rotated ?? ""));
+  check("merchant: live key read-only", (await page.textContent("body")).includes("Live keys are read-only"));
+  await page.goto(BASE + "/merchant/methods", { waitUntil: "networkidle" });
+  check("merchant methods: contract and suspension state", (await page.textContent("body")).includes("Suspended") && (await page.textContent("body")).includes("Not in contract"));
+  await page.goto(BASE + "/merchant/announcements", { waitUntil: "networkidle" });
+  check("merchant announcements page renders", (await page.textContent("body")).includes("Announcements"));
+
+  // Sandbox: real API call with the rotated test key.
+  await page.goto(BASE + "/merchant/sandbox", { waitUntil: "networkidle" });
+  await page.fill("#sb-key", rotated ?? "");
+  await page.selectOption("#sb-endpoint", "listTransactions");
+  await page.fill("#sb-query", "limit=2");
+  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByText(/HTTP 200/).waitFor({ timeout: 15000 });
+  check("sandbox: GET /transactions through the real API", (await page.textContent("body")).includes('"object": "transaction"'));
+  await page.selectOption("#sb-endpoint", "createTransaction");
+  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByText(/HTTP 201/).waitFor({ timeout: 15000 });
+  check("sandbox: POST /transactions with a test card", (await page.textContent("body")).includes('"status": "captured"'));
+  await page.screenshot({ path: `${OUT}/merchant-sandbox-en.png`, fullPage: true });
+
+  // Logout ends the merchant session; the operator dashboard is untouched.
+  await page.getByRole("button", { name: "Log out" }).click();
+  await page.waitForURL(/\/merchant\/login$/, { timeout: 10000 });
+  check("merchant logout returns to the portal login", true);
+  await ctx.close();
+}
+
 check("no page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 200));
 await browser.close();
 const failed = results.filter((r) => !r.ok);
