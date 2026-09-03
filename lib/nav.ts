@@ -61,7 +61,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     key: "reports",
     items: [
       { key: "reports", href: "/reports", icon: "chart", implemented: false },
-      { key: "webhookLogs", href: "/webhook-logs", icon: "plug", implemented: false },
+      { key: "webhookLogs", href: "/webhook-logs", icon: "plug", implemented: true },
       { key: "emailLogs", href: "/email-logs", icon: "mail", implemented: false },
     ],
   },

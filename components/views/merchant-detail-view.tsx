@@ -18,6 +18,8 @@ import { ContractTab } from "@/components/merchant-tabs/contract-tab";
 import { LimitsTab } from "@/components/merchant-tabs/limits-tab";
 import { ApiKeysTab } from "@/components/merchant-tabs/api-keys-tab";
 import { SettlementTab } from "@/components/merchant-tabs/settlement-tab";
+import { WebhooksTab } from "@/components/merchant-tabs/webhooks-tab";
+import type { WebhookRow } from "@/lib/webhooks/list";
 import type { AgentOption, MerchantView } from "@/lib/merchants/types";
 import { MERCHANT_TABS, type MerchantContract, type MerchantLimits, type MerchantSettlement, type MerchantTab } from "@/lib/merchants/tabs";
 import type { ApiKeyView } from "@/lib/merchants/api-keys";
@@ -34,10 +36,11 @@ export interface MerchantDetailProps {
   limits: MerchantLimits;
   apiKeys: ApiKeyView[];
   settlement: MerchantSettlement;
+  webhooks: WebhookRow[];
   mode: DataMode;
 }
 
-export function MerchantDetailView({ merchant: initial, agents, tab, contract, limits, apiKeys, settlement, mode }: MerchantDetailProps) {
+export function MerchantDetailView({ merchant: initial, agents, tab, contract, limits, apiKeys, settlement, webhooks, mode }: MerchantDetailProps) {
   const t = useT();
   const { lang } = useLang();
   const router = useRouter();
@@ -184,6 +187,8 @@ export function MerchantDetailView({ merchant: initial, agents, tab, contract, l
         <ApiKeysTab merchantId={merchant.id} merchantCode={merchant.merchantCode} keys={apiKeys} />
       ) : tab === "settlement" ? (
         <SettlementTab merchantId={merchant.id} data={settlement} />
+      ) : tab === "webhooks" ? (
+        <WebhooksTab merchantId={merchant.id} rows={webhooks} />
       ) : (
         <section className="card" aria-labelledby="sec-notify">
           <div className="divide-y divide-slate-100">

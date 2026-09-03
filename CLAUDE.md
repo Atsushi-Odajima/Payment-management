@@ -89,6 +89,15 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - 一覧 `/settlements`（生成フォーム + DataTable + CSV）、詳細 `/settlements/[id]`（内訳・明細・`/api/settlements/[id]/lines?format=csv`）。加盟店側は `GET /api/merchant-api/settlements[?id=]`（Bearer、`lib/merchants/api-auth.ts` の `authenticateMerchantApiKey` を ping と共用）。期間の既定値は `lib/settlements/schedule.ts` の `lastClosedPeriod`
 - `Chargeback` テーブルはこのフェーズで追加済み（精算の控除用）。運用画面はフェーズF
 
+## Webhook 送信（フェーズE）
+
+- **`WebhookDelivery`**（`event` は `lib/webhooks/events.ts` の `MERCHANT_WEBHOOK_EVENTS`、`url` / `method` / `requestHeaders`(JSON) / `requestBody`、`status` pending | success | failed | retrying | abandoned、`attempts`、`nextRetryAt`、`responseStatus` / `responseBody`(先頭 1KB)）と **`WebhookAttempt`**（試行ごとの応答・所要時間・`trigger` system | cron | dashboard）。実装は `lib/webhooks/deliver.ts`
+- **ペイロード**は `lib/merchants/notification.ts` の `buildNotificationRequest(cfg, values)`（加盟店の通知形式 × パラメータセット × 識別子。`event` パラメータを常に含む）。プレビューの `buildNotificationSample` も同じ関数を使う。相対 `notifyUrl`（seed の `/api/demo/webhook-receiver`）は `appBaseUrl()`（`APP_URL` → `VERCEL_PROJECT_PRODUCTION_URL` → localhost）で解決
+- **署名**: `X-Signature: v1=<HMAC-SHA256(secret, "<X-Timestamp>.<payload>")>` + `X-Timestamp`（互換で `Wirepay-Signature: t=..,v1=..` も送る）。鍵は加盟店の最新の有効な署名シークレット（同じモード。`ApiKey.secretEnc` に AES-GCM で保持、発行 / ローテーション時に `encryptSigningSecret`）、無ければ加盟店パスワード。`lib/merchants/secrets.ts` が `lib/crypto` を import してよい 2 つ目のモジュール（署名シークレットもここ）
+- **送信**: `emitPaymentWebhook(prisma, paymentId, event)` を `applyPaymentAction` の commit 後（`webhookEventFor(action, status)`: capture / 一致入金 → payment.completed、fail、expire、cancel、refund → refund.completed）と `POST /api/payments` の限度額超過（`limit.exceeded`）から呼ぶ。失敗しても呼び出し元は失敗しない。`fetch` は 10 秒 `AbortController`。テスト（`NODE_ENV=test`）や `WEBHOOK_DELIVERY=queue` では **キューに積むだけ**（`deliveryDeferred()`）で、テストは `attemptDelivery` を `fetch` スタブで呼ぶ
+- **リトライ**: `RETRY_DELAYS_MS` = 1分 / 5分 / 30分 / 2時間 / 24時間、`MAX_ATTEMPTS` 5 → abandoned。`GET/POST /api/cron/webhook-retry`（`CRON_SECRET`、`vercel.json` 毎時 30 分）が `processDueRetries`。手動再送は `POST /api/webhook-logs/[id]/resend`（`requireMaster`、監査 `webhook.resend`、trigger dashboard）
+- 画面: `/webhook-logs`（失敗 / 断念 / リトライ待ちを先頭に、CSV）、`/webhook-logs/[id]`、加盟店詳細の `webhooks` タブ。デモ受信 `/api/demo/webhook-receiver?result=ok|error|timeout`（middleware の `PUBLIC_PATHS`）。KPI「失敗件数」
+
 ## 代理店・決済申請・IP制限・マニュアル
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
@@ -147,7 +156,8 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **フェーズB 加盟店設定の拡張**（完了）: 加盟店詳細のタブ化、契約プラン / 手数料率の履歴、限度額（作成時判定 + 失敗理由）、振込期限（毎時 cron で期限切れ）・返金可能期限（表示）、API キー / 署名シークレット（発行・ローテーション・失効・`/api/merchant-api/ping`）、ヘッダーの test / live スイッチ
 - [x] **フェーズC 返金・取消管理**（完了）: 返金申請（理由コード・全額/一部・残額と審査待ち額の検証・返金可能期限の強制はマスターのみ）→ マスターの承認/否認、返金管理一覧/詳細、取引詳細の返金申請ダイアログ、KPI（審査待ち件数）
 - [x] **フェーズD 精算管理**（完了）: 精算設定タブ、SettlementBatch / Line の生成（契約料率で手数料計算・返金/チャージバック控除）、確定 → 振込予定 → 振込済 / 保留（マスター）、一覧・詳細・明細 CSV、加盟店 API での精算参照、KPI
-- [ ] **フェーズE Webhook 送信ログと再送**（未着手。次はここ。限度額超過の加盟店通知もここ） / [ ] フェーズF 不正・リスク対策（Chargeback テーブルは作成済み） / [ ] フェーズG レポート・通知 / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
+- [x] **フェーズE Webhook 送信ログと再送**（完了）: 実送信（通知設定に従うペイロード、X-Signature / X-Timestamp、10 秒タイムアウト）、指数バックオフの自動再送（cron）と断念、手動再送、送信ログ一覧 / 詳細 / 加盟店タブ、デモ受信エンドポイント、限度額超過通知、KPI
+- [ ] **フェーズF 不正・リスク対策**（未着手。次はここ。Chargeback テーブルは作成済み） / [ ] フェーズG レポート・通知 / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
 - 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う
 - 検索対象「カード下4桁」はフェーズF（カードハッシュ列）で追加する

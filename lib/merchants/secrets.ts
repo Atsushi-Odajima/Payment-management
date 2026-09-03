@@ -25,3 +25,12 @@ export function decryptMerchantPassword(enc: string): string {
 
 /** Fixed-width mask shown to every role. */
 export const PASSWORD_MASK = "********";
+
+/** Signing secrets (ApiKey.kind = signing_secret) are kept encrypted so webhooks can be signed with them. */
+export function encryptSigningSecret(plain: string): string {
+  return encrypt(plain);
+}
+
+export function decryptSigningSecret(enc: string): string {
+  return decrypt(enc);
+}

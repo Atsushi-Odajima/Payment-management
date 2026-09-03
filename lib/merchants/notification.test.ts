@@ -25,7 +25,7 @@ describe("notification sample", () => {
     const minimal = names({ ...base, notifyFormat: "json_post", notifyParamSet: "minimal", notifyIdFormat: "payment_id" });
     const standard = names({ ...base, notifyFormat: "json_post", notifyParamSet: "standard", notifyIdFormat: "payment_id" });
     const full = names({ ...base, notifyFormat: "json_post", notifyParamSet: "full", notifyIdFormat: "payment_id" });
-    expect(minimal).toEqual(["payment_id", "merchant_id", "amount", "currency", "paid_at", "status"]);
+    expect(minimal).toEqual(["payment_id", "event", "merchant_id", "amount", "currency", "paid_at", "status"]);
     expect(standard).toEqual([...minimal, "payment_method", "user_id", "product_id"]);
     expect(full).toEqual([...standard, "domain", "transaction_id"]);
   });

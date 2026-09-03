@@ -10,6 +10,7 @@ export const MANUAL_CHAPTERS = [
   "applications",
   "refunds",
   "settlements",
+  "webhooks",
   "ip-restrictions",
   "notification-spec",
   "admins",
