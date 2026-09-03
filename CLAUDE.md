@@ -215,6 +215,12 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - **通知（J の最小部分）**: `Notification` / `NotificationRead` テーブルと `lib/notifications/emit.ts` の `emitNotification`（同一 kind + 対象は 24 時間に 1 通）。画面・既読・メール / Slack は J
 - **GlobalSetting**（id `global`）: `lib/settings/global.ts`、`GET/PUT /api/global-settings`（admin、監査 `global_setting.update`）、画面 `/global-settings`。以降のフェーズは列を足す
 
+## 通知センター（フェーズJ）
+
+- **発生源**: `lib/notifications/emit.ts` の `emitNotification(db, { kind, severity?, title, body, href, roles, targetType, targetId })`。種別と既定の重要度は `lib/notifications/types.ts` の `NOTIFICATION_KINDS` / `NOTIFICATION_DEFAULT_SEVERITY`（14 種）。同一 kind + 対象は 24 時間に 1 通。組み込み先: `attemptDelivery`（webhook.abandoned）、`setMethodControl` / `resumeDueControls`、`lib/cron/run.ts` の `runCron`（batch.failed。全 cron route を包む）、`lib/notifications/digest.ts` の `runDailyDigests`（transfer.overdue / cvs.overdue = 日次 1 通、chargeback.deadline = 期限 3 日以内）、`detectRepeatedFailures`（blacklist.candidate）、`createTransaction`（limit.exceeded）、`recordFailure`（subscription.payment_failed）、`generateBatch` / `transitionBatch(hold)`、`createRefundRequest`（対象ロール admin / accounting）、`POST /api/merchants`
+- **配信**: `lib/notifications/deliver.ts` の `dispatchPendingNotifications`（`dispatchedAt` null の行を claim して配信）。root の PrismaClient から emit したときは即時、tx 内から emit したときは毎時 50 分の `GET/POST /api/cron/notifications`（日次まとめも同じ cron）で配信。メールは `NotificationPreference.email` の管理者へテンプレート `notification`（プレースホルダー `title` / `body` / `link`）で送信ログへ、Slack は `GlobalSetting.slackWebhookUrl` に `sendSlack`（8 秒タイムアウト、1 回リトライ、`SlackLog`。テスト / `WEBHOOK_DELIVERY=queue` では `demo` 記録のみ、`force` でテスト送信）
+- **閲覧**: `lib/notifications/list.ts`。可視性は `roles` JSON が空か自ロールを含む行。`GET /api/notifications`（絞り込み kind / severity / read / from / to）、`GET /api/notifications/unread`（ベル: 未読数 + 最新 10 件、未ログインは空）、`POST /api/notifications/[id]/read`、`POST /api/notifications/read-all`、`GET/PUT /api/notifications/preferences`（自分の設定のみ）、`POST /api/global-settings/slack-test`（admin）。画面 `/notifications`、`/notifications/settings`、ヘッダー `components/notification-bell.tsx`（60 秒ポーリング）、全体設定に Slack URL とテスト送信。ナビ `notifications`（配信グループ）、KPI「未読」
+
 ## 未消込入金と API 再通知（銀行振込のみ）
 
 - **`UnmatchedDeposit`**（`amount`, `payerName`, `receivedAt`, `bankReference`, `givenTransferId`（顧客が書いた誤った / 不足の振込ID）, `note`, `source` bank | manual, `status` unmatched | matched | dismissed, `paymentId` SetNull, `matchedTransferId`, `matchedById`, `matchedAt`, `dismissReason`, `livemode`）。振込IDの付け忘れなどで消込できなかった入金の置き場。`POST /api/demo/deposit-notify` は `transferId` が無い / 不明なら **404 ではなく 202 で未消込入金を登録**（`payerName` / `bankReference` / `receivedAt` / `mode` を任意で受ける）
@@ -286,7 +292,8 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **仕上げ**（完了）: マニュアル全章の精度向上、権限マトリクス、README 本番手順、残課題表
 - [x] **未消込入金 / API 再通知**（完了）
 - [x] **フェーズI ロール細分化・取引メモ・決済手段一時停止**（完了）: 5 ロール（admin / accounting / cs / developer / viewer）と `lib/role.ts` の権限マトリクス、`requirePermission` / `useCan`、取引メモ（タイムライン統合・ピン留め・削除の監査）、決済手段の全体 / 加盟店別停止（理由必須・自動再開 cron・赤バナー・障害お知らせ下書き）、通知テーブルと `emitNotification`（J の最小部分）、`GlobalSetting`（viewer の CSV 可否）
-- [ ] **フェーズJ 通知センター**（次はここ）: ベル / 既読 / 一覧 / メール・Slack 設定。テーブル `Notification` / `NotificationRead` と `lib/notifications/emit.ts` は I で作成済み
+- [x] **フェーズJ 通知センター**（完了）: 14 種の通知を既存処理に組み込み（Webhook 断念・決済手段停止・バッチ失敗・チャージバック期限・振込 / コンビニ期限超過の日次まとめ・ブラックリスト候補・限度額超過・定期課金失敗・精算の生成 / 保留・返金申請・加盟店登録）、ヘッダーのベル + 未読バッジ + 最新 10 件、一覧（種別・重要度・既読 / 未読・期間、全既読）、管理者ごとのメール / Slack 設定、Slack Incoming Webhook の実送信（1 回リトライ・SlackLog）
+- [ ] **フェーズK コンビニ決済・領収書 PDF・インボイス**（次はここ）
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
 - 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う
 - 検索対象「カード下4桁」はフェーズF（カードハッシュ列）で追加する

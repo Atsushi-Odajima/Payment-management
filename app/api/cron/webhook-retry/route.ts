@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { runCron } from "@/lib/cron/run";
 import { ApiError, ok, withApiHandler } from "@/lib/api/handler";
 import { timingSafeEqualBytes } from "@/lib/auth";
 import { processDueRetries } from "@/lib/webhooks/deliver";
@@ -16,7 +17,7 @@ async function handle(req: Request) {
   if (!timingSafeEqualBytes(enc.encode(given), enc.encode(secret))) {
     throw new ApiError(401, "unauthorized", "errors.unauthorized");
   }
-  return ok(await processDueRetries(prisma));
+  return ok(await runCron("webhook-retry", () => processDueRetries(prisma)));
 }
 
 export const GET = withApiHandler(handle, { ipRestricted: false });

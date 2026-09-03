@@ -15,6 +15,7 @@
 
 import { createHmac } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { emitNotification } from "@/lib/notifications/emit";
 import { buildNotificationRequest, signatureHeaders, type NotificationValues } from "@/lib/merchants/notification";
 import { isNotifyFormat, isNotifyIdFormat, isNotifyParamSet } from "@/lib/merchants/types";
 import { decryptMerchantPassword, decryptSigningSecret } from "@/lib/merchants/secrets";
@@ -151,6 +152,10 @@ export async function attemptDelivery(db: PrismaClient, deliveryId: string, trig
       data: { attempts: attemptNo, status, responseStatus, responseBody: responseBody ?? (error ? `error: ${error}` : null), nextRetryAt: retryAt, lastSentAt: now },
     }),
   ]);
+  if (status === "abandoned") {
+    const d = await db.webhookDelivery.findUnique({ where: { id: deliveryId }, select: { event: true, url: true, merchantId: true, merchant: { select: { merchantCode: true } } } });
+    await emitNotification(db, { kind: "webhook.abandoned", title: `Webhook abandoned: ${d?.event ?? ""} → ${d?.merchant?.merchantCode ?? ""}`, body: `${MAX_ATTEMPTS} attempts failed for ${d?.url ?? ""}. Resend it from the delivery log once the merchant endpoint is back.`, href: `/webhook-logs/${deliveryId}`, roles: ["admin", "developer"], targetType: "webhook_delivery", targetId: deliveryId, now });
+  }
   return { ok, status, responseStatus, error };
 }
 
