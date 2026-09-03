@@ -161,14 +161,17 @@ describe("POST /api/demo/deposit-notify", () => {
     expect(ok.body.data).toMatchObject({ completed: false, depositDiff: "short", depositAmount: 6000 });
   });
 
-  it("answers 404 for an unknown transfer id and 409 for a completed one", async () => {
+  it("records an unknown transfer id as an unmatched deposit (202) and answers 409 for a completed one", async () => {
     vi.stubEnv("DEPOSIT_NOTIFY_SECRET", "");
-    const unknown = await read(await notify({ transferId: "9999999", amount: 1 }));
-    expect(unknown.status).toBe(404);
-    expect(unknown.body.error.code).toBe("transfer_not_found");
+    const unknown = await read(await notify({ transferId: "9999999", amount: 1, payerName: "FORGOT ID" }));
+    expect(unknown.status).toBe(202);
+    expect(unknown.body.data.matched).toBe(false);
+    expect(await prisma.unmatchedDeposit.count({ where: { id: unknown.body.data.unmatchedDepositId, status: "unmatched", source: "bank" } })).toBe(1);
     const done = await notify({ transferId: SEED_TRANSFER_IDS[SEED_IDS.payment7], amount: 1 });
     expect(done.status).toBe(409);
-    expect((await notify({ transferId: "abc", amount: 1 })).status).toBe(400);
+    // A malformed transfer id is not an error for the bank: it is filed as an unmatched deposit too.
+    expect((await notify({ transferId: "abc", amount: 1 })).status).toBe(202);
+    expect((await notify({ transferId: "abc", amount: 0 })).status).toBe(400);
   });
 });
 

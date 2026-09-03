@@ -32,6 +32,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { key: "payments", href: "/payments", icon: "list", implemented: true },
       { key: "refunds", href: "/refunds", icon: "refund", implemented: true },
       { key: "depositDiffs", href: "/deposit-diffs", icon: "bank", implemented: true },
+      { key: "unmatchedDeposits", href: "/unmatched-deposits", icon: "bank", implemented: true },
     ],
   },
   {

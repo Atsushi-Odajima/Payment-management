@@ -305,6 +305,39 @@ async function login(loginId, password) {
   await ctx2.close();
 }
 
+// ── Unmatched deposits + API re-notify (bank transfers only) ───────────
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  await page.goto(BASE + "/unmatched-deposits", { waitUntil: "networkidle" });
+  const udBody = await page.textContent("body");
+  check("unmatched deposits: seeded open row and header badge", udBody.includes("1 unmatched") && udBody.includes("Unmatched"));
+  await page.screenshot({ path: `${OUT}/unmatched-deposits-en.png`, fullPage: true });
+  await page.getByRole("button", { name: "Match by transfer ID" }).first().click();
+  // The candidate list suggests the awaiting transfer with the same amount (ORD-DEMO-005 → 7301256); pick it.
+  await page.locator("dialog[open]").getByRole("button", { name: /7301256/ }).click();
+  check("match dialog: candidate fills the transfer id", (await page.locator("dialog[open] #match-transfer-id").inputValue()) === "7301256");
+  await page.locator("dialog[open]").getByRole("button", { name: "Match by transfer ID" }).click();
+  await page.getByText("merchant was notified through the API").waitFor({ timeout: 10000 });
+  await page.waitForTimeout(800);
+  check("matched deposit links to the completed transaction", (await page.textContent("body")).includes("ORD-DEMO-005") && (await page.textContent("body")).includes("Matched"));
+  await page.locator("tbody tr").filter({ hasText: "ORD-DEMO-005" }).first().getByRole("link", { name: "ORD-DEMO-005" }).click();
+  await page.waitForURL(/\/payments\/[a-z0-9_]+$/);
+  check("transaction completed by the match", (await page.textContent("body")).includes("Completed"));
+  await page.getByRole("button", { name: "API re-notify" }).click();
+  await page.locator("dialog[open]").getByRole("button", { name: "API re-notify" }).click();
+  await page.getByText("API re-notification sent").waitFor({ timeout: 10000 });
+  await page.waitForTimeout(800);
+  check("API re-notify recorded on the transaction", (await page.textContent("body")).includes("Last re-notified"));
+  await page.screenshot({ path: `${OUT}/payment-renotify-en.png`, fullPage: true });
+  await page.goto(BASE + "/webhook-logs", { waitUntil: "networkidle" });
+  // ORD-DEMO-005 belongs to MER-00003: the match and the re-notify each produced a payment.completed delivery.
+  check("webhook log lists the re-sent payment.completed deliveries", (await page.locator("tbody tr").filter({ hasText: "MER-00003" }).filter({ hasText: "payment.completed" }).count()) >= 2);
+  // Card payments never get the button.
+  await page.goto(BASE + "/payments/pay_demo_001", { waitUntil: "networkidle" });
+  check("no API re-notify on a card payment", (await page.getByRole("button", { name: "API re-notify" }).count()) === 0);
+  await ctx.close();
+}
+
 check("no page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 200));
 await browser.close();
 const failed = results.filter((r) => !r.ok);
