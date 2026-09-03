@@ -1,3 +1,4 @@
+import { maskEmail, maskName } from "@/lib/pii/mask";
 import { cookies } from "next/headers";
 import { SubscriptionsView } from "@/components/views/subscriptions-view";
 import { prisma } from "@/lib/db";
@@ -18,5 +19,5 @@ export default async function SubscriptionsPage({ searchParams }: { searchParams
     loadPlans(),
     prisma.riskSetting.findUnique({ where: { id: RISK_SETTINGS_ID }, select: { demoChargeFailPercent: true } }),
   ]);
-  return <SubscriptionsView rows={rows} total={total} page={page} pageSize={DEFAULT_PAGE_SIZE} sort={sort} filters={filters} merchants={merchants} pastDueCount={pastDueCount} plans={plans} demoFailPercent={setting?.demoChargeFailPercent ?? 20} />;
+  return <SubscriptionsView rows={rows.map((r) => ({ ...r, customerName: maskName(r.customerName) ?? "", customerEmail: maskEmail(r.customerEmail) }))} total={total} page={page} pageSize={DEFAULT_PAGE_SIZE} sort={sort} filters={filters} merchants={merchants} pastDueCount={pastDueCount} plans={plans} demoFailPercent={setting?.demoChargeFailPercent ?? 20} />;
 }

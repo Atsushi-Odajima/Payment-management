@@ -1,3 +1,5 @@
+import { piiCsvMode } from "@/lib/pii/csv";
+import { maskEmail } from "@/lib/pii/mask";
 import { ok, withApiHandler } from "@/lib/api/handler";
 import { CSV_MAX_ROWS, csvResponse, toCsv } from "@/lib/csv";
 import { DEFAULT_PAGE_SIZE, parsePage } from "@/lib/pagination";
@@ -9,7 +11,9 @@ export const GET = withApiHandler(async (req) => {
   const filters = parseEmailLogFilters(q);
   const sort = parseEmailLogSort(q);
   if (q.format === "csv") {
-    const rows = await loadEmailLogsForExport(filters, sort, CSV_MAX_ROWS);
+    const raw = await loadEmailLogsForExport(filters, sort, CSV_MAX_ROWS);
+    const mode = await piiCsvMode(req);
+    const rows = mode === "full" ? raw : raw.map((r) => ({ ...r, to: maskEmail(r.to) ?? "" }));
     return csvResponse(
       toCsv(rows, [
         { header: "createdAt", value: (r) => r.createdAt },

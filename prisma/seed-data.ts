@@ -13,6 +13,8 @@ import { encryptMerchantPassword } from "../lib/merchants/secrets";
 import { transferDueDate } from "../lib/payments/transfer";
 import { cvsDueDate } from "../lib/payments/konbini";
 import { partsInTz } from "../lib/settlements/schedule";
+import { linkExistingPayments } from "../lib/customers/service";
+import { cardFingerprint } from "../lib/risk/service";
 import { hashPassword } from "../lib/admin/password";
 import { PLAN_DEFAULT_RATES } from "../lib/merchants/fees";
 import { displayPrefix } from "../lib/merchants/api-keys";
@@ -92,6 +94,8 @@ export const SEED_IDS = {
   payment14: "pay_demo_014",
   payment15: "pay_demo_015",
   receipt1: "rcp_demo_001",
+  customerAnonymized: "cus_demo_anon",
+  anonymizeBatch1: "anb_demo_001",
 } as const;
 
 /** Fixed konbini receipt numbers of the seeded slips (Phase K-1). */
@@ -1195,6 +1199,31 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     await prisma.auditLog.upsert({ where: { id: a.id }, update: {}, create: a });
   }
 
+  // ── Phase M: customer master ───────────────────────────────────────────
+  // Every seeded transaction with a merchant + customer id gets its Customer
+  // row (idempotent backfill), then a few extras: a phone number, a stored
+  // card token and one customer anonymised by the retention job.
+  await linkExistingPayments(prisma);
+  const customer1 = await prisma.customer.findUnique({ where: { merchantId_externalId: { merchantId: SEED_IDS.merchant1, externalId: "u_10021" } }, select: { id: true } });
+  if (customer1) {
+    await prisma.customer.update({ where: { id: customer1.id }, data: { phone: "090-1234-5678" } });
+    await prisma.paymentToken.upsert({
+      where: { customerId_cardHash: { customerId: customer1.id, cardHash: cardFingerprint({ brand: "visa", last4: "4242", expiry: "12/28" }) } },
+      update: {},
+      create: { customerId: customer1.id, brand: "visa", last4: "4242", expiry: "12/28", cardHash: cardFingerprint({ brand: "visa", last4: "4242", expiry: "12/28" }), label: "メインカード", createdAt: daysAgo(51), lastUsedAt: hoursAgo(6) },
+    });
+  }
+  await prisma.customer.upsert({
+    where: { id: SEED_IDS.customerAnonymized },
+    update: {},
+    create: { id: SEED_IDS.customerAnonymized, merchantId: SEED_IDS.merchant2, externalId: "u_20099", name: null, email: null, phone: null, anonymizedAt: daysAgo(3), createdAt: daysAgo(400) },
+  });
+  await prisma.anonymizeBatch.upsert({
+    where: { id: SEED_IDS.anonymizeBatch1 },
+    update: {},
+    create: { id: SEED_IDS.anonymizeBatch1, kind: "retention", customers: 1, payments: 0, tokens: 0, auditLogs: 0, startedAt: daysAgo(3), finishedAt: daysAgo(3) },
+  });
+
   return {
     providers: 4,
     payments: payments.length,
@@ -1239,6 +1268,9 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.refund.deleteMany();
   await prisma.receipt.deleteMany();
   await prisma.payment.deleteMany();
+  await prisma.paymentToken.deleteMany();
+  await prisma.customer.deleteMany();
+  await prisma.anonymizeBatch.deleteMany();
   await prisma.subscription.deleteMany();
   await prisma.plan.deleteMany();
   await prisma.paymentLink.deleteMany();

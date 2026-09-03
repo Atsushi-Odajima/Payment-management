@@ -9,6 +9,7 @@
     { "path": "/api/cron/webhook-retry", "schedule": "30 * * * *" },
     { "path": "/api/cron/subscriptions", "schedule": "15 * * * *" },
     { "path": "/api/cron/payment-method-controls", "schedule": "45 * * * *" },
-    { "path": "/api/cron/notifications", "schedule": "50 * * * *" }
+    { "path": "/api/cron/notifications", "schedule": "50 * * * *" },
+    { "path": "/api/cron/anonymize", "schedule": "0 19 * * *" }
   ]
 }

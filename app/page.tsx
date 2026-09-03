@@ -53,6 +53,7 @@ export default async function DashboardPage() {
       buildAgentFees(parseAgentFeeFilters(undefined, mode, now)),
       prisma.unmatchedDeposit.count({ where: { ...modeWhere, status: "unmatched" } }),
     ]);
+  const customerCount = await prisma.customer.count({ where: { anonymizedAt: null } });
 
   const unreadNotificationCount = await unreadCount(prisma, admin);
   const stats: DashboardStats = {
@@ -75,6 +76,7 @@ export default async function DashboardPage() {
     settlementOpenCount,
     settlementScheduledAmount: settlementScheduled._sum.netAmount ?? 0,
     merchantCount,
+    customerCount,
     agentCount,
     todayPaymentCount: todayAgg._count,
     todayPaymentAmount: todayAgg._sum.amount ?? 0,

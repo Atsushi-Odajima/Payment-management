@@ -106,6 +106,17 @@ export function SearchBox({ id = "global-search" }: { id?: string }) {
                   </Row>
                 ))}
               </Group>
+              <Group title={t("search.groups.customers")} count={result.customers.length}>
+                {result.customers.map((c) => (
+                  <Row key={c.id} href={`/customers/${c.id}`} onPick={() => setOpen(false)}>
+                    <span className="font-medium text-slate-900">{c.name ?? c.externalId}</span>
+                    <span className="text-xs text-slate-500">
+                      {c.externalId} · {c.merchantName}
+                      {c.email ? ` · ${c.email}` : ""}
+                    </span>
+                  </Row>
+                ))}
+              </Group>
               <Group title={t("search.groups.merchants")} count={result.merchants.length}>
                 {result.merchants.map((m) => (
                   <Row key={m.id} href={`/merchants/${m.id}`} onPick={() => setOpen(false)}>

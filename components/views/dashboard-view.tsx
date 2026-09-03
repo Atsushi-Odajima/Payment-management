@@ -32,6 +32,7 @@ export interface DashboardStats {
   settlementOpenCount: number;
   settlementScheduledAmount: number;
   merchantCount: number;
+  customerCount: number;
   agentCount: number;
   todayPaymentCount: number;
   todayPaymentAmount: number;
@@ -96,6 +97,8 @@ export function DashboardView({ stats }: { stats: DashboardStats }) {
         return { value: t("dashboard.valueAgentFees", { amount: formatYen(stats.agentFeeMonthAmount) }) };
       case "merchants":
         return { value: t("dashboard.valueCount", { count: stats.merchantCount }) };
+      case "customers":
+        return { value: t("dashboard.valueCount", { count: stats.customerCount }) };
       case "agents":
         return { value: t("dashboard.valueCount", { count: stats.agentCount }) };
       case "admins":

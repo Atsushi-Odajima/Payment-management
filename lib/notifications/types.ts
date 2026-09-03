@@ -22,6 +22,7 @@ export const NOTIFICATION_KINDS = [
   "settlement.generated",
   "refund.requested",
   "merchant.created",
+  "pii.anonymized",
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 export const isNotificationKind = (v: unknown): v is NotificationKind => typeof v === "string" && (NOTIFICATION_KINDS as readonly string[]).includes(v);
@@ -41,6 +42,7 @@ export const NOTIFICATION_DEFAULT_SEVERITY: Record<NotificationKind, Notificatio
   "settlement.generated": "info",
   "refund.requested": "info",
   "merchant.created": "info",
+  "pii.anonymized": "info",
 };
 
 export const NOTIFICATION_CHANNELS = ["in_app", "email", "slack"] as const;
