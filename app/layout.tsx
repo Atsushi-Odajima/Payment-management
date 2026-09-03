@@ -11,6 +11,7 @@ import { SESSION_COOKIE } from "@/lib/auth";
 import { currentAdminFromToken } from "@/lib/admin/current";
 import { checkAdminAccess } from "@/lib/ip-restrictions/enforce";
 import { MODE_COOKIE, resolveMode } from "@/lib/mode";
+import { loadActiveAnnouncements } from "@/lib/announcements/list";
 
 function requestLang(): Lang {
   return resolveInitialLang(cookies().get(LANG_COOKIE)?.value, headers().get("accept-language"));
@@ -61,13 +62,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // identity flow to client components through SessionProvider.
   const user = await currentAdminFromToken(cookies().get(SESSION_COOKIE)?.value);
   const mode = resolveMode(cookies().get(MODE_COOKIE)?.value);
+  // Active maintenance / incident announcements for the header banner (Phase G-3).
+  const banner = (await loadActiveAnnouncements().catch(() => []))
+    .filter((a) => a.kind !== "notice")
+    .map((a) => ({ id: a.id, kind: a.kind, title: a.title, latestPhase: a.updates.length ? a.updates[a.updates.length - 1].phase : null }));
   return (
     <html lang={lang}>
       <body>
         <LanguageProvider initialLang={lang}>
           <SessionProvider user={user}>
             <ModeProvider initialMode={mode}>
-              <AppShell>{children}</AppShell>
+              <AppShell banner={banner}>{children}</AppShell>
             </ModeProvider>
           </SessionProvider>
         </LanguageProvider>

@@ -17,6 +17,7 @@ import { reconcileDeposit, type DepositDiff } from "./transfer";
 import { recordAudit, type AuditContext } from "@/lib/audit";
 import { emitPaymentWebhook } from "@/lib/webhooks/deliver";
 import { detectRepeatedFailures } from "@/lib/risk/service";
+import { notifyPaymentCompleted, notifyRefundCompleted } from "@/lib/email/hooks";
 import type { MerchantWebhookEvent } from "@/lib/webhooks/events";
 
 export const PAYMENT_ACTORS = ["dashboard", "webhook", "bank", "system", "seed"] as const;
@@ -178,6 +179,10 @@ export async function applyPaymentAction(
   // Merchant notification (Phase E) after the commit; never fails the action.
   const event = webhookEventFor(action, toPaymentStatus(result.status));
   if (event && payment.merchantId) await emitPaymentWebhook(prisma, paymentId, event);
+  // Customer emails (Phase G-2): completion and refund confirmations.
+  const finalStatus = toPaymentStatus(result.status);
+  if ((action === "capture" || action === "deposit") && finalStatus === "captured") await notifyPaymentCompleted(prisma, paymentId);
+  if (action === "refund") await notifyRefundCompleted(prisma, paymentId, eventAmount);
   // Repeated-failure detection (Phase F-2) after a failure.
   if (action === "fail") {
     await detectRepeatedFailures(prisma, { cardHash: payment.cardHash, clientIp: payment.clientIp, email: payment.customerEmail }).catch((e) => console.error("[risk] detect failed", e));

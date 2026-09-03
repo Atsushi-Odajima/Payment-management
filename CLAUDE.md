@@ -105,6 +105,12 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - **過不足入金**: `Payment.depositDiffStatus`（open | refund_arranged | notified | resolved。`applyPaymentAction(deposit)` が過不足発生時に `open` をセット）。`lib/risk/deposit-diffs.ts`（一覧ローダと `applyDepositDiffAction`: excess → `createRefundRequest`（理由 duplicate）で refund_arranged、short → `lib/email/hooks.ts` の `notifyDepositShort`（フェーズG でメール送信ログ）で notified、resolve）。`/api/deposit-diffs`、`POST /api/deposit-diffs/[id]/refund|notify|resolve`（`requireAdmin`、監査 `payment.deposit_diff_update`）。画面 `/deposit-diffs`。seed の過不足サンプルは **本番モード**（payment10 / payment11）
 - KPI: チャージバック対応中件数、ブラックリスト候補件数、過不足未対応件数
 
+## レポート・メール・お知らせ（フェーズG）
+
+- **集計レポート**: `lib/reports/service.ts` の `buildReport(filters)`（`granularity` daily | monthly | custom、期間は `createdAt`、モード・加盟店・決済種別で絞り込み。完了 = captured | partially_refunded | refunded | chargeback、離脱 = expired | cancelled。系列・決済種別シェア・加盟店ランキング上位 10 をメモリ集計、上限 5,000 行）。`GET /api/reports`（`?format=csv&kind=summary|detail`）。画面 `/reports`、グラフは `components/charts.tsx` の自前 SVG（外部ライブラリ禁止）
+- **メール**: `EmailTemplate`（`@@unique([key, lang])`、キーは `lib/email/templates.ts` の `EMAIL_TEMPLATE_KEYS`、プレースホルダーは `EMAIL_PLACEHOLDERS` / `renderTemplate`、既定文面 `DEFAULT_EMAIL_TEMPLATES` を seed が upsert）と `EmailLog`（`status` sent | failed | demo、`provider`）。送信は **`lib/email/send.ts` の `sendTemplatedEmail` のみ**（プロバイダは `EMAIL_PROVIDER` = log（既定・記録のみ）| console。実サービスは `EmailProvider` を追加）。イベントフックは `lib/email/hooks.ts`（`notifyTransferIssued`: 銀行振込作成、`notifyPaymentCompleted`: capture / 一致入金、`notifyRefundCompleted`: 返金承認、`notifyDepositShort`: 過不足の案内、`notifyAdminInvite`: 管理者招待。すべて例外を握りつぶす）。ユーザー向けは `CUSTOMER_EMAIL_LANG`（既定 ja、`EMAIL_DEFAULT_LANG`）。画面 `/email-templates`（編集はマスター、監査 `email_template.update`）、`/email-logs`
+- **お知らせ**: `Announcement`（`kind` notice | maintenance | incident、`status` draft | published | ended、`publishFrom` / `publishUntil`、`targetAll` + `targetMerchantIds` JSON）と `AnnouncementUpdate`（`phase` occurred | investigating | resolved）。`lib/announcements/{types,service,list}.ts`（`loadActiveAnnouncements(merchantId?)` が公開中の絞り込み）。`/api/announcements`（GET / POST `publish: true` で即公開）、`/api/announcements/[id]`（GET / PATCH）、`/api/announcements/[id]/publish|end|update`、加盟店向け `GET /api/merchant-api/announcements`。**バナー**は `app/layout.tsx` が公開中の maintenance / incident を `AppShell` の `banner` prop に渡し `components/announcement-banner.tsx` が描画（notice は出さない）。監査 `announcement.*`
+
 ## 代理店・決済申請・IP制限・マニュアル
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
@@ -165,7 +171,8 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **フェーズD 精算管理**（完了）: 精算設定タブ、SettlementBatch / Line の生成（契約料率で手数料計算・返金/チャージバック控除）、確定 → 振込予定 → 振込済 / 保留（マスター）、一覧・詳細・明細 CSV、加盟店 API での精算参照、KPI
 - [x] **フェーズE Webhook 送信ログと再送**（完了）: 実送信（通知設定に従うペイロード、X-Signature / X-Timestamp、10 秒タイムアウト）、指数バックオフの自動再送（cron）と断念、手動再送、送信ログ一覧 / 詳細 / 加盟店タブ、デモ受信エンドポイント、限度額超過通知、KPI
 - [x] **フェーズF 不正・リスク対策**（完了）: チャージバック（登録 → 異議申立て → 勝訴/敗訴 → 確定、取引ステータス `chargeback`、精算控除、Webhook）、カード識別ハッシュ / 接続元 IP と連続失敗検知（閾値設定）→ ブラックリスト候補 / 承認 / 手動追加 / 作成時ブロック、過不足入金一覧と対応ステータス（差額返金申請・追加入金案内）、KPI
-- [ ] **フェーズG レポート・通知**（未着手。次はここ。`lib/email/hooks.ts` の `notifyDepositShort` を実装する） / [ ] フェーズH 定期課金・決済リンク・代理店手数料 / [ ] 仕上げ
+- [x] **フェーズG レポート・通知**（完了）: 集計レポート（指標 7 種・推移 / 比率 / ランキングの SVG グラフ・集計 / 明細 CSV）、メールテンプレート（6 キー × 2 言語、プレースホルダー、プレビュー、有効 / 無効）と送信ログ（デモは記録のみ、`EMAIL_PROVIDER` で差し替え）、イベントフック（振込案内・決済完了・返金完了・追加入金案内・管理者招待）、お知らせ配信（下書き / 公開 / 終了、対象加盟店、障害の更新履歴、ヘッダーのバナー、加盟店 API）
+- [ ] **フェーズH 定期課金・決済リンク・代理店手数料**（未着手。次はここ） / [ ] 仕上げ
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
 - 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う
 - 検索対象「カード下4桁」はフェーズF（カードハッシュ列）で追加する

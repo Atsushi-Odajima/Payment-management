@@ -16,6 +16,7 @@ import { PLAN_DEFAULT_RATES } from "../lib/merchants/fees";
 import { displayPrefix } from "../lib/merchants/api-keys";
 import { hashApiKey } from "../lib/merchants/api-keys-server";
 import { encryptSigningSecret } from "../lib/merchants/secrets";
+import { DEFAULT_EMAIL_TEMPLATES } from "../lib/email/templates";
 import { DEMO_ADMIN_ACCOUNTS } from "./seed-accounts";
 
 export const SEED_IDS = {
@@ -65,6 +66,10 @@ export const SEED_IDS = {
   chargeback1: "cb_demo_001",
   blacklist1: "bl_demo_001",
   blacklist2: "bl_demo_002",
+  email1: "eml_demo_001",
+  email2: "eml_demo_002",
+  announcement1: "ann_demo_001",
+  announcement2: "ann_demo_002",
 } as const;
 
 /**
@@ -771,6 +776,83 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     },
   });
 
+  // ── Email templates / logs and announcements (Phase G) ────────────────
+  for (const tpl of DEFAULT_EMAIL_TEMPLATES) {
+    await prisma.emailTemplate.upsert({ where: { key_lang: { key: tpl.key, lang: tpl.lang } }, update: {}, create: { key: tpl.key, lang: tpl.lang, subject: tpl.subject, body: tpl.body, enabled: true } });
+  }
+  const emails = [
+    {
+      id: SEED_IDS.email1,
+      to: "taro@example.com",
+      templateKey: "payment_completed",
+      lang: "ja",
+      subject: "【ハンドメイド雑貨 コトリ】お支払いを確認しました（注文番号 ORD-DEMO-001）",
+      body: "山田 太郎 様\n\n注文番号 ORD-DEMO-001 のお支払い ¥4,980 を確認いたしました。\n取引ID: pay_demo_001\n\n商品の発送準備に入ります。今後ともよろしくお願いいたします。",
+      status: "demo",
+      provider: "log",
+      paymentId: SEED_IDS.payment1,
+      merchantId: SEED_IDS.merchant1,
+      createdAt: hoursAgo(6),
+    },
+    {
+      id: SEED_IDS.email2,
+      to: "yumi@example.com",
+      templateKey: "transfer_guide",
+      lang: "ja",
+      subject: "【築地まぐろ商店】お振込先のご案内（注文番号 ORD-LIVE-003）",
+      body: "斎藤 由美 様\n\n以下の内容でお振込みをお願いいたします。\n\n振込金額: ¥9,800\n振込ID: 7788120\n振込期限: " + transferDueDate(daysAgo(2)).toISOString().slice(0, 10) + "\n商品: 海鮮丼セット",
+      status: "demo",
+      provider: "log",
+      paymentId: SEED_IDS.payment10,
+      merchantId: SEED_IDS.merchant3,
+      createdAt: daysAgo(2),
+    },
+  ];
+  for (const e of emails) {
+    await prisma.emailLog.upsert({ where: { id: e.id }, update: {}, create: e });
+  }
+  await prisma.announcement.upsert({
+    where: { id: SEED_IDS.announcement1 },
+    update: {},
+    create: {
+      id: SEED_IDS.announcement1,
+      kind: "maintenance",
+      title: "定期メンテナンスのお知らせ（毎週火曜 02:00〜04:00）",
+      body: "システム更新のため、毎週火曜日 02:00〜04:00（JST）に管理画面と加盟店 API が最大 10 分間停止します。決済申請の受付は継続します。",
+      publishFrom: daysAgo(3),
+      publishUntil: daysAgo(-30),
+      targetAll: true,
+      targetMerchantIds: "[]",
+      status: "published",
+      createdById: DEMO_ADMIN_ACCOUNTS.master.id,
+      createdAt: daysAgo(3),
+    },
+  });
+  await prisma.announcement.upsert({
+    where: { id: SEED_IDS.announcement2 },
+    update: {},
+    create: {
+      id: SEED_IDS.announcement2,
+      kind: "incident",
+      title: "QR 決済の遅延について",
+      body: "一部の QR 決済で完了通知が遅延しています。原因を調査中です。",
+      publishFrom: hoursAgo(5),
+      publishUntil: hoursAgo(1),
+      targetAll: true,
+      targetMerchantIds: "[]",
+      status: "published",
+      createdById: DEMO_ADMIN_ACCOUNTS.master.id,
+      createdAt: hoursAgo(5),
+      updates: {
+        create: [
+          { phase: "occurred", body: "一部の QR 決済で完了通知が遅延しています。原因を調査中です。", createdAt: hoursAgo(5) },
+          { phase: "investigating", body: "決済事業者側の通知遅延と判明。再送処理を実施中です。", createdAt: hoursAgo(3) },
+          { phase: "resolved", body: "遅延していた通知の再送が完了しました。", createdAt: hoursAgo(1) },
+        ],
+      },
+    },
+  });
+
   // ── Audit log samples ─────────────────────────────────────────────────
   const audits = [
     {
@@ -831,6 +913,10 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
 /** Remove all demo data (used by the demo reset endpoint and tests). */
 export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.auditLog.deleteMany();
+  await prisma.announcementUpdate.deleteMany();
+  await prisma.announcement.deleteMany();
+  await prisma.emailLog.deleteMany();
+  await prisma.emailTemplate.deleteMany();
   await prisma.adminUser.deleteMany();
   await prisma.ipRestriction.deleteMany();
   await prisma.webhookEvent.deleteMany();

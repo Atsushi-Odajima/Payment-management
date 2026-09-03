@@ -1,0 +1,152 @@
+// Email templates (Phase G-2): keys, placeholders, rendering and the default
+// texts the seed installs for both languages. Templates are edited on
+// /email-templates; the rendered email is logged by lib/email/send.ts.
+
+import { z } from "zod";
+
+export const EMAIL_TEMPLATE_KEYS = ["transfer_guide", "payment_completed", "refund_completed", "deposit_short", "statement", "admin_invite"] as const;
+export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
+export function isEmailTemplateKey(v: unknown): v is EmailTemplateKey {
+  return typeof v === "string" && (EMAIL_TEMPLATE_KEYS as readonly string[]).includes(v);
+}
+
+export const EMAIL_LANGS = ["ja", "en"] as const;
+export type EmailLang = (typeof EMAIL_LANGS)[number];
+
+export const EMAIL_LOG_STATUSES = ["sent", "failed", "demo"] as const;
+export type EmailLogStatus = (typeof EMAIL_LOG_STATUSES)[number];
+export function isEmailLogStatus(v: unknown): v is EmailLogStatus {
+  return typeof v === "string" && (EMAIL_LOG_STATUSES as readonly string[]).includes(v);
+}
+
+/** Placeholders available in every template ({{name}}). */
+export const EMAIL_PLACEHOLDERS = [
+  "merchantName",
+  "customerName",
+  "amount",
+  "transferId",
+  "deadline",
+  "transactionId",
+  "orderNumber",
+  "productName",
+  "shortAmount",
+  "loginId",
+  "initialPassword",
+  "loginUrl",
+] as const;
+export type EmailPlaceholder = (typeof EMAIL_PLACEHOLDERS)[number];
+export type EmailVars = Partial<Record<EmailPlaceholder, string>>;
+
+/** Replace {{key}} tokens; unknown / missing keys render as empty strings. */
+export function renderTemplate(text: string, vars: EmailVars): string {
+  return text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => (vars as Record<string, string | undefined>)[key] ?? "");
+}
+
+/** Placeholder names used by a text (for the editor's checklist). */
+export function placeholdersIn(text: string): string[] {
+  return [...new Set([...text.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)].map((m) => m[1]))];
+}
+
+export const SAMPLE_EMAIL_VARS: Required<EmailVars> = {
+  merchantName: "ハンドメイド雑貨 コトリ",
+  customerName: "山田 太郎",
+  amount: "¥4,980",
+  transferId: "7301256",
+  deadline: "2026/09/08",
+  transactionId: "pay_01J9X4M8K2Q7Z3T6",
+  orderNumber: "ORD-DEMO-001",
+  productName: "春物ジャケット",
+  shortAmount: "¥1,000",
+  loginId: "new.operator",
+  initialPassword: "Xk9v-2mPq-7Lw3",
+  loginUrl: "https://payment-management-green.vercel.app/login",
+};
+
+export const emailTemplateUpdateSchema = z.object({
+  subject: z.string().trim().min(1, "required").max(200, "tooLong"),
+  body: z.string().trim().min(1, "required").max(5000, "tooLong"),
+  enabled: z.boolean(),
+});
+
+export interface DefaultTemplate {
+  key: EmailTemplateKey;
+  lang: EmailLang;
+  subject: string;
+  body: string;
+}
+
+/** Default texts installed by the seed (idempotent upsert per key + lang). */
+export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
+  {
+    key: "transfer_guide",
+    lang: "ja",
+    subject: "【{{merchantName}}】お振込先のご案内（注文番号 {{orderNumber}}）",
+    body: "{{customerName}} 様\n\n{{merchantName}} をご利用いただきありがとうございます。\n以下の内容でお振込みをお願いいたします。\n\n振込金額: {{amount}}\n振込ID: {{transferId}}\n振込期限: {{deadline}}\n商品: {{productName}}\n\n振込IDを振込名義の前に必ず入力してください。期限を過ぎるとご注文は自動的にキャンセルされます。",
+  },
+  {
+    key: "transfer_guide",
+    lang: "en",
+    subject: "[{{merchantName}}] Bank transfer instructions (order {{orderNumber}})",
+    body: "Dear {{customerName}},\n\nThank you for your order at {{merchantName}}. Please transfer the amount below.\n\nAmount: {{amount}}\nTransfer ID: {{transferId}}\nDeadline: {{deadline}}\nProduct: {{productName}}\n\nEnter the transfer ID before your name on the remittance. Orders not paid by the deadline are cancelled automatically.",
+  },
+  {
+    key: "payment_completed",
+    lang: "ja",
+    subject: "【{{merchantName}}】お支払いを確認しました（注文番号 {{orderNumber}}）",
+    body: "{{customerName}} 様\n\n注文番号 {{orderNumber}} のお支払い {{amount}} を確認いたしました。\n取引ID: {{transactionId}}\n\n商品の発送準備に入ります。今後ともよろしくお願いいたします。",
+  },
+  {
+    key: "payment_completed",
+    lang: "en",
+    subject: "[{{merchantName}}] Payment received (order {{orderNumber}})",
+    body: "Dear {{customerName}},\n\nWe have received your payment of {{amount}} for order {{orderNumber}}.\nTransaction ID: {{transactionId}}\n\nYour order is now being prepared. Thank you for shopping with us.",
+  },
+  {
+    key: "refund_completed",
+    lang: "ja",
+    subject: "【{{merchantName}}】返金手続きが完了しました（注文番号 {{orderNumber}}）",
+    body: "{{customerName}} 様\n\n注文番号 {{orderNumber}} について {{amount}} の返金手続きが完了しました。\n取引ID: {{transactionId}}\n\nお支払い方法によっては反映までに数日かかる場合があります。",
+  },
+  {
+    key: "refund_completed",
+    lang: "en",
+    subject: "[{{merchantName}}] Your refund has been processed (order {{orderNumber}})",
+    body: "Dear {{customerName}},\n\nA refund of {{amount}} for order {{orderNumber}} has been processed.\nTransaction ID: {{transactionId}}\n\nDepending on your payment method it may take a few days to appear.",
+  },
+  {
+    key: "deposit_short",
+    lang: "ja",
+    subject: "【{{merchantName}}】お振込金額が不足しています（振込ID {{transferId}}）",
+    body: "{{customerName}} 様\n\n振込ID {{transferId}} のお振込みを確認しましたが、{{shortAmount}} 不足しております。\n請求金額: {{amount}}\n\nお手数ですが不足分を同じ振込IDで追加でお振込みください。期限: {{deadline}}",
+  },
+  {
+    key: "deposit_short",
+    lang: "en",
+    subject: "[{{merchantName}}] Your transfer is short (transfer ID {{transferId}})",
+    body: "Dear {{customerName}},\n\nWe received your transfer for ID {{transferId}}, but it is {{shortAmount}} short of the amount due ({{amount}}).\n\nPlease transfer the balance using the same transfer ID by {{deadline}}.",
+  },
+  {
+    key: "statement",
+    lang: "ja",
+    subject: "【Wire Pay】{{merchantName}} 様 精算明細のご送付",
+    body: "{{merchantName}} ご担当者様\n\n今回の精算明細を送付いたします。差引支払額: {{amount}}\n明細は管理画面の精算管理からもご確認いただけます。",
+  },
+  {
+    key: "statement",
+    lang: "en",
+    subject: "[Wire Pay] Settlement statement for {{merchantName}}",
+    body: "Dear {{merchantName}},\n\nPlease find your settlement statement. Net payout: {{amount}}\nThe full statement is also available under Settlements in the dashboard.",
+  },
+  {
+    key: "admin_invite",
+    lang: "ja",
+    subject: "【Wire Pay】管理画面へ招待されました",
+    body: "Wire Pay 管理画面のアカウントが作成されました。\n\nログインID: {{loginId}}\n初期パスワード: {{initialPassword}}\nログイン: {{loginUrl}}\n\n初回ログイン後にパスワードを変更し、二段階認証の登録をおすすめします。",
+  },
+  {
+    key: "admin_invite",
+    lang: "en",
+    subject: "[Wire Pay] You have been invited to the dashboard",
+    body: "An operator account has been created for you on Wire Pay.\n\nLogin ID: {{loginId}}\nInitial password: {{initialPassword}}\nSign in: {{loginUrl}}\n\nPlease change your password after the first login and enable two-factor authentication.",
+  },
+];

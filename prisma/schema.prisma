@@ -554,3 +554,75 @@ model Blacklist {
   @@unique([kind, value])
   @@index([status, kind])
 }
+
+// Email templates (Phase G-2), one row per (key, lang). Body uses
+// {{placeholder}} tokens (lib/email/templates.ts).
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  // transfer_guide | payment_completed | refund_completed | deposit_short | statement | admin_invite
+  key       String
+  // ja | en
+  lang      String
+  subject   String
+  body      String
+  enabled   Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@unique([key, lang])
+}
+
+// Every email the system produced. status: sent | failed | demo (the demo
+// provider records instead of sending).
+model EmailLog {
+  id          String   @id @default(cuid())
+  to          String
+  templateKey String
+  lang        String
+  subject     String
+  body        String
+  status      String   @default("demo")
+  provider    String   @default("log")
+  error       String?
+  paymentId   String?
+  merchantId  String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([paymentId])
+  @@index([templateKey, status])
+}
+
+// Announcements (Phase G-3). kind: notice | maintenance | incident;
+// status: draft | published | ended. targetMerchantIds is a JSON array of
+// merchant ids (empty + targetAll = everyone). Incidents keep a timeline of
+// AnnouncementUpdate rows (occurred → investigating → resolved).
+model Announcement {
+  id                String   @id @default(cuid())
+  kind              String   @default("notice")
+  title             String
+  body              String
+  publishFrom       DateTime @default(now())
+  publishUntil      DateTime?
+  targetAll         Boolean  @default(true)
+  targetMerchantIds String   @default("[]")
+  status            String   @default("draft")
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  updates AnnouncementUpdate[]
+
+  @@index([status, publishFrom])
+}
+
+model AnnouncementUpdate {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  // occurred | investigating | resolved
+  phase          String
+  body           String
+  createdAt      DateTime     @default(now())
+
+  @@index([announcementId, createdAt])
+}

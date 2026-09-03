@@ -12,6 +12,7 @@ import { emitPaymentWebhook } from "@/lib/webhooks/deliver";
 import { cardInputSchema } from "@/lib/risk/types";
 import { blockedFailureReason, cardFingerprint, checkBlacklist, detectRepeatedFailures } from "@/lib/risk/service";
 import { clientIpFromHeaders } from "@/lib/ip";
+import { notifyTransferIssued } from "@/lib/email/hooks";
 
 const CreateSchema = z.object({
   providerId: z.string().min(1),
@@ -166,6 +167,8 @@ export const POST = withApiHandler(async (req) => {
       if (status === "failed" && body.merchantId && !limit.ok) {
         await emitPaymentWebhook(prisma, payment.id, "limit.exceeded", { status: `failed:${failureReason}` });
       }
+      // Bank transfer instructions to the customer (Phase G-2).
+      if (isBank) await notifyTransferIssued(prisma, payment.id);
       // Repeated failures from the same card / IP / email become blacklist candidates (F-2).
       if (status === "failed") {
         await detectRepeatedFailures(prisma, { cardHash, clientIp, email: body.customerEmail }, now).catch((e) => console.error("[risk] detect failed", e));
