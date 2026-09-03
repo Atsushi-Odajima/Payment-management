@@ -10,6 +10,7 @@ import { ProviderStatusBadge } from "@/components/payment-status-badge";
 import { useFormatDateTime, useT } from "@/components/language-provider";
 import { useToast } from "@/components/toast";
 import type { AgentView } from "@/lib/agents/types";
+import { formatYen } from "@/lib/utils";
 
 export interface LinkedMerchant {
   id: string;
@@ -19,7 +20,14 @@ export interface LinkedMerchant {
   createdAt: Date;
 }
 
-export function AgentDetailView({ agent: initial, merchants }: { agent: AgentView; merchants: LinkedMerchant[] }) {
+export interface AgentFeeSummary {
+  month: string;
+  netAmount: number;
+  fee: number;
+  batchCount: number;
+}
+
+export function AgentDetailView({ agent: initial, merchants, fees }: { agent: AgentView; merchants: LinkedMerchant[]; fees: AgentFeeSummary }) {
   const t = useT();
   const router = useRouter();
   const toast = useToast();
@@ -79,6 +87,18 @@ export function AgentDetailView({ agent: initial, merchants }: { agent: AgentVie
             <DetailRow label={t("agentForm.email")}>
               <a href={`mailto:${agent.email}`} className="text-brand-700 hover:underline">{agent.email}</a>
             </DetailRow>
+          </section>
+
+          <section className="card divide-y divide-slate-100" aria-labelledby="agent-fees">
+            <div className="flex items-center justify-between px-5 py-3">
+              <h2 id="agent-fees" className="text-sm font-semibold text-slate-800">{t("agentDetail.feesTitle", { month: fees.month })}</h2>
+              <Link href={`/agent-fees?month=${fees.month}&agent=${agent.id}`} className="text-xs font-medium text-brand-700 hover:underline">
+                {t("agentDetail.feesLink")}
+              </Link>
+            </div>
+            <DetailRow label={t("agentFees.thNet")}><span className="tabular-nums">{formatYen(fees.netAmount)}</span></DetailRow>
+            <DetailRow label={t("agentFees.thFee")}><span className="tabular-nums font-semibold text-brand-700">{formatYen(fees.fee)}</span></DetailRow>
+            <DetailRow label={t("agentDetail.feesBatches")}>{t("dashboard.valueCount", { count: fees.batchCount })}</DetailRow>
           </section>
 
           <section className="card" aria-labelledby="agent-merchants">

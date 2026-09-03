@@ -61,6 +61,34 @@ export const notifyRefundCompleted = (db: PrismaClient, paymentId: string, refun
 /** A short deposit was recorded and the operator asked the customer for the balance. */
 export const notifyDepositShort = (db: PrismaClient, paymentId: string) => sendForPayment(db, paymentId, "deposit_short");
 
+async function subscriptionVars(db: PrismaClient, subscriptionId: string) {
+  const s = await db.subscription.findUnique({ where: { id: subscriptionId }, select: { customerName: true, customerEmail: true, merchantId: true, merchant: { select: { siteName: true } }, plan: { select: { name: true, amount: true } } } });
+  if (!s) return null;
+  return { to: s.customerEmail, merchantId: s.merchantId, vars: { merchantName: s.merchant.siteName, customerName: s.customerName, amount: formatYen(s.plan.amount), planName: s.plan.name } as EmailVars };
+}
+
+/** A recurring charge failed; the retry date is included. */
+export async function notifySubscriptionFailed(db: PrismaClient, subscriptionId: string, retryAt: Date): Promise<void> {
+  try {
+    const ctx = await subscriptionVars(db, subscriptionId);
+    if (!ctx || !ctx.to) return;
+    await sendTemplatedEmail(db, { key: "subscription_failed", lang: CUSTOMER_EMAIL_LANG, to: ctx.to, vars: { ...ctx.vars, retryDate: formatDateTime(retryAt, CUSTOMER_EMAIL_LANG).slice(0, 10) }, merchantId: ctx.merchantId });
+  } catch (e) {
+    console.error("[email] subscription_failed failed", e);
+  }
+}
+
+/** The third consecutive failure suspended the subscription. */
+export async function notifySubscriptionSuspended(db: PrismaClient, subscriptionId: string): Promise<void> {
+  try {
+    const ctx = await subscriptionVars(db, subscriptionId);
+    if (!ctx || !ctx.to) return;
+    await sendTemplatedEmail(db, { key: "subscription_suspended", lang: CUSTOMER_EMAIL_LANG, to: ctx.to, vars: ctx.vars, merchantId: ctx.merchantId });
+  } catch (e) {
+    console.error("[email] subscription_suspended failed", e);
+  }
+}
+
 /** A new operator account was created (the initial password is shown in the UI too). */
 export async function notifyAdminInvite(db: PrismaClient, input: { email: string; loginId: string; initialPassword: string; loginUrl: string; lang: "ja" | "en" }): Promise<void> {
   try {

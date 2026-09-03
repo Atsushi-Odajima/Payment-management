@@ -70,7 +70,18 @@ export const SEED_IDS = {
   email2: "eml_demo_002",
   announcement1: "ann_demo_001",
   announcement2: "ann_demo_002",
+  plan1: "plan_demo_001",
+  plan2: "plan_demo_002",
+  subscription1: "sub_demo_001",
+  subscription2: "sub_demo_002",
+  paymentLink1: "plk_demo_001",
+  paymentLink2: "plk_demo_002",
+  payment12: "pay_demo_012",
+  payment13: "pay_demo_013",
 } as const;
+
+/** Fixed token of the seeded payment link (the hosted page is /pay/<token>). */
+export const SEED_PAYMENT_LINK_TOKEN = "kotoridemolinktoken00001";
 
 /**
  * Fixed plaintext API keys of the demo merchants (only the SHA-256 hash is
@@ -853,6 +864,133 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     },
   });
 
+  // ── Subscriptions / payment links (Phase H) ───────────────────────────
+  // Two plans for merchant1, an active subscription with one successful
+  // charge (payment12) and a past-due one, plus an active payment link that
+  // has been used once (payment13) and a disabled one. The sample
+  // transactions are dated in the month before last so the settlement /
+  // report expectations of the older tests (which cover last month) hold.
+  const plans = [
+    { id: SEED_IDS.plan1, merchantId: SEED_IDS.merchant1, name: "コトリ定期便（月額）", amount: 2980, interval: "monthly", trialDays: 14, active: true, createdAt: daysAgo(40) },
+    { id: SEED_IDS.plan2, merchantId: SEED_IDS.merchant1, name: "コトリ定期便（年額）", amount: 29800, interval: "yearly", trialDays: 0, active: true, createdAt: daysAgo(40) },
+  ];
+  for (const p of plans) {
+    await prisma.plan.upsert({ where: { id: p.id }, update: {}, create: p });
+  }
+  const subscriptions = [
+    {
+      id: SEED_IDS.subscription1,
+      merchantId: SEED_IDS.merchant1,
+      planId: SEED_IDS.plan1,
+      customerId: "u_10021",
+      customerName: "山田 太郎",
+      customerEmail: "taro@example.com",
+      status: "active",
+      livemode: false,
+      startedAt: daysAgo(51),
+      lastChargeAt: daysAgo(51),
+      nextChargeAt: new Date(daysAgo(51).getTime() + 30 * 86_400_000),
+      failCount: 0,
+      createdAt: daysAgo(51),
+    },
+    {
+      id: SEED_IDS.subscription2,
+      merchantId: SEED_IDS.merchant1,
+      planId: SEED_IDS.plan1,
+      customerId: "u_10077",
+      customerName: "佐藤 花子",
+      customerEmail: "hanako@example.com",
+      status: "past_due",
+      livemode: false,
+      startedAt: daysAgo(20),
+      lastChargeAt: null,
+      nextChargeAt: new Date(daysAgo(6).getTime() + 3 * 86_400_000),
+      failCount: 1,
+      createdAt: daysAgo(20),
+    },
+  ];
+  for (const s of subscriptions) {
+    await prisma.subscription.upsert({ where: { id: s.id }, update: {}, create: s });
+  }
+  const paymentLinks = [
+    {
+      id: SEED_IDS.paymentLink1,
+      merchantId: SEED_IDS.merchant1,
+      token: SEED_PAYMENT_LINK_TOKEN,
+      productName: "限定トートバッグ",
+      amount: 3200,
+      description: "数量限定のキャンバストート。決済完了後 3 営業日以内に発送します。",
+      expiresAt: null,
+      maxUses: 50,
+      usedCount: 1,
+      status: "active",
+      livemode: false,
+      createdById: DEMO_ADMIN_ACCOUNTS.master.id,
+      createdAt: daysAgo(45),
+    },
+    {
+      id: SEED_IDS.paymentLink2,
+      merchantId: SEED_IDS.merchant2,
+      token: "sakurademolinktoken000002",
+      productName: "オンライン講座（単発）",
+      amount: 5500,
+      description: null,
+      expiresAt: daysAgo(1),
+      maxUses: null,
+      usedCount: 0,
+      status: "disabled",
+      livemode: false,
+      createdById: DEMO_ADMIN_ACCOUNTS.general.id,
+      createdAt: daysAgo(10),
+    },
+  ];
+  for (const l of paymentLinks) {
+    await prisma.paymentLink.upsert({ where: { id: l.id }, update: {}, create: l });
+  }
+  const phaseHPayments = [
+    {
+      id: SEED_IDS.payment12,
+      providerId: stripe.id,
+      merchantId: SEED_IDS.merchant1,
+      subscriptionId: SEED_IDS.subscription1,
+      method: "credit",
+      orderNumber: "SUB-DEMO-0001",
+      productName: "コトリ定期便（月額）",
+      amount: 2980,
+      status: "captured",
+      externalId: "stripe_demo_sub_001",
+      customerName: "山田 太郎",
+      customerId: "u_10021",
+      customerEmail: "taro@example.com",
+      description: "定期課金 1 回目",
+      createdAt: daysAgo(51),
+      capturedAt: daysAgo(51),
+      events: [ev("created", null, "authorized", 2980, "system", daysAgo(51)), ev("capture", "authorized", "captured", 2980, "system", daysAgo(51))],
+    },
+    {
+      id: SEED_IDS.payment13,
+      providerId: paypay.id,
+      merchantId: SEED_IDS.merchant1,
+      paymentLinkId: SEED_IDS.paymentLink1,
+      method: "qr",
+      orderNumber: "LNK-KOTORI-0001",
+      productName: "限定トートバッグ",
+      amount: 3200,
+      status: "captured",
+      externalId: "paypay_demo_link_001",
+      customerName: "鈴木 一郎",
+      customerId: "ichiro@example.com",
+      customerEmail: "ichiro@example.com",
+      description: "数量限定のキャンバストート。決済完了後 3 営業日以内に発送します。",
+      createdAt: daysAgo(40),
+      capturedAt: daysAgo(40),
+      events: [ev("created", null, "authorized", 3200, "system", daysAgo(40)), ev("capture", "authorized", "captured", 3200, "system", daysAgo(40))],
+    },
+  ];
+  for (const { events, ...p } of phaseHPayments) {
+    await prisma.payment.upsert({ where: { id: p.id }, update: {}, create: { ...p, livemode: false, events: { create: events } } });
+  }
+
   // ── Audit log samples ─────────────────────────────────────────────────
   const audits = [
     {
@@ -930,6 +1068,9 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.paymentEvent.deleteMany();
   await prisma.refund.deleteMany();
   await prisma.payment.deleteMany();
+  await prisma.subscription.deleteMany();
+  await prisma.plan.deleteMany();
+  await prisma.paymentLink.deleteMany();
   await prisma.apiKey.deleteMany();
   await prisma.merchantLimit.deleteMany();
   await prisma.merchantFeeSchedule.deleteMany();

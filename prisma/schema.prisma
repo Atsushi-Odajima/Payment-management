@@ -97,6 +97,11 @@ model Payment {
   // Follow-up state of a short / excess deposit: open | refund_arranged |
   // notified | resolved (lib/risk/deposit-diffs.ts).
   depositDiffStatus String?
+  // Origin (Phase H): the payment link or subscription that produced the transaction.
+  paymentLinkId     String?
+  paymentLink       PaymentLink?  @relation(fields: [paymentLinkId], references: [id], onDelete: SetNull)
+  subscriptionId    String?
+  subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   // Completion time (完了日時): stamped when the status becomes captured.
@@ -118,6 +123,8 @@ model Payment {
   @@index([cardHash])
   @@index([clientIp])
   @@index([depositDiffStatus])
+  @@index([paymentLinkId])
+  @@index([subscriptionId])
 }
 
 // One row per refund request (Phase C). A general operator files a request
@@ -234,6 +241,9 @@ model Merchant {
   apiKeys        ApiKey[]
   settlements    SettlementBatch[]
   webhookDeliveries WebhookDelivery[]
+  plans          Plan[]
+  subscriptions  Subscription[]
+  paymentLinks   PaymentLink[]
 
   @@index([createdAt])
   @@index([agentId])
@@ -534,6 +544,8 @@ model RiskSetting {
   id            String   @id @default("global")
   windowMinutes Int      @default(10)
   maxFailures   Int      @default(3)
+  // Demo: percentage of subscription charges that fail (Phase H-1).
+  demoChargeFailPercent Int @default(20)
   updatedAt     DateTime @updatedAt
 }
 
@@ -625,4 +637,73 @@ model AnnouncementUpdate {
   createdAt      DateTime     @default(now())
 
   @@index([announcementId, createdAt])
+}
+
+// Recurring billing plan (Phase H-1). interval: monthly | yearly | weekly.
+model Plan {
+  id         String   @id @default(cuid())
+  merchantId String
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  name       String
+  amount     Int
+  interval   String   @default("monthly")
+  trialDays  Int      @default(0)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@index([merchantId])
+}
+
+// Subscription of a merchant's customer to a plan. status: trialing | active
+// | past_due | suspended | cancelled. The cron charges when nextChargeAt has
+// passed; failures retry after 3 and 7 days, the third failure suspends.
+model Subscription {
+  id            String    @id @default(cuid())
+  merchantId    String
+  merchant      Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  planId        String
+  plan          Plan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  customerId    String
+  customerName  String
+  customerEmail String?
+  status        String    @default("active")
+  livemode      Boolean   @default(false)
+  nextChargeAt  DateTime?
+  startedAt     DateTime  @default(now())
+  cancelledAt   DateTime?
+  lastChargeAt  DateTime?
+  failCount     Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  payments Payment[]
+
+  @@index([status, nextChargeAt])
+  @@index([merchantId])
+}
+
+// Hosted payment link (Phase H-2): /pay/<token>. status: active | disabled.
+model PaymentLink {
+  id          String    @id @default(cuid())
+  merchantId  String
+  merchant    Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  token       String    @unique
+  productName String
+  amount      Int
+  description String?
+  expiresAt   DateTime?
+  maxUses     Int?
+  usedCount   Int       @default(0)
+  status      String    @default("active")
+  livemode    Boolean   @default(false)
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  payments Payment[]
+
+  @@index([merchantId, status])
 }

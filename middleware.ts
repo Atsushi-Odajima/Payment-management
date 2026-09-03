@@ -27,9 +27,11 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 // Own authentication: PSP webhook signatures, merchant API keys.
 const SIGNATURE_AUTH_PREFIXES = ["/api/webhooks/", "/api/merchant-api/"];
 // Bearer secrets: cron / demo endpoints.
-const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify", "/api/cron/expire-transfers", "/api/cron/webhook-retry"];
+const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify", "/api/cron/expire-transfers", "/api/cron/webhook-retry", "/api/cron/subscriptions"];
 // Public demo endpoints without authentication (the webhook receiver is only an echo).
 const PUBLIC_PATHS = ["/api/demo/webhook-receiver"];
+// Hosted checkout (payment links): public, CSRF-protected by the same-origin rules below.
+const PUBLIC_PREFIXES = ["/api/pay/"];
 // The two login steps authenticate by themselves (password / 2FA token).
 const LOGIN_PATHS = ["/api/auth/login", "/api/auth/2fa"];
 
@@ -50,6 +52,7 @@ export async function middleware(req: NextRequest) {
   }
 
   if (SAFE_METHODS.has(req.method)) return NextResponse.next();
+  const publicCheckout = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
 
   // 1. Rate limit
   const ip =
@@ -78,7 +81,7 @@ export async function middleware(req: NextRequest) {
     return failResponse(lang, 403, "csrf_header", "errors.forbidden");
   }
 
-  if (isLogin) return NextResponse.next();
+  if (isLogin || publicCheckout) return NextResponse.next();
 
   // 3. Demo read-only mode
   if (isDemoReadonly()) {
