@@ -134,31 +134,31 @@ export function DashboardView({ stats }: { stats: DashboardStats }) {
         }
       />
 
-      <div className="space-y-8">
+      <div className="space-y-6">
         {groups.map((g) => (
           <section key={g.key} aria-labelledby={`dash-${g.key}`}>
-            <h2 id={`dash-${g.key}`} className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <h2 id={`dash-${g.key}`} className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
               {t(`nav.groups.${g.key}` as MessageKey)}
             </h2>
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label={t(`nav.groups.${g.key}` as MessageKey)}>
+            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label={t(`nav.groups.${g.key}` as MessageKey)}>
               {g.items.map((item) => {
                 const f = figure(item);
                 return (
                   <li key={item.key}>
                     <Link
                       href={item.href}
-                      className="card group flex h-full items-start gap-4 p-5 transition hover:border-brand-300 hover:shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      className="card group flex h-full items-start gap-3 p-4 transition hover:border-brand-300 hover:shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
-                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
-                        <Icon name={item.icon} className="h-6 w-6" />
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
+                        <Icon name={item.icon} className="h-5 w-5" />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
-                          <span className="text-base font-semibold text-slate-900 group-hover:text-brand-700">{t(`nav.items.${item.key}` as MessageKey)}</span>
+                          <span className="text-sm font-semibold text-slate-900 group-hover:text-brand-700">{t(`nav.items.${item.key}` as MessageKey)}</span>
                           {f.badge && <span className="badge bg-rose-100 text-rose-800 ring-rose-200">{f.badge}</span>}
                         </span>
-                        <span className="mt-0.5 block text-xs text-slate-500">{t(`dashboard.cards.${item.key}` as MessageKey)}</span>
-                        <span className="mt-3 block text-2xl font-semibold tracking-tight text-slate-900 tabular-nums">{f.value}</span>
+                        <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">{t(`dashboard.cards.${item.key}` as MessageKey)}</span>
+                        <span className="mt-2 block text-lg font-semibold tracking-tight text-slate-900 tabular-nums">{f.value}</span>
                       </span>
                       <span className="self-center text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100" aria-hidden>
                         {t("dashboard.open")}
