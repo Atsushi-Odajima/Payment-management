@@ -1,10 +1,9 @@
 "use client";
 
-// Announcement badges and the header banner. The banner shows the active
-// incident (red) or maintenance (yellow) announcements to everyone who opens
-// the dashboard; merchants get the same list through /api/merchant-api/announcements.
+// Announcement badges. Active maintenance / incident announcements are pinned
+// at the top of the header bell (components/notification-bell.tsx) instead of
+// a page-wide banner; merchants get the same list through /api/merchant-api/announcements.
 
-import Link from "next/link";
 import { useT } from "@/components/language-provider";
 import type { AnnouncementKind, AnnouncementStatus } from "@/lib/announcements/types";
 import type { MessageKey } from "@/lib/i18n";
@@ -39,23 +38,7 @@ export function AnnouncementStatusBadge({ status }: { status: AnnouncementStatus
   return <span className={cn("badge", STATUS_CLASS[status])}>{t(`announcementEnums.status.${status}` as MessageKey)}</span>;
 }
 
-export function AnnouncementBanner({ items }: { items: BannerItem[] }) {
-  const t = useT();
-  const shown = items.filter((i) => i.kind !== "notice").slice(0, 3);
-  if (shown.length === 0) return null;
-  return (
-    <div className="space-y-px" role="region" aria-label={t("announcements.bannerLabel")}>
-      {shown.map((i) => (
-        <Link
-          key={i.id}
-          href={`/announcements/${i.id}`}
-          className={cn("flex items-center gap-3 px-4 py-2 text-xs md:px-6", i.kind === "incident" ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-amber-400 text-amber-950 hover:bg-amber-500")}
-        >
-          <span className="font-semibold uppercase tracking-wide">{t(`announcementEnums.kind.${i.kind}` as MessageKey)}</span>
-          <span className="truncate">{i.title}</span>
-          {i.latestPhase && <span className="ml-auto shrink-0 rounded bg-white/20 px-1.5 py-0.5">{t(`announcementEnums.phase.${i.latestPhase}` as MessageKey)}</span>}
-        </Link>
-      ))}
-    </div>
-  );
+/** Active maintenance / incident announcements worth pinning (notices are list-only). */
+export function pinnedAnnouncements(items: BannerItem[]): BannerItem[] {
+  return items.filter((i) => i.kind !== "notice").slice(0, 3);
 }

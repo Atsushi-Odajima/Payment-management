@@ -1223,8 +1223,8 @@ export const ja = {
     confirm: { publish: "「{title}」を公開します。対象の加盟店に表示されます。", end: "「{title}」の公開を終了します。" },
     done: { publish: "公開しました。", end: "公開を終了しました。" },
     bannerTitle: "バナー表示",
-    bannerBody: "公開中のメンテナンスは黄色、障害は赤色でヘッダーに表示されます（お知らせはバナーに出ません）。加盟店は GET /api/merchant-api/announcements で自分宛のお知らせを取得できます。",
-    bannerLabel: "お知らせバナー",
+    bannerBody: "公開中のメンテナンス・障害はヘッダーの通知ベルの先頭にピン留めして表示されます（お知らせは一覧のみ）。加盟店は GET /api/merchant-api/announcements で自分宛のお知らせを取得できます。",
+    pinnedLabel: "ピン留めのお知らせ",
   },
   announcementEnums: {
     kind: { notice: "お知らせ", maintenance: "メンテナンス", incident: "障害" },
