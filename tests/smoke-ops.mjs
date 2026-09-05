@@ -84,8 +84,10 @@ async function login(loginId, password) {
   check("settlements list: seeded batches (paid + confirmed)", (await page.locator("tbody tr").count()) === 2);
   const merchantValue = await page.locator("#gen-merchant option", { hasText: "MER-00001" }).getAttribute("value");
   await page.selectOption("#gen-merchant", merchantValue);
-  await page.fill("#gen-from", "2026-08-25");
-  await page.fill("#gen-to", "2026-09-03");
+  // Seeded captures are relative to "now": cover the last 10 days up to tomorrow (exclusive end).
+  const isoDay = (offsetDays) => new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+  await page.fill("#gen-from", isoDay(-10));
+  await page.fill("#gen-to", isoDay(1));
   await page.getByRole("button", { name: "Generate", exact: true }).click();
   await page.waitForURL(/\/settlements\/[a-z0-9_]+$/, { timeout: 10000 });
   await page.getByText("Settlement batch generated").waitFor({ timeout: 8000 });
@@ -208,7 +210,10 @@ async function login(loginId, password) {
 // ── Reports / emails / announcements (Phase G) ─────────────────────────
 {
   const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
-  check("header banner shows the seeded maintenance announcement", (await page.locator("[role=region][aria-label='Announcement banner']").textContent()).includes("Maintenance"));
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  check("bell pins the seeded maintenance announcement", (await page.locator("[role=region][aria-label='Pinned announcement']").textContent()).includes("Maintenance"));
+  await page.keyboard.press("Escape");
+  await page.mouse.click(5, 600);
   await page.goto(BASE + "/reports?granularity=custom&from=2026-08-01&to=2026-12-31", { waitUntil: "networkidle" });
   check("reports: KPI tiles and charts rendered", (await page.locator("svg[role=img]").count()) >= 2 && (await page.textContent("body")).includes("Success rate"));
   await page.screenshot({ path: `${OUT}/reports-en.png`, fullPage: true });
@@ -240,7 +245,9 @@ async function login(loginId, password) {
   await page.getByText("Update added").waitFor({ timeout: 8000 });
   await page.waitForTimeout(500);
   check("incident timeline has the investigating update", (await page.textContent("body")).includes("Investigating"));
-  check("red incident banner visible", (await page.locator("[role=region][aria-label='Announcement banner']").textContent()).includes("Smoke incident"));
+  await page.getByRole("button", { name: /^Notifications/ }).click();
+  check("bell pins the published incident", (await page.locator("[role=region][aria-label='Pinned announcement']").textContent()).includes("Smoke incident"));
+  await page.mouse.click(5, 600);
   await page.screenshot({ path: `${OUT}/announcement-detail-en.png` });
   await ctx.close();
 }
