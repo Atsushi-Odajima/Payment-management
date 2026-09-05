@@ -30,36 +30,49 @@ export function MerchantShell({ merchant, children }: { merchant: MerchantShellU
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
-      <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 md:px-6">
-        <Link href="/merchant" className="flex items-center gap-2" aria-label="Wire Pay">
-          <WirePayIcon className="h-7 w-7 shrink-0 rounded-md shadow-sm" />
-          <span className="text-sm font-semibold text-slate-900">Wire Pay</span>
-          <span className="hidden text-xs text-slate-500 sm:inline">· {t("merchantPortal.title")}</span>
-        </Link>
-        <div className="flex items-center gap-2">
-          {merchant && <ModeToggle />}
-          <Link href="/docs/api" className="btn-secondary hidden px-3 py-1.5 text-xs sm:inline-flex">
-            {t("merchantPortal.docsLink")}
+      <header className="border-b border-slate-200 bg-white">
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 md:px-6 md:py-3">
+          <Link href="/merchant" className="flex items-center gap-2" aria-label="Wire Pay">
+            <WirePayIcon className="h-7 w-7 shrink-0 rounded-md shadow-sm" />
+            <span className="text-sm font-semibold text-slate-900">Wire Pay</span>
+            <span className="hidden text-xs text-slate-500 sm:inline">· {t("merchantPortal.title")}</span>
           </Link>
+          <div className="flex items-center gap-2">
+            {/* On phones the mode / language switches move to the second header row below. */}
+            {merchant && (
+              <div className="hidden sm:block">
+                <ModeToggle />
+              </div>
+            )}
+            <Link href="/docs/api" className="btn-secondary hidden px-3 py-1.5 text-xs sm:inline-flex">
+              {t("merchantPortal.docsLink")}
+            </Link>
+            <div className="hidden sm:block">
+              <LanguageToggle />
+            </div>
+            {merchant && (
+              <button
+                type="button"
+                className="btn-secondary px-2.5 py-1.5 text-xs"
+                disabled={busy}
+                aria-label={t("merchantPortal.logout")}
+                title={t("merchantPortal.logout")}
+                onClick={async () => {
+                  setBusy(true);
+                  await apiJson("/api/merchant-portal/logout", { method: "POST" });
+                  setBusy(false);
+                  router.push("/merchant/login");
+                  router.refresh();
+                }}
+              >
+                <Icon name="logout" className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2 px-4 pb-2 sm:hidden">
+          {merchant ? <ModeToggle /> : <span />}
           <LanguageToggle />
-          {merchant && (
-            <button
-              type="button"
-              className="btn-secondary px-2.5 py-1.5 text-xs"
-              disabled={busy}
-              aria-label={t("merchantPortal.logout")}
-              title={t("merchantPortal.logout")}
-              onClick={async () => {
-                setBusy(true);
-                await apiJson("/api/merchant-portal/logout", { method: "POST" });
-                setBusy(false);
-                router.push("/merchant/login");
-                router.refresh();
-              }}
-            >
-              <Icon name="logout" className="h-4 w-4" />
-            </button>
-          )}
         </div>
       </header>
       {merchant ? (

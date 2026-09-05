@@ -48,18 +48,29 @@ export function AppShell({ children, banner = [], suspendedMethods = [] }: { chi
         <div className="flex min-h-screen flex-col">
           <MethodBanner methods={suspendedMethods} />
           <AnnouncementBanner items={banner} />
-          <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur md:px-6">
-            <Link href="/" className="flex shrink-0 items-center gap-2 md:invisible md:w-0" aria-label="Wire Pay">
-              <WirePayIcon className="h-7 w-7 shrink-0 rounded-md shadow-sm" />
-              <span className="text-sm font-semibold text-slate-900 md:hidden">Wire Pay</span>
-            </Link>
-            <div className="hidden flex-1 justify-center sm:flex">
-              <SearchBox />
+          <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
+            <div className="flex items-center justify-between gap-3 px-4 py-2.5 md:px-6 md:py-3">
+              <Link href="/" className="flex shrink-0 items-center gap-2 md:invisible md:w-0" aria-label="Wire Pay">
+                <WirePayIcon className="h-7 w-7 shrink-0 rounded-md shadow-sm" />
+                <span className="text-sm font-semibold text-slate-900 md:hidden">Wire Pay</span>
+              </Link>
+              <div className="hidden flex-1 justify-center sm:flex">
+                <SearchBox />
+              </div>
+              <div className="flex items-center gap-2">
+                {/* On phones the mode / language switches move to the second header row below. */}
+                <div className="hidden sm:block">
+                  <ModeToggle />
+                </div>
+                <NotificationBell />
+                <AccountMenu />
+                <div className="hidden sm:block">
+                  <LanguageToggle />
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-2 px-4 pb-2 sm:hidden">
               <ModeToggle />
-              <NotificationBell />
-              <AccountMenu />
               <LanguageToggle />
             </div>
           </header>
@@ -138,7 +149,7 @@ function AccountMenu() {
       <Link href="/account" className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-100" title={t("nav.account")}>
         <Icon name="user" className="h-4 w-4 text-slate-500" />
         <span className="hidden max-w-[10rem] truncate sm:inline">{user.name}</span>
-        <span className="badge bg-slate-800 text-white ring-slate-700">{t(`role.${user.role}`)}</span>
+        <span className="badge max-w-[7rem] truncate bg-slate-800 text-white ring-slate-700">{t(`role.${user.role}`)}</span>
       </Link>
       <button
         type="button"
