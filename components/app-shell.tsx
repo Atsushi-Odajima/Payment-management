@@ -12,7 +12,7 @@ import { WirePayIcon } from "./wire-pay-icon";
 import { LanguageToggle } from "./language-toggle";
 import { SearchBox } from "./search-box";
 import { ModeToggle } from "./mode-provider";
-import { AnnouncementBanner, type BannerItem } from "./announcement-banner";
+import type { BannerItem } from "./announcement-banner";
 import { MethodBanner } from "./method-banner";
 import { NotificationBell } from "./notification-bell";
 import { ConfirmProvider } from "./confirm-dialog";
@@ -47,8 +47,7 @@ export function AppShell({ children, banner = [], suspendedMethods = [] }: { chi
       <ToastProvider>
         <div className="flex min-h-screen flex-col">
           <MethodBanner methods={suspendedMethods} />
-          <AnnouncementBanner items={banner} />
-          <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
+          <header className="relative z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
             <div className="flex items-center justify-between gap-3 px-4 py-2.5 md:px-6 md:py-3">
               <Link href="/" className="flex shrink-0 items-center gap-2 md:invisible md:w-0" aria-label="Wire Pay">
                 <WirePayIcon className="h-7 w-7 shrink-0 rounded-md shadow-sm" />
@@ -62,7 +61,7 @@ export function AppShell({ children, banner = [], suspendedMethods = [] }: { chi
                 <div className="hidden sm:block">
                   <ModeToggle />
                 </div>
-                <NotificationBell />
+                <NotificationBell pinned={banner} />
                 <AccountMenu />
                 <div className="hidden sm:block">
                   <LanguageToggle />

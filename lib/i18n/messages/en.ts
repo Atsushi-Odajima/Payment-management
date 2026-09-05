@@ -1226,8 +1226,8 @@ export const en: MessageShape<typeof ja> = {
     confirm: { publish: "Publish “{title}” to its audience.", end: "End the publication of “{title}”." },
     done: { publish: "Published.", end: "Publication ended." },
     bannerTitle: "Banner",
-    bannerBody: "Published maintenance shows as a yellow banner and incidents as a red banner in the header (notices do not). Merchants fetch their announcements with GET /api/merchant-api/announcements.",
-    bannerLabel: "Announcement banner",
+    bannerBody: "Published maintenance and incidents are pinned at the top of the header notification bell (notices stay list-only). Merchants fetch their announcements with GET /api/merchant-api/announcements.",
+    pinnedLabel: "Pinned announcement",
   },
   announcementEnums: {
     kind: { notice: "Notice", maintenance: "Maintenance", incident: "Incident" },
