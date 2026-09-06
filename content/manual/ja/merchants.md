@@ -96,14 +96,13 @@
 | モード | キーのモード（テスト / 本番）がそのまま応答データのモードになります |
 | IP 制限 | その加盟店向けの [IP制限](/manual/ip-restrictions)（対象 = 加盟店 API・ブロック）に一致すると拒否 |
 | 応答形式 | 成功 `{ "ok": true, "data": … }` / 失敗 `{ "ok": false, "error": { "code", "message" } }`。`message` は `Accept-Language` または `x-lang` ヘッダーの言語 |
-| レート制限 | IP 単位。超過時は 429（`rate_limited`） |
+| レート制限 | `/api/merchant-api/*` にはありません（公開 API `/api/v1` は加盟店 × 環境で 60 回 / 分、超過は 429 `rate_limited`） |
 
 | エラー | HTTP | 意味 |
 |---|---|---|
 | `invalid_api_key` | 401 | ヘッダーが無い・形式が違う・不明・失効・期限切れ |
 | `ip_blocked` | 403 | 加盟店 API 向けのブロックルールに一致 |
 | `not_found` | 404 | 他社のリソース、別モードのリソース、存在しない ID |
-| `rate_limited` | 429 | 短時間に多すぎるリクエスト |
 
 | エンドポイント | 用途 | 応答 `data` |
 |---|---|---|
@@ -116,4 +115,4 @@ curl https://<host>/api/merchant-api/ping \
   -H 'Authorization: Bearer wp_test_ak_KotoriDemoTestKey000000000000001'
 ```
 
-seed の加盟店 `MER-00001` には上記のテストキーが発行済みです。決済の作成 API（加盟店サイトからの決済申請）はデモでは管理画面の「決済を作成」と `POST /api/payments`（管理者セッション）で代替しており、加盟店キーによる決済作成 API は未実装です（残課題）。
+seed の加盟店 `MER-00001` には上記のテストキーが発行済みです。加盟店サイトからの決済作成は同じキーで呼ぶ **公開 API v1**（`POST /api/v1/transactions`。[公開 API と API ドキュメント](/manual/public-api)）で行います。管理画面の「決済を作成」と `POST /api/payments`（管理者セッション）は PSP 側の操作用です。

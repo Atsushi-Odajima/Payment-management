@@ -1,0 +1,47 @@
+{
+  "builtAt": "2026-09-06T20:44:01.769Z",
+  "results": [
+    {
+      "file": "ja-A-merchant-integration-spec.pdf",
+      "diagrams": {
+        "total": 11,
+        "rendered": 11
+      }
+    },
+    {
+      "file": "ja-B-provider-connection-spec.pdf",
+      "diagrams": {
+        "total": 11,
+        "rendered": 11
+      }
+    },
+    {
+      "file": "ja-glossary.pdf",
+      "diagrams": {
+        "total": 0,
+        "rendered": 0
+      }
+    },
+    {
+      "file": "en-A-merchant-integration-spec.pdf",
+      "diagrams": {
+        "total": 11,
+        "rendered": 11
+      }
+    },
+    {
+      "file": "en-B-provider-connection-spec.pdf",
+      "diagrams": {
+        "total": 11,
+        "rendered": 11
+      }
+    },
+    {
+      "file": "en-glossary.pdf",
+      "diagrams": {
+        "total": 0,
+        "rendered": 0
+      }
+    }
+  ]
+}
