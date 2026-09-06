@@ -14,7 +14,7 @@ To shut out an address, add a rule of type **Block** (the default in the form).
 | Target | Meaning |
 |---|---|
 | Admin UI | Where this dashboard is accessed from; blocking is enforced |
-| Merchant API | Where a specific merchant's servers call the API from; a merchant must be chosen. Display-only for now |
+| Merchant API | Where a specific merchant's servers call the API from; a merchant must be chosen. Callers matching an enabled block rule are refused on `/api/v1/*` and `/api/merchant-api/*` with 403 `ip_blocked` |
 
 ## Rule format
 
