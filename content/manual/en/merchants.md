@@ -96,14 +96,13 @@ Common rules of the **merchant API** (`/api/merchant-api/*`) that a merchant's s
 | Mode | The key's mode (test / live) is the mode of the returned data |
 | IP restrictions | Requests matching the merchant's own [IP restriction](/manual/ip-restrictions) rules (target = merchant API, block) are refused |
 | Response shape | Success `{ "ok": true, "data": … }` / failure `{ "ok": false, "error": { "code", "message" } }`. `message` follows the `Accept-Language` or `x-lang` header |
-| Rate limit | Per IP; 429 (`rate_limited`) when exceeded |
+| Rate limit | None on `/api/merchant-api/*` (the public API `/api/v1` allows 60 requests / minute per merchant and environment; 429 `rate_limited` beyond that) |
 
 | Error | HTTP | Meaning |
 |---|---|---|
 | `invalid_api_key` | 401 | Header missing, malformed, unknown, revoked or expired |
 | `ip_blocked` | 403 | Matched a block rule for the merchant API |
 | `not_found` | 404 | Another merchant's resource, another mode, or an unknown ID |
-| `rate_limited` | 429 | Too many requests in a short time |
 
 | Endpoint | Purpose | Response `data` |
 |---|---|---|
@@ -116,4 +115,4 @@ curl https://<host>/api/merchant-api/ping \
   -H 'Authorization: Bearer wp_test_ak_KotoriDemoTestKey000000000000001'
 ```
 
-The seeded merchant `MER-00001` already has that test key. A merchant-key API for creating payments (the checkout call from the merchant's site) is not implemented in the demo — the dashboard's "Create payment" and `POST /api/payments` (admin session) stand in for it (see the open items in the README).
+The seeded merchant `MER-00001` already has that test key. Checkouts from the merchant's site use the same key against the **public API v1** (`POST /api/v1/transactions`, see [Public API and API docs](/manual/public-api)). The dashboard's "Create payment" and `POST /api/payments` (admin session) are operator-side tools.
