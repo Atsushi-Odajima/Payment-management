@@ -31,7 +31,7 @@ const SIGNATURE_AUTH_PREFIXES = ["/api/webhooks/", "/api/merchant-api/", "/api/v
 const MERCHANT_PORTAL_PREFIX = "/api/merchant-portal/";
 const MERCHANT_LOGIN_PATH = "/api/merchant-portal/login";
 // Bearer secrets: cron / demo endpoints.
-const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify", "/api/demo/cvs-notify", "/api/cron/expire-transfers", "/api/cron/webhook-retry", "/api/cron/subscriptions", "/api/cron/anonymize"];
+const SECRET_AUTH_PATHS = ["/api/demo/reset", "/api/demo/deposit-notify", "/api/demo/cvs-notify", "/api/cron/expire-transfers", "/api/cron/webhook-retry", "/api/cron/subscriptions", "/api/cron/anonymize", "/api/cron/notifications", "/api/cron/payment-method-controls", "/api/cron/merchant-daily-summary"];
 // Public demo endpoints without authentication (the webhook receiver is only an echo).
 const PUBLIC_PATHS = ["/api/demo/webhook-receiver"];
 // Hosted checkout (payment links): public, CSRF-protected by the same-origin rules below.

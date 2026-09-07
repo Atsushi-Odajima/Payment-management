@@ -26,9 +26,10 @@ export default async function MerchantHomePage() {
     loadTransactions({ allowedStatuses: PAYMENT_STATUSES, filters: { ...parseTransactionFilters(undefined, PAYMENT_STATUSES, mode), merchant: m.id }, page: 1, pageSize: 8, order: "sales", now }),
     loadActiveAnnouncements(m.id, now),
   ]);
+  const settings = await prisma.merchant.findUnique({ where: { id: m.id }, select: { emailNotification: true, email: true } });
   return (
     <MerchantDashboardView
-      merchant={{ merchantCode: m.merchantCode, siteName: m.siteName }}
+      merchant={{ merchantCode: m.merchantCode, siteName: m.siteName, emailNotification: settings?.emailNotification ?? "per_payment", email: settings?.email ?? m.email }}
       stats={{ todayCount: todayAgg._count, todayAmount: todayAgg._sum.amount ?? 0, openCount, pendingRefunds, failedWebhooks, nextPayout: nextPayout ? { id: nextPayout.id, scheduledAt: nextPayout.scheduledAt, netAmount: nextPayout.netAmount } : null }}
       recent={recent.items}
       announcements={announcements.map((a) => ({ id: a.id, kind: a.kind, title: a.title, publishFrom: a.publishFrom }))}
