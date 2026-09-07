@@ -121,6 +121,9 @@ describe("deposit reconciliation (入金消込)", () => {
 
 describe("expiry and manual outcomes", () => {
   it("expires only overdue transfers", async () => {
+    // The seed dates are relative to a fixed NOW, but the expire action checks the real clock:
+    // push the deadline into the real future so the "not overdue" branch does not depend on today's date.
+    await prisma.payment.update({ where: { id: SEED_IDS.payment4 }, data: { transferDueAt: new Date(Date.now() + 7 * 86_400_000) } });
     const tooEarly = await read(await act(SEED_IDS.payment4, "expire"));
     expect(tooEarly.status).toBe(409);
     expect(tooEarly.body.error.code).toBe("not_overdue");

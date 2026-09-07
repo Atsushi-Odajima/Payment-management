@@ -54,18 +54,6 @@ export function WirePayIcon({ className, title, rounded = true }: Props) {
           <circle key={`n${i}`} cx={n.cx} cy={n.cy} r={n.r} strokeWidth={g.strokes.thick} fill="#0a0a0a" />
         ))}
       </g>
-      <text
-        x={g.euro.x}
-        y={g.euro.y}
-        textAnchor="middle"
-        fill="white"
-        fontSize={g.euro.fontSize}
-        fontFamily="Georgia, 'Times New Roman', serif"
-        fontWeight="300"
-        opacity="0.95"
-      >
-        €
-      </text>
     </svg>
   );
 }
