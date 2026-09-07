@@ -14,6 +14,7 @@ import { transferDueDate } from "../lib/payments/transfer";
 import { cvsDueDate } from "../lib/payments/konbini";
 import { partsInTz } from "../lib/settlements/schedule";
 import { linkExistingPayments } from "../lib/customers/service";
+import { runPhase1Backfill } from "../lib/maintenance/phase1-backfill";
 import { cardFingerprint } from "../lib/risk/service";
 import { hashPassword } from "../lib/admin/password";
 import { PLAN_DEFAULT_RATES } from "../lib/merchants/fees";
@@ -58,6 +59,11 @@ export const SEED_IDS = {
   apiKey2: "key_demo_002",
   apiKey3: "key_demo_003",
   apiKey4: "key_demo_004",
+  apiKey5: "key_demo_005",
+  apiKey6: "key_demo_006",
+  apiKey7: "key_demo_007",
+  apiKey8: "key_demo_008",
+  apiKey9: "key_demo_009",
   refund1: "ref_demo_001",
   refund2: "ref_demo_002",
   settlement1: "stl_demo_001",
@@ -67,6 +73,7 @@ export const SEED_IDS = {
   webhook3: "whd_demo_003",
   payment10: "pay_demo_010",
   payment11: "pay_demo_011",
+  payment16: "pay_demo_016",
   chargeback1: "cb_demo_001",
   blacklist1: "bl_demo_001",
   blacklist2: "bl_demo_002",
@@ -84,6 +91,11 @@ export const SEED_IDS = {
   payment13: "pay_demo_013",
   unmatched1: "und_demo_001",
   unmatched2: "und_demo_002",
+  unmatched3: "und_demo_003",
+  depositNotification1: "dpn_demo_001",
+  depositNotification2: "dpn_demo_002",
+  depositNotification3: "dpn_demo_003",
+  depositNotification4: "dpn_demo_004",
   note1: "note_demo_001",
   note2: "note_demo_002",
   methodControl1: "pmc_demo_001",
@@ -116,6 +128,12 @@ export const SEED_API_KEYS = {
   [SEED_IDS.apiKey2]: "wp_live_ak_KotoriDemoLiveKey000000000000002", // merchant1, active
   [SEED_IDS.apiKey3]: "wp_test_ss_KotoriDemoSigning000000000000003", // merchant1, signing secret
   [SEED_IDS.apiKey4]: "wp_test_ak_SakuraDemoRevoked000000000000004", // merchant2, revoked
+  // Signing secrets for every merchant × mode (Phase P1-4: webhooks are never signed with the password).
+  [SEED_IDS.apiKey5]: "wp_live_ss_KotoriDemoSigningLive0000000005", // merchant1, live
+  [SEED_IDS.apiKey6]: "wp_test_ss_SakuraDemoSigning000000000006", // merchant2, test
+  [SEED_IDS.apiKey7]: "wp_live_ss_SakuraDemoSigningLive0000000007", // merchant2, live
+  [SEED_IDS.apiKey8]: "wp_test_ss_TsukijiDemoSigning00000000008", // merchant3, test
+  [SEED_IDS.apiKey9]: "wp_live_ss_TsukijiDemoSigningLive000000009", // merchant3, live
 } as const;
 
 /** Demo merchant passwords (fixed so the master-role reveal is reproducible). */
@@ -133,6 +151,7 @@ export const SEED_TRANSFER_IDS = {
   [SEED_IDS.payment9]: "6642019",
   [SEED_IDS.payment10]: "7788120",
   [SEED_IDS.payment11]: "7788121",
+  [SEED_IDS.payment16]: "7455102", // expired transfer whose deposit arrived late (Phase P1-3)
 } as const;
 
 export interface SeedOptions {
@@ -607,6 +626,11 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
     { id: SEED_IDS.apiKey2, merchantId: SEED_IDS.merchant1, mode: "live", kind: "api_key", label: "本番サーバー", issuedAt: daysAgo(30), lastUsedAt: daysAgo(3) },
     { id: SEED_IDS.apiKey3, merchantId: SEED_IDS.merchant1, mode: "test", kind: "signing_secret", label: "通知署名（開発）", issuedAt: daysAgo(35), lastUsedAt: null },
     { id: SEED_IDS.apiKey4, merchantId: SEED_IDS.merchant2, mode: "test", kind: "api_key", label: "旧キー", issuedAt: daysAgo(25), lastUsedAt: daysAgo(10), revokedAt: daysAgo(8) },
+    { id: SEED_IDS.apiKey5, merchantId: SEED_IDS.merchant1, mode: "live", kind: "signing_secret", label: "通知署名（本番）", issuedAt: daysAgo(30), lastUsedAt: null },
+    { id: SEED_IDS.apiKey6, merchantId: SEED_IDS.merchant2, mode: "test", kind: "signing_secret", label: "auto", issuedAt: daysAgo(40), lastUsedAt: null },
+    { id: SEED_IDS.apiKey7, merchantId: SEED_IDS.merchant2, mode: "live", kind: "signing_secret", label: "通知署名（本番）", issuedAt: daysAgo(20), lastUsedAt: null },
+    { id: SEED_IDS.apiKey8, merchantId: SEED_IDS.merchant3, mode: "test", kind: "signing_secret", label: "auto", issuedAt: daysAgo(15), lastUsedAt: null },
+    { id: SEED_IDS.apiKey9, merchantId: SEED_IDS.merchant3, mode: "live", kind: "signing_secret", label: "通知署名（本番）", issuedAt: daysAgo(15), lastUsedAt: null },
   ];
   for (const k of apiKeys) {
     const plaintext = SEED_API_KEYS[k.id as keyof typeof SEED_API_KEYS];
@@ -1054,7 +1078,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       orderNumber: "ORD-DEMO-014",
       productName: "本まぐろ赤身 300g",
       amount: 3980,
-      status: "pending",
+      status: "awaiting_payment",
       externalId: "cvs_demo_014",
       customerName: "小林 直樹",
       customerId: "u_30211",
@@ -1064,7 +1088,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       cvsReceiptNo: SEED_CVS_RECEIPT_NOS[SEED_IDS.payment14],
       transferDueAt: cvsDueDate(daysAgo(1), 3),
       createdAt: daysAgo(1),
-      events: [ev("created", null, "pending", 3980, "seed", daysAgo(1))],
+      events: [ev("created", null, "awaiting_payment", 3980, "seed", daysAgo(1))],
     },
     {
       id: SEED_IDS.payment15,
@@ -1087,12 +1111,39 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       depositAmount: 5400,
       createdAt: daysAgo(4),
       capturedAt: daysAgo(3),
-      events: [ev("created", null, "pending", 5400, "seed", daysAgo(4)), ev("deposit", "pending", "captured", 5400, "cvs", daysAgo(3))],
+      events: [ev("created", null, "awaiting_payment", 5400, "seed", daysAgo(4)), ev("deposit", "awaiting_payment", "captured", 5400, "cvs", daysAgo(3))],
     },
   ];
   for (const { events, ...p } of cvsPayments) {
     await prisma.payment.upsert({ where: { id: p.id }, update: {}, create: { ...p, livemode: false, events: { create: events } } });
   }
+
+  // An expired bank transfer whose money arrived after the deadline (Phase
+  // P1-3): the deposit notification filed it as a late deposit (below).
+  await prisma.payment.upsert({
+    where: { id: SEED_IDS.payment16 },
+    update: {},
+    create: {
+      id: SEED_IDS.payment16,
+      providerId: bank.id,
+      merchantId: SEED_IDS.merchant3,
+      method: "bank",
+      orderNumber: "ORD-DEMO-016",
+      productName: "本まぐろ中トロ 500g",
+      amount: 12_000,
+      status: "expired",
+      livemode: false,
+      externalId: "bank_demo_016",
+      customerName: "高橋 結衣",
+      customerId: "u_30402",
+      customerEmail: "yui@example.com",
+      description: "本まぐろ中トロ 500g x 1",
+      transferId: SEED_TRANSFER_IDS[SEED_IDS.payment16],
+      transferDueAt: transferDueDate(daysAgo(12)),
+      createdAt: daysAgo(12),
+      events: { create: [ev("created", null, "awaiting_transfer", 12_000, "seed", daysAgo(12)), ev("expire", "awaiting_transfer", "expired", 12_000, "system", daysAgo(4))] },
+    },
+  });
   const receiptMonth = partsInTz(daysAgo(3));
   await prisma.receipt.upsert({
     where: { id: SEED_IDS.receipt1 },
@@ -1114,15 +1165,31 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
   });
 
   // ── Unmatched deposits (未消込入金) ────────────────────────────────────
+  // (the third row is the late deposit for the expired ORD-DEMO-016)
   // A deposit that arrived without the transfer id (same amount as the
   // awaiting transfer ORD-DEMO-005, so the match dialog suggests it) and one
   // already dismissed.
   const unmatchedDeposits = [
     { id: SEED_IDS.unmatched1, livemode: false, amount: 6600, payerName: "ワタナベ ケン", receivedAt: hoursAgo(20), bankReference: "20260902-000317", givenTransferId: null, note: null, source: "bank", status: "unmatched", createdAt: hoursAgo(20) },
-    { id: SEED_IDS.unmatched2, livemode: false, amount: 3000, payerName: "サトウ ハナコ", receivedAt: daysAgo(6), bankReference: "20260828-000122", givenTransferId: "123", note: "振込IDが 3 桁のみ", source: "manual", status: "dismissed", dismissReason: "本人確認のうえ組戻し（返金）済み", createdAt: daysAgo(6) },
+    { id: SEED_IDS.unmatched2, livemode: false, amount: 3000, payerName: "サトウ ハナコ", receivedAt: daysAgo(6), bankReference: "20260828-000122", givenTransferId: "123", note: "振込IDが 3 桁のみ", source: "manual", status: "dismissed", dismissKind: "returned", dismissReason: "本人確認のうえ組戻し（返金）済み", createdAt: daysAgo(6) },
+    // A deposit that arrived after the transfer expired (ORD-DEMO-016, Phase P1-3): support applies it as a late deposit or arranges a return.
+    { id: SEED_IDS.unmatched3, livemode: false, amount: 12_000, payerName: "タカハシ ユイ", receivedAt: hoursAgo(5), bankReference: "20260903-000041", givenTransferId: SEED_TRANSFER_IDS[SEED_IDS.payment16], note: null, source: "bank", status: "unmatched", reason: "late_deposit", candidatePaymentId: SEED_IDS.payment16, createdAt: hoursAgo(5) },
   ];
   for (const d of unmatchedDeposits) {
     await prisma.unmatchedDeposit.upsert({ where: { id: d.id }, update: {}, create: d });
+  }
+
+  // ── Deposit notification log (Phase P1-1) ──────────────────────────────
+  // The bank / konbini callbacks that produced the seeded reconciliations
+  // and unmatched deposits, including a re-sent (duplicate) one.
+  const depositNotifications = [
+    { id: SEED_IDS.depositNotification1, notificationNo: "DN-00001", source: "bank", eventId: "bank-evt-20260901-0007", dedupeKey: "bank:evt:bank-evt-20260901-0007", claimKey: "bank:evt:bank-evt-20260901-0007", livemode: false, transferId: SEED_TRANSFER_IDS[SEED_IDS.payment7], amount: 12_800, receivedAt: daysAgo(2), payerName: "スズキ タロウ", bankReference: "20260901-000221", result: "applied", resultReason: null, paymentId: SEED_IDS.payment7, rawBody: JSON.stringify({ eventId: "bank-evt-20260901-0007", transferId: SEED_TRANSFER_IDS[SEED_IDS.payment7], amount: 12_800, mode: "test" }), createdAt: daysAgo(2) },
+    { id: SEED_IDS.depositNotification2, notificationNo: "DN-00002", source: "bank", eventId: "bank-evt-20260901-0007", dedupeKey: "bank:evt:bank-evt-20260901-0007", claimKey: null, duplicateOfId: SEED_IDS.depositNotification1, livemode: false, transferId: SEED_TRANSFER_IDS[SEED_IDS.payment7], amount: 12_800, receivedAt: daysAgo(2), payerName: "スズキ タロウ", bankReference: "20260901-000221", result: "duplicate", resultReason: null, paymentId: SEED_IDS.payment7, rawBody: JSON.stringify({ eventId: "bank-evt-20260901-0007", transferId: SEED_TRANSFER_IDS[SEED_IDS.payment7], amount: 12_800, mode: "test" }), createdAt: new Date(daysAgo(2).getTime() + 90_000) },
+    { id: SEED_IDS.depositNotification3, notificationNo: "DN-00003", source: "bank", eventId: null, dedupeKey: "bank:h:seed-unmatched-1", claimKey: "bank:h:seed-unmatched-1", livemode: false, transferId: null, amount: 6600, receivedAt: hoursAgo(20), payerName: "ワタナベ ケン", bankReference: "20260902-000317", result: "unmatched", resultReason: "no_id", paymentId: null, unmatchedDepositId: SEED_IDS.unmatched1, rawBody: JSON.stringify({ amount: 6600, payerName: "ワタナベ ケン", bankReference: "20260902-000317", mode: "test" }), createdAt: hoursAgo(20) },
+    { id: SEED_IDS.depositNotification4, notificationNo: "DN-00004", source: "bank", eventId: "bank-evt-20260903-0041", dedupeKey: "bank:evt:bank-evt-20260903-0041", claimKey: "bank:evt:bank-evt-20260903-0041", livemode: false, transferId: SEED_TRANSFER_IDS[SEED_IDS.payment16], amount: 12_000, receivedAt: hoursAgo(5), payerName: "タカハシ ユイ", bankReference: "20260903-000041", result: "unmatched", resultReason: "late_deposit", paymentId: SEED_IDS.payment16, unmatchedDepositId: SEED_IDS.unmatched3, rawBody: JSON.stringify({ eventId: "bank-evt-20260903-0041", transferId: SEED_TRANSFER_IDS[SEED_IDS.payment16], amount: 12_000, mode: "test" }), createdAt: hoursAgo(5) },
+  ];
+  for (const n of depositNotifications) {
+    await prisma.depositNotification.upsert({ where: { id: n.id }, update: {}, create: n });
   }
 
   // ── Phase I: notes, payment-method switch, global settings ────────────
@@ -1204,6 +1271,8 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
   // row (idempotent backfill), then a few extras: a phone number, a stored
   // card token and one customer anonymised by the retention job.
   await linkExistingPayments(prisma);
+  // Phase P1: konbini status + invoice numbers of confirmed batches (idempotent).
+  await runPhase1Backfill(prisma);
   const customer1 = await prisma.customer.findUnique({ where: { merchantId_externalId: { merchantId: SEED_IDS.merchant1, externalId: "u_10021" } }, select: { id: true } });
   if (customer1) {
     await prisma.customer.update({ where: { id: customer1.id }, data: { phone: "090-1234-5678" } });
@@ -1263,6 +1332,7 @@ export async function truncateAll(prisma: PrismaClient): Promise<void> {
   await prisma.chargeback.deleteMany();
   await prisma.blacklist.deleteMany();
   await prisma.riskSetting.deleteMany();
+  await prisma.depositNotification.deleteMany();
   await prisma.unmatchedDeposit.deleteMany();
   await prisma.paymentEvent.deleteMany();
   await prisma.refund.deleteMany();

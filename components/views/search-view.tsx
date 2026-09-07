@@ -9,6 +9,7 @@ import { useFormatDateTime, useLang, useT } from "@/components/language-provider
 import { methodLabel } from "@/components/views/transactions-view";
 import { SALES_STATUSES } from "@/lib/payments/transitions";
 import type { SearchResult } from "@/lib/search";
+import type { MessageKey } from "@/lib/i18n";
 import { formatYen } from "@/lib/utils";
 
 export function SearchView({ result }: { result: SearchResult }) {
@@ -71,6 +72,16 @@ export function SearchView({ result }: { result: SearchResult }) {
                 <div>
                   <p className="font-medium text-slate-900">{a.name}</p>
                   <p className="text-xs text-slate-500">{a.agentCode} · {a.companyName} · {a.email}</p>
+                </div>
+              </Item>
+            ))}
+          </Group>
+          <Group title={t("search.groups.settlements")} count={result.settlements.length}>
+            {result.settlements.map((s) => (
+              <Item key={s.id} href={`/settlements/${s.id}`}>
+                <div>
+                  <p className="font-mono font-medium text-slate-900">{s.invoiceNo}</p>
+                  <p className="text-xs text-slate-500">{s.merchantCode} {s.merchantName} · {formatYen(s.netAmount)} · {t(`settlementEnums.status.${s.status}` as MessageKey)}</p>
                 </div>
               </Item>
             ))}

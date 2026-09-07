@@ -17,7 +17,8 @@ import { useApiJson, useFormatDateTime, useT } from "@/components/language-provi
 import { useConfirm } from "@/components/confirm-dialog";
 import { useToast } from "@/components/toast";
 import { useCan } from "@/components/session-provider";
-import { UNMATCHED_DEPOSIT_STATUSES, type TransferCandidate, type UnmatchedDepositFilters, type UnmatchedDepositRow, type UnmatchedDepositStatus } from "@/lib/deposits/types";
+import { DISMISS_KINDS, UNMATCHED_DEPOSIT_STATUSES, type DismissKind, type TransferCandidate, type UnmatchedDepositFilters, type UnmatchedDepositReason, type UnmatchedDepositRow, type UnmatchedDepositStatus } from "@/lib/deposits/types";
+import { formatCvsReceiptNo } from "@/lib/payments/konbini";
 import { isPaymentStatus } from "@/lib/payments/transitions";
 import { buildHref, type QueryParams, type SortState } from "@/lib/query";
 import type { MessageKey } from "@/lib/i18n";
@@ -34,7 +35,19 @@ export function UnmatchedDepositStatusBadge({ status }: { status: UnmatchedDepos
   return <span className={cn("badge", STATUS_STYLE[status])}>{t(`unmatchedDepositEnums.status.${status}` as MessageKey)}</span>;
 }
 
-export function UnmatchedDepositsView({ rows, total, page, pageSize, sort, filters, openCount }: { rows: UnmatchedDepositRow[]; total: number; page: number; pageSize: number; sort: SortState; filters: UnmatchedDepositFilters; openCount: number }) {
+const REASON_STYLE: Record<UnmatchedDepositReason, string> = {
+  late_deposit: "bg-orange-100 text-orange-800 ring-orange-200",
+  cancelled_deposit: "bg-slate-200 text-slate-700 ring-slate-300",
+  mode_mismatch: "bg-rose-100 text-rose-800 ring-rose-200",
+};
+
+/** Why a notification with a valid id still landed here (late / cancelled / other mode). */
+export function UnmatchedDepositReasonBadge({ reason }: { reason: UnmatchedDepositReason }) {
+  const t = useT();
+  return <span className={cn("badge", REASON_STYLE[reason])}>{t(`unmatchedDepositEnums.reason.${reason}` as MessageKey)}</span>;
+}
+
+export function UnmatchedDepositsView({ rows, total, page, pageSize, sort, filters, openCount, highlight }: { rows: UnmatchedDepositRow[]; total: number; page: number; pageSize: number; sort: SortState; filters: UnmatchedDepositFilters; openCount: number; highlight?: string | null }) {
   const t = useT();
   const router = useRouter();
   const apiJson = useApiJson();
@@ -45,7 +58,8 @@ export function UnmatchedDepositsView({ rows, total, page, pageSize, sort, filte
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const matchRef = useRef<{ transferId: string }>({ transferId: "" });
-  const dismissRef = useRef<{ reason: string }>({ reason: "" });
+  const dismissRef = useRef<{ reason: string; kind: DismissKind }>({ reason: "", kind: "other" });
+  const lateRef = useRef<{ reason: string }>({ reason: "" });
   const params: QueryParams = {
     status: filters.status || undefined,
     sort: sort.key === "receivedAt" && sort.dir === "desc" ? undefined : sort.key,
@@ -78,8 +92,30 @@ export function UnmatchedDepositsView({ rows, total, page, pageSize, sort, filte
     router.refresh();
   }
 
+  /** Apply a deposit that arrived after the linked transaction expired (late_deposit transition, Phase P1-3). */
+  async function lateMatch(row: UnmatchedDepositRow) {
+    lateRef.current = { reason: "" };
+    const target = row.candidatePayment;
+    const ok = await confirm({
+      title: t("unmatchedDeposits.actions.lateMatch"),
+      body: t("unmatchedDeposits.confirm.lateMatch", { amount: formatYen(row.amount), payer: row.payerName, order: target?.orderNumber ?? "—" }),
+      confirmLabel: t("unmatchedDeposits.actions.lateMatch"),
+      fields: <LateMatchFields valueRef={lateRef} />,
+    });
+    if (!ok) return;
+    setBusyId(row.id);
+    const res = await apiJson<{ payment: { status: string; depositDiff: "short" | "excess" | null }; renotified: boolean }>(`/api/unmatched-deposits/${row.id}/late-match`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason: lateRef.current.reason }) });
+    setBusyId(null);
+    if (!res.ok) {
+      toast.show(res.error.message, "error");
+      return;
+    }
+    toast.show(t(res.data.payment.depositDiff ? "unmatchedDeposits.done.lateMatchedDiff" : res.data.renotified ? "unmatchedDeposits.done.matchedNotified" : "unmatchedDeposits.done.matched"));
+    router.refresh();
+  }
+
   async function dismiss(row: UnmatchedDepositRow) {
-    dismissRef.current = { reason: "" };
+    dismissRef.current = { reason: "", kind: row.reason === "late_deposit" || row.reason === "cancelled_deposit" ? "returned" : "other" };
     const ok = await confirm({
       title: t("unmatchedDeposits.actions.dismiss"),
       body: t("unmatchedDeposits.confirm.dismiss", { amount: formatYen(row.amount), payer: row.payerName }),
@@ -89,7 +125,7 @@ export function UnmatchedDepositsView({ rows, total, page, pageSize, sort, filte
     });
     if (!ok) return;
     setBusyId(row.id);
-    const res = await apiJson(`/api/unmatched-deposits/${row.id}/dismiss`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason: dismissRef.current.reason }) });
+    const res = await apiJson(`/api/unmatched-deposits/${row.id}/dismiss`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason: dismissRef.current.reason, kind: dismissRef.current.kind }) });
     setBusyId(null);
     if (!res.ok) {
       toast.show(res.error.message, "error");
@@ -104,7 +140,25 @@ export function UnmatchedDepositsView({ rows, total, page, pageSize, sort, filte
     { key: "receivedAt", header: t("unmatchedDeposits.thReceived"), sortable: true, render: (r) => <span className="whitespace-nowrap text-xs text-slate-600">{formatDate(r.receivedAt)}</span> },
     { key: "payerName", header: t("unmatchedDeposits.thPayer"), sortable: true, render: (r) => <span className="font-medium text-slate-900">{r.payerName}</span> },
     { key: "amount", header: t("unmatchedDeposits.thAmount"), sortable: true, align: "right", render: (r) => <span className="tabular-nums">{formatYen(r.amount)}</span> },
-    { key: "given", header: t("unmatchedDeposits.thGiven"), render: (r) => <span className="font-mono text-xs">{r.givenTransferId || "—"}</span> },
+    { key: "given", header: t("unmatchedDeposits.thGiven"), render: (r) => <span className="font-mono text-xs">{r.source === "cvs" && r.givenTransferId ? formatCvsReceiptNo(r.givenTransferId) : r.givenTransferId || "—"}</span> },
+    {
+      key: "reason",
+      header: t("unmatchedDeposits.thReason"),
+      render: (r) =>
+        r.reason ? (
+          <span className="flex flex-wrap items-center gap-1 text-xs">
+            <UnmatchedDepositReasonBadge reason={r.reason} />
+            {r.candidatePayment && (
+              <Link href={`/payments/${r.candidatePayment.id}`} className="font-medium text-brand-700 hover:underline" onClick={(e) => e.stopPropagation()}>
+                {r.candidatePayment.orderNumber}
+              </Link>
+            )}
+            {r.candidatePayment && r.reason === "mode_mismatch" && <span className="text-slate-500">{t(r.candidatePayment.livemode ? "unmatchedDeposits.candidateLive" : "unmatchedDeposits.candidateTest")}</span>}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-400">{t("unmatchedDeposits.reasonNoId")}</span>
+        ),
+    },
     { key: "reference", header: t("unmatchedDeposits.thReference"), render: (r) => <span className="text-xs text-slate-600">{r.bankReference || "—"}{r.note ? ` · ${r.note}` : ""}</span> },
     { key: "source", header: t("unmatchedDeposits.thSource"), render: (r) => <span className="text-xs text-slate-600">{t(`unmatchedDepositEnums.source.${r.source}` as MessageKey)}</span> },
     {
@@ -120,7 +174,10 @@ export function UnmatchedDepositsView({ rows, total, page, pageSize, sort, filte
             {isPaymentStatus(r.payment.status) && <PaymentStatusBadge status={r.payment.status} />}
           </span>
         ) : r.status === "dismissed" ? (
-          <span className="text-xs text-slate-500">{r.dismissReason}</span>
+          <span className="text-xs text-slate-500">
+            {r.dismissKind && <span className="mr-1 font-medium text-slate-700">{t(`unmatchedDepositEnums.dismissKind.${r.dismissKind}` as MessageKey)}</span>}
+            {r.dismissReason}
+          </span>
         ) : (
           <span className="text-xs text-slate-400">—</span>
         ),
@@ -130,10 +187,17 @@ export function UnmatchedDepositsView({ rows, total, page, pageSize, sort, filte
       header: t("unmatchedDeposits.thActions"),
       render: (r) =>
         r.status === "unmatched" ? (
-          <span className="flex gap-1">
-            <button type="button" className="btn-primary px-2 py-1 text-xs" disabled={busyId !== null || !isMaster} title={isMaster ? undefined : t("unmatchedDeposits.masterOnly")} onClick={(e) => { e.stopPropagation(); void match(r); }}>
-              {t("unmatchedDeposits.actions.match")}
-            </button>
+          <span className="flex flex-wrap gap-1">
+            {r.reason === "late_deposit" && r.candidatePayment?.status === "expired" && (
+              <button type="button" className="btn-primary px-2 py-1 text-xs" disabled={busyId !== null || !isMaster} title={isMaster ? undefined : t("unmatchedDeposits.masterOnly")} onClick={(e) => { e.stopPropagation(); void lateMatch(r); }}>
+                {t("unmatchedDeposits.actions.lateMatch")}
+              </button>
+            )}
+            {r.source !== "cvs" && (
+              <button type="button" className={cn("px-2 py-1 text-xs", r.reason === "late_deposit" ? "btn-secondary" : "btn-primary")} disabled={busyId !== null || !isMaster} title={isMaster ? undefined : t("unmatchedDeposits.masterOnly")} onClick={(e) => { e.stopPropagation(); void match(r); }}>
+                {t("unmatchedDeposits.actions.match")}
+              </button>
+            )}
             <button type="button" className="btn-secondary px-2 py-1 text-xs" disabled={busyId !== null} onClick={(e) => { e.stopPropagation(); void dismiss(r); }}>
               {t("unmatchedDeposits.actions.dismiss")}
             </button>
@@ -178,8 +242,9 @@ export function UnmatchedDepositsView({ rows, total, page, pageSize, sort, filte
           </Link>
         )}
       </div>
-      <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} basePath="/unmatched-deposits" params={params} sort={sort} total={total} page={page} pageSize={pageSize} csvHref={`/api/unmatched-deposits?${csvQuery.toString()}`} emptyText={t("unmatchedDeposits.empty")} minWidth="min-w-[1080px]" />
+      <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} rowClassName={(r) => (r.id === highlight ? "bg-brand-50" : r.reason === "late_deposit" && r.status === "unmatched" ? "bg-orange-50/40" : undefined)} basePath="/unmatched-deposits" params={params} sort={sort} total={total} page={page} pageSize={pageSize} csvHref={`/api/unmatched-deposits?${csvQuery.toString()}`} emptyText={t("unmatchedDeposits.empty")} minWidth="min-w-[1280px]" />
       <p className="mt-4 text-xs text-slate-500">{t("unmatchedDeposits.note")}</p>
+      <p className="mt-1 text-xs text-slate-500">{t("unmatchedDeposits.lateNote")}</p>
     </div>
   );
 }
@@ -226,18 +291,30 @@ function MatchFields({ depositId, valueRef }: { depositId: string; valueRef: Mut
           <p className="text-xs text-slate-400">{t("unmatchedDeposits.noCandidates")}</p>
         ) : (
           <ul className="mt-1 max-h-48 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
-            {candidates.map((c) => (
-              <li key={c.paymentId}>
-                <button type="button" className={cn("flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-brand-50", transferId === c.transferId && "bg-brand-50")} onClick={() => setTransferId(c.transferId)}>
-                  <span>
-                    <span className="font-mono font-semibold text-slate-900">{c.transferId}</span>
-                    <span className="ml-2 text-slate-600">{c.orderNumber} · {c.merchant?.merchantCode ?? "—"} · {c.customerName ?? "—"}</span>
-                    {c.transferDueAt && <span className={cn("ml-2", c.overdue ? "text-rose-700" : "text-slate-400")}>{formatDate(c.transferDueAt)}</span>}
-                  </span>
-                  <span className={cn("tabular-nums", c.exact ? "font-semibold text-emerald-700" : "text-slate-600")}>{formatYen(c.amount)}</span>
-                </button>
-              </li>
-            ))}
+            {candidates.map((c) => {
+              const blocked = c.modeMismatch || c.late || c.status !== "awaiting_transfer";
+              return (
+                <li key={c.paymentId}>
+                  <button
+                    type="button"
+                    className={cn("flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs", blocked ? "cursor-not-allowed opacity-60" : "hover:bg-brand-50", transferId === c.transferId && !blocked && "bg-brand-50")}
+                    disabled={blocked}
+                    aria-disabled={blocked}
+                    onClick={() => !blocked && setTransferId(c.transferId)}
+                  >
+                    <span>
+                      <span className="font-mono font-semibold text-slate-900">{c.transferId}</span>
+                      <span className="ml-2 text-slate-600">{c.orderNumber} · {c.merchant?.merchantCode ?? "—"} · {c.customerName ?? "—"}</span>
+                      {c.transferDueAt && <span className={cn("ml-2", c.overdue ? "text-rose-700" : "text-slate-400")}>{formatDate(c.transferDueAt)}</span>}
+                      {c.modeMismatch && <span className="ml-2 font-medium text-rose-700">{t(c.livemode ? "unmatchedDeposits.candidateBlockedLive" : "unmatchedDeposits.candidateBlockedTest")}</span>}
+                      {!c.modeMismatch && c.late && <span className="ml-2 font-medium text-orange-700">{t("unmatchedDeposits.candidateBlockedLate")}</span>}
+                      {!c.modeMismatch && !c.late && c.status !== "awaiting_transfer" && <span className="ml-2 font-medium text-slate-500">{t("unmatchedDeposits.candidateBlockedStatus", { status: t(`status.${c.status}` as MessageKey) })}</span>}
+                    </span>
+                    <span className={cn("tabular-nums", c.exact ? "font-semibold text-emerald-700" : "text-slate-600")}>{formatYen(c.amount)}</span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -245,7 +322,41 @@ function MatchFields({ depositId, valueRef }: { depositId: string; valueRef: Mut
   );
 }
 
-function DismissFields({ valueRef }: { valueRef: MutableRefObject<{ reason: string }> }) {
+function DismissFields({ valueRef }: { valueRef: MutableRefObject<{ reason: string; kind: DismissKind }> }) {
+  const t = useT();
+  const { update } = useConfirm();
+  const [reason, setReason] = useState("");
+  const [kind, setKind] = useState<DismissKind>(valueRef.current.kind);
+  useEffect(() => {
+    valueRef.current = { reason, kind };
+    update({ confirmDisabled: reason.trim().length === 0 });
+  }, [reason, kind, update, valueRef]);
+  return (
+    <div className="space-y-3">
+      <div>
+        <label htmlFor="dismiss-kind" className="label">
+          {t("unmatchedDeposits.dismissKind")}
+        </label>
+        <select id="dismiss-kind" className="input" value={kind} onChange={(e) => setKind(e.target.value as DismissKind)}>
+          {DISMISS_KINDS.map((k) => (
+            <option key={k} value={k}>
+              {t(`unmatchedDepositEnums.dismissKind.${k}` as MessageKey)}
+            </option>
+          ))}
+        </select>
+        <p className="help">{t("unmatchedDeposits.dismissKindHelp")}</p>
+      </div>
+      <div>
+        <label htmlFor="dismiss-reason" className="label">
+          {t("unmatchedDeposits.dismissReason")}
+        </label>
+        <input id="dismiss-reason" className="input" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoFocus />
+      </div>
+    </div>
+  );
+}
+
+function LateMatchFields({ valueRef }: { valueRef: MutableRefObject<{ reason: string }> }) {
   const t = useT();
   const { update } = useConfirm();
   const [reason, setReason] = useState("");
@@ -255,10 +366,11 @@ function DismissFields({ valueRef }: { valueRef: MutableRefObject<{ reason: stri
   }, [reason, update, valueRef]);
   return (
     <div>
-      <label htmlFor="dismiss-reason" className="label">
-        {t("unmatchedDeposits.dismissReason")}
+      <label htmlFor="late-reason" className="label">
+        {t("unmatchedDeposits.lateReason")}
       </label>
-      <input id="dismiss-reason" className="input" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoFocus />
+      <input id="late-reason" className="input" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoFocus />
+      <p className="help">{t("unmatchedDeposits.lateReasonHelp")}</p>
     </div>
   );
 }

@@ -6,11 +6,11 @@ import { toUnmatchedDepositRow } from "@/lib/deposits/list";
 import { dismissUnmatchedDeposit } from "@/lib/deposits/service";
 import { dismissDepositSchema } from "@/lib/deposits/types";
 
-/** POST /api/unmatched-deposits/:id/dismiss { reason } — the deposit is handled outside the system (returned to the payer, duplicate, …). */
+/** POST /api/unmatched-deposits/:id/dismiss { reason, kind? } — the deposit is handled outside the system; kind = returned (組戻し手配) | other. */
 export const POST = withApiHandler<{ params: { id: string } }>(async (req, { params }) => {
   await requirePermission(req, "unmatched_deposit", "dismiss");
   const parsed = dismissDepositSchema.safeParse(await readJson(req));
   if (!parsed.success) throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: { reason: "required" } });
-  const row = await dismissUnmatchedDeposit(prisma, { id: params.id, reason: parsed.data.reason, audit: await auditContextFromRequest(req) });
+  const row = await dismissUnmatchedDeposit(prisma, { id: params.id, reason: parsed.data.reason, kind: parsed.data.kind, audit: await auditContextFromRequest(req) });
   return ok(toUnmatchedDepositRow(row));
 });

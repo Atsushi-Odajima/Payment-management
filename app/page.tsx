@@ -4,7 +4,7 @@ import { livemodeWhere, modeFromCookieStore } from "@/lib/mode";
 import { prisma } from "@/lib/db";
 import { DashboardView, type DashboardStats } from "@/components/views/dashboard-view";
 import { currentAdminFromCookies } from "@/lib/admin/page-guard";
-import { OPEN_STATUSES, SALES_STATUSES } from "@/lib/payments/transitions";
+import { OPEN_STATUSES, SALES_STATUSES, WAITING_STATUSES } from "@/lib/payments/transitions";
 import { MANUAL_CHAPTERS } from "@/lib/manual/chapters";
 import { startOfDayInTz, startOfMonthInTz } from "@/lib/time";
 import { buildAgentFees, parseAgentFeeFilters } from "@/lib/agent-fees/service";
@@ -21,7 +21,7 @@ export default async function DashboardPage() {
   const today = startOfDayInTz(now);
   const mode = modeFromCookieStore(cookies());
   const modeWhere = livemodeWhere(mode);
-  const [merchantCount, agentCount, todayAgg, openCount, overdueCount, activeIpRuleCount, adminCount, auditTodayCount, providerCount, pendingRefundCount, settlementOpenCount, settlementScheduled, webhookFailedCount, chargebackOpenCount, blacklistCandidateCount, depositDiffOpenCount, monthAgg, emailTodayCount, announcementActiveCount, templateEnabledCount, subscriptionActiveCount, subscriptionAttentionCount, paymentLinkActiveCount, agentFees, unmatchedDepositCount] =
+  const [merchantCount, agentCount, todayAgg, openCount, overdueCount, activeIpRuleCount, adminCount, auditTodayCount, providerCount, pendingRefundCount, settlementOpenCount, settlementScheduled, webhookFailedCount, chargebackOpenCount, blacklistCandidateCount, depositDiffOpenCount, monthAgg, emailTodayCount, announcementActiveCount, templateEnabledCount, subscriptionActiveCount, subscriptionAttentionCount, paymentLinkActiveCount, agentFees, unmatchedDepositCount, depositNotificationTodayCount, depositNotificationAttentionCount] =
     await Promise.all([
       prisma.merchant.count(),
       prisma.agent.count(),
@@ -31,7 +31,7 @@ export default async function DashboardPage() {
         where: { ...modeWhere, status: { in: [...SALES_STATUSES] }, capturedAt: { gte: today } },
       }),
       prisma.payment.count({ where: { ...modeWhere, status: { in: [...OPEN_STATUSES] } } }),
-      prisma.payment.count({ where: { ...modeWhere, transferDueAt: { lt: now }, OR: [{ status: "awaiting_transfer" }, { status: "pending", cvsReceiptNo: { not: null } }] } }),
+      prisma.payment.count({ where: { ...modeWhere, transferDueAt: { lt: now }, status: { in: [...WAITING_STATUSES] } } }),
       prisma.ipRestriction.count({ where: { enabled: true } }),
       prisma.adminUser.count(),
       prisma.auditLog.count({ where: { createdAt: { gte: today } } }),
@@ -52,6 +52,8 @@ export default async function DashboardPage() {
       prisma.paymentLink.count({ where: { ...modeWhere, status: "active", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } }),
       buildAgentFees(parseAgentFeeFilters(undefined, mode, now)),
       prisma.unmatchedDeposit.count({ where: { ...modeWhere, status: "unmatched" } }),
+      prisma.depositNotification.count({ where: { ...modeWhere, createdAt: { gte: today } } }),
+      prisma.depositNotification.count({ where: { ...modeWhere, createdAt: { gte: today }, result: { in: ["unmatched", "rejected"] } } }),
     ]);
   const customerCount = await prisma.customer.count({ where: { anonymizedAt: null } });
 
@@ -59,6 +61,8 @@ export default async function DashboardPage() {
   const stats: DashboardStats = {
     unreadNotificationCount,
     unmatchedDepositCount,
+    depositNotificationTodayCount,
+    depositNotificationAttentionCount,
     subscriptionActiveCount,
     subscriptionAttentionCount,
     paymentLinkActiveCount,

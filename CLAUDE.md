@@ -87,6 +87,7 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 | 未消込入金 | 登録 | ○ | ○ | ○ |  |  |
 | 未消込入金 | 消込 | ○ | ○ |  |  |  |
 | 未消込入金 | 却下 | ○ | ○ | ○ |  |  |
+| 入金通知ログ | 閲覧 | ○ | ○ | ○ | ○ | ○ |
 | 過不足入金 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
 | 過不足入金 | 更新 | ○ | ○ | ○ |  |  |
 | 返金 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
@@ -259,6 +260,16 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - `lib/deposits/{types,service,list}.ts`: `registerUnmatchedDeposit`（監査 `deposit.register`）、`findTransferCandidates`（同モードの振込待ち、残額一致を先頭）、`matchUnmatchedDeposit`（振込IDを付与 → **同じ `applyPaymentAction(deposit)`** で消込 → 完了なら `payment.completed` の Webhook が加盟店へ飛ぶ = API 完結。監査 `deposit.match`）、`dismissUnmatchedDeposit`（`deposit.dismiss`）、`renotifyPayment`（**銀行振込の完了系取引のみ**、`emitPaymentWebhook(payment.completed)` を再送し `Payment.renotifiedAt` / `renotifyCount` を更新、監査 `payment.renotify`。クレジット等は 409 `not_bank_transfer`）
 - API: `GET/POST /api/unmatched-deposits`（一覧 + CSV / 登録 `requireAdmin`）、`GET /api/unmatched-deposits/[id]`（候補付き）、`POST .../match`（`requireMaster`）、`POST .../dismiss`（`requireAdmin`）、`POST /api/payments/[id]/renotify`（`requireMaster`。静的セグメントなので `[action]` より優先）。画面 `/unmatched-deposits`（登録フォーム・候補付きの消込ダイアログ・却下）、取引詳細の「API 再通知」ボタン（`components/payment-actions.tsx`、銀行振込のみ表示）。KPI「未消込入金」。ナビ `unmatchedDeposits`
 
+## 修正フェーズ1: 資金・整合性（入金通知の冪等化 / 環境照合 / 期限後入金 / 署名鍵 fail-closed / 請求書番号 / 支払待ちステータス）
+
+- **入金通知は `lib/deposits/notify.ts` の `processDepositNotification(db, { source: "bank" | "cvs", raw, audit })` が唯一の実装**（`POST /api/demo/deposit-notify` / `cvs-notify` は薄いラッパー。Zod は `lib/deposits/notification-types.ts`）。`mode` は **必須**（未指定は 400 `fieldErrors.mode = "required"`）。重複排除キーは `depositDedupeKey`（`eventId` があれば `<source>:evt:<eventId>`、無ければ sha256(送信元|振込ID or 受付番号|金額|receivedAt 分丸め|bankReference)）。**`DepositNotification`**（`notificationNo` `DN-00001`、`dedupeKey` index、`claimKey` @unique = 最初に claim した行のみ、`result` applied | duplicate | unmatched | rejected、`resultReason`、`paymentId`、`unmatchedDepositId`、`duplicateOfId`、`rawBody`）にすべての通知を記録し、重複は 200 `{ duplicate: true, notificationId, paymentId }` で消込を再適用しない。判定順: 取引なし → 未消込（cvs は 404 rejected）/ `livemode ≠ mode` → 未消込 `mode_mismatch` / `expired` → 未消込 `late_deposit` / `cancelled` → 未消込 `cancelled_deposit` / `WAITING_STATUSES` → `applyPaymentAction(deposit)` / それ以外 → 409 rejected。未消込は 202 `{ matched: false, reason, unmatchedDepositId, paymentId }`
+- **未消込入金の拡張**: `UnmatchedDeposit.reason`（`late_deposit | cancelled_deposit | mode_mismatch`）、`candidatePaymentId`（対象取引、`Payment.candidateDeposits` relation）、`dismissKind`（`returned` = 組戻し手配 / `other`）、`source` に `cvs`。`findTransferCandidates` は候補先頭に対象取引を `modeMismatch` / `late` / `status` 付きで返し、UI（`components/views/unmatched-deposits-view.tsx`）は環境不一致・期限切れの候補を選択不可にして理由を表示。**`late_deposit` 遷移**（`TRANSITIONS.late_deposit`: `expired` → `captured`、`MASTER_ACTIONS` に含む、UI アクションではない）は `lateMatchUnmatchedDeposit` → `POST /api/unmatched-deposits/[id]/late-match { reason }`（権限 `unmatched_deposit.match`、監査 `deposit.late_match` + `payment.late_deposit`）が適用し、金額不一致でも完了にして `depositDiff` に記録。完了時は通常どおり `payment.completed` Webhook と決済完了メール。キャンセル済への入金は却下のみ。日次ダイジェスト `deposit.late`（warning）
+- **画面 `/deposit-notifications`**（入金通知ログ。`lib/deposits/notification-list.ts`、`GET /api/deposit-notifications`（+CSV）、送信元・結果・期間で絞り込み、取引詳細と `/unmatched-deposits?highlight=<id>` へリンク）。権限 `deposit_notification.view`（全員）、ナビ `depositNotifications`（取引グループ）、KPI「本日 N 件 / 要確認 N 件」、監査対象種別 `deposit_notification`
+- **Webhook 署名は fail closed**: `lib/webhooks/deliver.ts` の `signingSecretFor` は同じ環境の使用可能な署名シークレットが無ければ `null`（パスワードへのフォールバック廃止）。`enqueueWebhook` は `WebhookDelivery` を `status = failed`、`responseBody = "error: signing_secret_missing"`（`SIGNING_SECRET_MISSING`）で記録して送信せず、通知 `webhook.signing_secret_missing`（warning、`targetId = <merchantId>:<mode>` で 24 時間に 1 通）。`attemptDelivery` は `X-Signature` の無い行を再送時に再署名し、鍵が無ければ failed のまま。**`POST /api/merchants` はテスト環境の署名シークレットを同一トランザクションで発行**（監査 `api_key.issue`）し、応答 `signingSecret.plaintext` を 1 回だけ返す → `components/views/merchant-new-view.tsx` の完了画面で表示。seed は全加盟店 × test / live の署名シークレットを投入（`SEED_API_KEYS` apiKey5〜9）
+- **請求書番号**: `SettlementBatch.invoiceNo` @unique。`transitionBatch(confirm)` が `nextInvoiceNo`（`INV-YYYYMM-<加盟店番号>-<同月同加盟店の連番 2 桁>`、一意制約違反は 1 回再試行）で採番し保存。`buildInvoicePdf` は保存値のみ使用（未採番は 409 `invoice_no_missing`）。`BATCH_SELECT` / `toSettlementRow` 経由で一覧・詳細・加盟店管理画面・`GET /api/merchant-api/settlements` に含まれ、横断検索（`searchAll` の `settlements` グループ）の対象。既存データの採番は `lib/maintenance/phase1-backfill.ts` の `runPhase1Backfill`（`npm run db:backfill`、seed 末尾でも実行、冪等）
+- **`awaiting_payment`（支払待ち）**: コンビニ取引は作成時にこのステータス（`initialStatus("convenience")`）。`WAITING_STATUSES = ["awaiting_transfer", "awaiting_payment"]` を capture / cancel / fail / expire / deposit の遷移元、`APPLICATION_STATUSES` / `OPEN_STATUSES` / `COUNTED_STATUSES`、期限切れ cron、日次ダイジェスト、ダッシュボードの期限超過 KPI、一覧の待機レーン（`waitingForPayment`）、`isTransferOverdue` / `isCvsWaiting` / `reconcileDeposit` の待機先で共用する。`pending` + `cvsReceiptNo` による判定は廃止。移行は migration の SQL と `runPhase1Backfill` の両方（冪等）。英語辞書の `status.pending` は "Pending"。公開 API の status 値は `lib/public-api/openapi.ts` の `TRANSACTION_STATUS_DOC`
+- 破壊的変更は `docs/spec/CHANGELOG.md`（1.1.0）に理由付きで記録する。以降の修正フェーズも同じファイルに追記する
+
 ## 代理店・決済申請・IP制限・マニュアル
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
@@ -328,6 +339,12 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **フェーズK コンビニ決済・領収書 PDF・インボイス**（完了）: 受付番号 13 桁・支払店舗・加盟店ごとの支払期限（申請一覧の支払待ちレーン・期限切れ cron・日次通知・入金通知 API `/api/demo/cvs-notify` は銀行振込と同じ `deposit`・決済リンクページ・案内メール）、領収書（月次連番・宛名・再発行回数・PDF・署名付き URL による顧客ダウンロード）、インボイス（発行者情報・登録番号検証・税区分・税率ごとの内税計算と端数処理・確定以降の精算バッチから請求書 PDF）。PDF は pdf-lib + Noto Sans JP サブセット同梱
 - [x] **フェーズL 公開 API v1・加盟店ログイン・API ドキュメント**（完了）: `/api/v1`（取引の作成 / 取得 / 一覧、返金申請、決済リンク、OpenAPI 3 を Zod から生成しテストで route と照合）、加盟店 × 環境のレート制限（DB 計数、429 + Retry-After）、テストカード番号によるシナリオ、加盟店管理画面（別 Cookie のログイン・ロックアウト・取引 / 返金申請 / Webhook 再送 / 精算 + 請求書 PDF / テストキーの自己ローテーション / 決済手段の状態 / お知らせ）、公開 API ドキュメント（手書き 6 章 + 自動生成リファレンス）とサンドボックス
 - [x] **フェーズM 顧客・PaymentToken・個人情報保護**（完了）: 加盟店 × ユーザーID の顧客マスタと保存カード（取引作成時に自動作成、既存行は冪等バックフィル）、管理画面全体のマスク表示（姓のみ / メール 2 文字 / 電話下 4 桁 / IP 第 4 オクテット、操作ログは保存時点でマスク）、監査付きマスク解除（admin / cs）、CSV の個人情報モード、手動匿名化（admin・理由必須）と保持期間による日次匿名化 + 操作ログの保持期間削除、加盟店管理画面の顧客一覧
+- [x] **修正フェーズ1 資金・整合性**（完了）: 入金通知の冪等化（`DepositNotification` + 入金通知ログ画面）、`mode` 必須と環境照合、期限後・キャンセル後入金の保留と `late_deposit` 遷移、Webhook 署名鍵の fail-closed と加盟店登録時の署名シークレット自動発行、精算バッチの請求書番号（確定時採番・一意）、コンビニ支払待ちの独立ステータス `awaiting_payment`、`docs/spec/CHANGELOG.md`
+- [ ] **修正フェーズ2 通知まわり**: 即時完了取引の決済完了メール、加盟店宛メール通知設定の実装（per_payment / daily cron）、`/api/merchant-api/*` のレート制限
+- [ ] **修正フェーズ3 運用画面の改善**（3-1〜3-8）
+- [ ] **修正フェーズ4 設計判断項目**（IP 許可リストモード / PSP リンクのデモ限定 / 加盟店ログイン autocomplete）
+- [ ] **修正フェーズ5 文言・デモデータ・小修正**
+- [ ] **修正フェーズ6 仕様書・マニュアル再生成**（1.1.0）
 - 全フェーズ完了。以降の追加は README の「残課題」から選ぶ
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
 - 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う

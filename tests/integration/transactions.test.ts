@@ -148,7 +148,7 @@ describe("POST /api/demo/deposit-notify", () => {
 
   it("reconciles by transfer id with actor 'bank' when no secret is configured", async () => {
     vi.stubEnv("DEPOSIT_NOTIFY_SECRET", "");
-    const res = await read(await notify({ transferId: SEED_TRANSFER_IDS[SEED_IDS.payment4], amount: 24800 }));
+    const res = await read(await notify({ transferId: SEED_TRANSFER_IDS[SEED_IDS.payment4], amount: 24800, mode: "test" }));
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({ paymentId: SEED_IDS.payment4, status: "captured", completed: true, depositDiff: null });
     const ev = await prisma.paymentEvent.findFirstOrThrow({ where: { paymentId: SEED_IDS.payment4, type: "deposit" } });
@@ -157,24 +157,28 @@ describe("POST /api/demo/deposit-notify", () => {
 
   it("requires the bearer secret when configured", async () => {
     vi.stubEnv("DEPOSIT_NOTIFY_SECRET", "s3cret");
-    const denied = await notify({ transferId: SEED_TRANSFER_IDS[SEED_IDS.payment5], amount: 6600 }, { authorization: "Bearer nope" });
+    const denied = await notify({ transferId: SEED_TRANSFER_IDS[SEED_IDS.payment5], amount: 6600, mode: "test" }, { authorization: "Bearer nope" });
     expect(denied.status).toBe(401);
-    const ok = await read(await notify({ transferId: SEED_TRANSFER_IDS[SEED_IDS.payment5], amount: 6000 }, { authorization: "Bearer s3cret" }));
+    const ok = await read(await notify({ transferId: SEED_TRANSFER_IDS[SEED_IDS.payment5], amount: 6000, mode: "test" }, { authorization: "Bearer s3cret" }));
     expect(ok.status).toBe(200);
     expect(ok.body.data).toMatchObject({ completed: false, depositDiff: "short", depositAmount: 6000 });
   });
 
   it("records an unknown transfer id as an unmatched deposit (202) and answers 409 for a completed one", async () => {
     vi.stubEnv("DEPOSIT_NOTIFY_SECRET", "");
-    const unknown = await read(await notify({ transferId: "9999999", amount: 1, payerName: "FORGOT ID" }));
+    // mode is mandatory (Phase P1-2).
+    const noMode = await read(await notify({ transferId: "9999999", amount: 1 }));
+    expect(noMode.status).toBe(400);
+    expect(noMode.body.error.details.fieldErrors.mode).toBe("required");
+    const unknown = await read(await notify({ transferId: "9999999", amount: 1, payerName: "FORGOT ID", mode: "test" }));
     expect(unknown.status).toBe(202);
     expect(unknown.body.data.matched).toBe(false);
     expect(await prisma.unmatchedDeposit.count({ where: { id: unknown.body.data.unmatchedDepositId, status: "unmatched", source: "bank" } })).toBe(1);
-    const done = await notify({ transferId: SEED_TRANSFER_IDS[SEED_IDS.payment7], amount: 1 });
+    const done = await notify({ transferId: SEED_TRANSFER_IDS[SEED_IDS.payment7], amount: 1, mode: "test" });
     expect(done.status).toBe(409);
     // A malformed transfer id is not an error for the bank: it is filed as an unmatched deposit too.
-    expect((await notify({ transferId: "abc", amount: 1 })).status).toBe(202);
-    expect((await notify({ transferId: "abc", amount: 0 })).status).toBe(400);
+    expect((await notify({ transferId: "abc", amount: 1, mode: "test" })).status).toBe(202);
+    expect((await notify({ transferId: "abc", amount: 0, mode: "test" })).status).toBe(400);
   });
 });
 
@@ -189,7 +193,7 @@ describe("transaction lists", () => {
       now: NOW,
     });
     // The konbini slip (payment14, due in 2 days) shares the deadline lane with the awaiting transfers.
-    expect(apps.items.map((i) => i.id)).toEqual([SEED_IDS.payment5, SEED_IDS.payment14, SEED_IDS.payment4, SEED_IDS.payment3, SEED_IDS.payment6]);
+    expect(apps.items.map((i) => i.id)).toEqual([SEED_IDS.payment5, SEED_IDS.payment14, SEED_IDS.payment4, SEED_IDS.payment3, SEED_IDS.payment6, SEED_IDS.payment16]);
     expect(apps.items[0].overdue).toBe(true);
     expect(apps.items[1].overdue).toBe(false);
 
@@ -214,7 +218,7 @@ describe("transaction lists", () => {
       now: NOW,
     });
     expect(bank.items.every((i) => i.method === "bank")).toBe(true);
-    expect(bank.total).toBe(2);
+    expect(bank.total).toBe(3); // payment4, payment5 and the expired payment16
 
     const merchant2 = await loadTransactions({
       allowedStatuses: APPLICATION_STATUSES,

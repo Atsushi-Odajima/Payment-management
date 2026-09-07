@@ -19,15 +19,16 @@ import {
 // The full legal matrix, written out so a change to TRANSITIONS is a
 // deliberate, reviewed change.
 const LEGAL: Record<PaymentStatus, PaymentAction[]> = {
-  pending: ["capture", "cancel", "fail", "expire", "deposit"],
+  pending: ["capture", "cancel", "fail"],
   awaiting_transfer: ["capture", "cancel", "fail", "expire", "deposit"],
+  awaiting_payment: ["capture", "cancel", "fail", "expire", "deposit"],
   authorized: ["capture", "cancel", "fail"],
   captured: ["refund", "chargeback"],
   partially_refunded: ["refund", "chargeback"],
   refunded: ["chargeback"],
   cancelled: [],
   failed: [],
-  expired: [],
+  expired: ["late_deposit"],
   chargeback: [],
 };
 
@@ -38,8 +39,8 @@ describe("payment state machine", () => {
     });
   });
 
-  it("marks refunded / cancelled / failed / expired as terminal", () => {
-    expect([...TERMINAL_STATUSES].sort()).toEqual(["cancelled", "chargeback", "expired", "failed"]);
+  it("marks cancelled / failed / chargeback as terminal (expired can still take a late deposit)", () => {
+    expect([...TERMINAL_STATUSES].sort()).toEqual(["cancelled", "chargeback", "failed"]);
   });
 
   it("splits every status between the application list and the sales list", () => {
@@ -48,8 +49,8 @@ describe("payment state machine", () => {
     expect(APPLICATION_STATUSES.some((s) => SALES_STATUSES.includes(s))).toBe(false);
   });
 
-  it("gates every UI action except refund behind the master role", () => {
-    expect([...MASTER_ACTIONS].sort()).toEqual(UI_ACTIONS.filter((a) => a !== "refund").sort());
+  it("gates every UI action except refund behind the master role (late_deposit is applied from the unmatched-deposit screen)", () => {
+    expect([...MASTER_ACTIONS].sort()).toEqual([...UI_ACTIONS.filter((a) => a !== "refund"), "late_deposit"].sort());
   });
 
   it("resolves the status after a refund", () => {
@@ -60,7 +61,7 @@ describe("payment state machine", () => {
 
   it("starts bank transfers awaiting transfer, konbini applied, card & QR by autoCapture", () => {
     expect(initialStatus("bank", true)).toBe("awaiting_transfer");
-    expect(initialStatus("convenience", true)).toBe("pending");
+    expect(initialStatus("convenience", true)).toBe("awaiting_payment");
     expect(initialStatus("credit", true)).toBe("captured");
     expect(initialStatus("qr", false)).toBe("authorized");
   });

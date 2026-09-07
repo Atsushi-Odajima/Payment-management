@@ -236,7 +236,7 @@ export function TransactionsView(props: TransactionsViewProps) {
                         <td className="px-5 py-3">
                           <span className="flex flex-wrap items-center gap-1">
                             <PaymentStatusBadge status={p.status} />
-                            {p.status === "pending" && p.cvsReceiptNo && <span className="badge bg-sky-100 text-sky-800 ring-sky-200">{t("transactions.cvsWaiting")}</span>}
+                            {p.status === "awaiting_payment" && p.cvsReceiptNo && <span className="badge bg-sky-100 text-sky-800 ring-sky-200">{t("transactions.cvsWaiting")}</span>}
                             {p.overdue && <span className="badge bg-rose-600 text-white ring-rose-700">{t("transactions.overdue")}</span>}
                             {p.failureReason?.startsWith("limit_exceeded") && <span className="badge bg-rose-100 text-rose-800 ring-rose-200">{t("transactions.limitExceeded")}</span>}
                             {p.depositDiff === "excess" && <span className="badge bg-amber-100 text-amber-800 ring-amber-200">{t("paymentDetail.diff_excess")}</span>}

@@ -28,11 +28,13 @@ Bank transfers additionally carry a **transfer ID** (7 or 8 digits per merchant,
 
 | Status | Meaning | Possible next actions |
 |---|---|---|
-| Applied | Just created (e.g. konbini, waiting for payment) | Complete / fail / cancel / expire |
+| Pending | Just created (no result from the payment method yet) | Complete / fail / cancel |
 | Awaiting transfer | Bank transfer; transfer ID issued, waiting for the deposit | Reconcile deposit / cancel / expire (once overdue) |
+| Awaiting payment | Konbini; receipt number issued, waiting for the counter payment | Reconcile deposit (store notification) / cancel / expire (once overdue) |
 | Authorized | Card authorization held | Complete / fail / cancel |
 | Completed | Payment succeeded (moves to Payments) | Refund |
-| Failed / Expired / Cancelled | Terminal | none |
+| Expired | The transfer / payment deadline passed | Apply a late deposit (from the unmatched deposits screen; expired → completed) |
+| Failed / Cancelled | Terminal | none |
 | Refunded | Fully refunded (Payments) | none |
 
 Every change is written to the **status history** with the previous and new status, who did it (dashboard / webhook / deposit notification (bank) / seed data) and when.
@@ -55,33 +57,43 @@ Actions on the detail screen require an account with the master role; the genera
 
 ## Deposit notification API (demo)
 
-Simulates the callback a bank sends when money arrives. Send the transfer ID and the amount; the same reconciliation rules run, and the history records the actor as “Deposit notification (bank)”.
+Simulates the callback a bank sends when money arrives. Send the transfer ID and the amount; the same reconciliation rules run, and the history records the actor as “Deposit notification (bank)”. The konbini network's counter-payment notification is `POST /api/demo/cvs-notify` (`receiptNo` = the 13-digit receipt number) with the same rules.
 
 ```
 POST /api/demo/deposit-notify
 Authorization: Bearer <DEPOSIT_NOTIFY_SECRET>
 Content-Type: application/json
 
-{ "transferId": "48213907", "amount": 24800 }
+{ "eventId": "bank-20260901-0007", "transferId": "48213907", "amount": 24800, "mode": "test" }
 ```
 
 | Field | Meaning |
 |---|---|
-| `transferId` | Transfer ID (7 or 8 digits) |
-| `amount` | Amount received (yen, integer) |
+| `eventId` | Optional (≤ 128 chars). The sender's event ID. **A notification with an ID seen before is treated as a duplicate and never applied twice** |
+| `transferId` | Transfer ID (7 or 8 digits). The konbini notification uses `receiptNo` (13 digits) instead |
+| `amount` | Amount received (yen, integer). Optional for konbini (defaults to the slip amount) |
+| `mode` | **Required.** `test` or `live`. Missing → 400 `invalid_input` with `fieldErrors.mode = "required"` |
+| `payerName` / `bankReference` / `receivedAt` | Optional: payer name, bank reference, deposit time (ISO 8601; defaults to the time of receipt) |
+
+Without an `eventId` the dedupe key is a hash of “source | transfer ID or receipt no. | amount | deposit time (minute) | bank reference”.
 
 Example response:
 
 ```
-{ "ok": true, "data": { "transferId": "48213907", "paymentId": "pay_…", "amount": 24800,
-  "received": 24800, "depositAmount": 24800, "depositDiff": null, "status": "captured", "completed": true } }
+{ "ok": true, "data": { "notificationId": "…", "notificationNo": "DN-00012", "duplicate": false, "matched": true,
+  "transferId": "48213907", "paymentId": "pay_…", "amount": 24800, "received": 24800,
+  "depositAmount": 24800, "depositDiff": null, "status": "captured", "completed": true } }
 ```
 
 | Situation | Response |
 |---|---|
-| Missing or unknown transfer ID | 202, recorded as an unmatched deposit (`matched: false`, `unmatchedDepositId`) |
-| Not awaiting transfer (already completed, expired…) | 409 `invalid_transition` |
-| Short deposit | 200, `status: "awaiting_transfer"`, `depositDiff: "short"` |
+| Re-sent notification (same `eventId` or hash) | 200, `duplicate: true` (`notificationId` / `paymentId` of the original). Nothing is re-applied |
+| Missing or unknown transfer ID | 202, recorded as an unmatched deposit (`matched: false`, `reason: "not_found"`, `unmatchedDepositId`) |
+| `mode` differs from the transaction's mode (test / live) | 202, filed as an unmatched deposit (`reason: "mode_mismatch"`, `paymentId`) instead of reconciling. A test notification can never complete a live transaction |
+| Transaction expired | 202, unmatched deposit (`reason: "late_deposit"`, `paymentId`); it can be applied as a late deposit (below) |
+| Transaction cancelled | 202, unmatched deposit (`reason: "cancelled_deposit"`); dismiss (return) only |
+| Completed or otherwise not accepting money | 409 `invalid_transition` (recorded in the log as rejected) |
+| Short deposit | 200, `status: "awaiting_transfer"` (`"awaiting_payment"` for konbini), `depositDiff: "short"` |
 | Excess deposit | 200, `status: "captured"`, `depositDiff: "excess"` |
 
 When the `DEPOSIT_NOTIFY_SECRET` environment variable is set, the bearer token is required. Without it the endpoint answers 404 in production and is open in development. Example:
@@ -89,8 +101,12 @@ When the `DEPOSIT_NOTIFY_SECRET` environment variable is set, the bearer token i
 ```
 curl -X POST http://localhost:3000/api/demo/deposit-notify \
   -H "Content-Type: application/json" \
-  -d '{"transferId":"48213907","amount":24800}'
+  -d '{"eventId":"bank-20260901-0007","transferId":"48213907","amount":24800,"mode":"test"}'
 ```
+
+## Deposit notification log
+
+Every notification received (bank / konbini) is recorded on the **Deposit Notification Log** screen (Transactions group, next to Unmatched Deposits) whatever its outcome: notification number (`DN-00001`), source, transfer ID / receipt number, amount, deposit time, result (applied / duplicate / unmatched / rejected) with the reason, and links to the transaction and the unmatched deposit. Filter by source, result and date; CSV export; the header's test / live switch selects the environment.
 
 ## Unmatched deposits and API re-notify (bank transfers only)
 
@@ -98,17 +114,19 @@ When a customer **transfers money without the transfer ID**, the deposit notific
 
 ### Flow
 
-1. **An unmatched deposit appears**: a call to `POST /api/demo/deposit-notify` whose `transferId` is missing (or matches no transaction) is recorded as an *unmatched deposit* with **202** instead of 404 (`payerName` / `bankReference` / `receivedAt` / `mode` are optional). Support can also register one by hand from **Unmatched deposits → + Register deposit** after reading the bank statement.
-2. **Attach the transfer ID (match)**: **Match by transfer ID** on the list (master) asks for the ID. The dialog lists the awaiting transfers of the same mode, **exact remaining amounts first**; clicking one fills the field. The normal reconciliation then runs (exact → completed, short → still awaiting with the short flag, excess → completed with the excess flag) and, **as soon as the transaction completes, `payment.completed` is sent to the merchant's notification URL**.
-3. **API re-notify**: if the merchant lost the notification, **API re-notify** on the transaction detail (completed / partially refunded / refunded bank transfers only, master) sends `payment.completed` again. The result is visible in the webhook delivery log, and the transaction keeps the re-notify count and the last time.
-4. **Dismiss**: deposits that must not be tied to a transaction (already returned, duplicates) are **dismissed** with a reason.
+1. **An unmatched deposit appears**: a call to `POST /api/demo/deposit-notify` whose `transferId` is missing (or matches no transaction) is recorded as an *unmatched deposit* with **202** instead of 404. Deposits whose `mode` differs from the transaction's, and deposits on expired or cancelled transactions, are filed the same way; the list shows the reason (mode mismatch / late deposit / cancelled transaction) and the transaction concerned. Support can also register one by hand from **Unmatched deposits → + Register deposit** after reading the bank statement.
+2. **Attach the transfer ID (match)**: **Match by transfer ID** on the list (admin / accounting) asks for the ID. The dialog lists the awaiting transfers of the same mode, **exact remaining amounts first**; clicking one fills the field. Transactions of the other mode and expired transactions are shown with the reason but cannot be selected. The normal reconciliation then runs (exact → completed, short → still awaiting with the short flag, excess → completed with the excess flag) and, **as soon as the transaction completes, `payment.completed` is sent to the merchant's notification URL**.
+3. **Apply as late deposit**: rows whose reason is “late deposit” (the transaction expired) offer **Apply as late deposit** (admin / accounting, reason required). The transaction moves **expired → completed** (history action “Late deposit applied”), and `payment.completed` plus the completion e-mail go out as usual. A different amount still completes it; the difference is recorded as a short / excess deposit. Deposits on cancelled transactions cannot be applied (dismiss only).
+4. **API re-notify**: if the merchant lost the notification, **API re-notify** on the transaction detail (completed / partially refunded / refunded bank transfers only; admin / cs / developer) sends `payment.completed` again. The result is visible in the webhook delivery log, and the transaction keeps the re-notify count and the last time.
+5. **Dismiss**: deposits that must not be tied to a transaction (already returned, duplicates) are **dismissed** with a category (**Return arranged** / other) and a reason. Choose “Return arranged” when a late or post-cancellation deposit is being sent back. Open late deposits are reported to the notification centre once a day (“Late deposits awaiting a decision: N”, warning).
 
 | Action | API | Role |
 |---|---|---|
 | Register an unmatched deposit | `POST /api/unmatched-deposits` `{ amount, payerName, receivedAt?, bankReference?, givenTransferId?, note? }` | ○ |
 | Candidates | `GET /api/unmatched-deposits/<id>` → `{ deposit, candidates }` | ○ |
 | Match by transfer ID | `POST /api/unmatched-deposits/<id>/match` `{ transferId }` → `{ deposit, payment, renotified }` | M |
-| Dismiss | `POST /api/unmatched-deposits/<id>/dismiss` `{ reason }` | ○ |
+| Apply as late deposit | `POST /api/unmatched-deposits/<id>/late-match` `{ reason }` → `{ deposit, payment, renotified }` | M |
+| Dismiss | `POST /api/unmatched-deposits/<id>/dismiss` `{ reason, kind? }` (`kind`: `returned` / `other`) | ○ |
 | API re-notify | `POST /api/payments/<id>/renotify` → `{ deliveryId, renotifyCount, renotifiedAt }` | M |
 
 Errors: unknown transfer ID / not a bank transfer → 404 `transfer_not_found`, not awaiting transfer → 409 `invalid_transition`, other mode → 409 `mode_mismatch`, deposit already handled → 409 `deposit_not_open`, re-notify on a card payment → 409 `not_bank_transfer`, re-notify on an open transaction → 409 `invalid_transition`. Everything is audited (`deposit.register` / `deposit.match` / `deposit.dismiss` / `payment.renotify`).

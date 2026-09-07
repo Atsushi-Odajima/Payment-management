@@ -62,7 +62,7 @@ describe("K-1 konbini payments", () => {
 
     const res = await read(await createPayment(json("/api/payments", "POST", { providerId: SEED_IDS.cvsProvider, merchantId: SEED_IDS.merchant3, orderNumber: "ORD-CVS-1", amount: 2500, customerName: "Test", customerEmail: "cvs@example.com", cvsBrand: "familymart" }), {}));
     expect(res.status).toBe(201);
-    expect(res.body.data.status).toBe("pending");
+    expect(res.body.data.status).toBe("awaiting_payment");
     expect(res.body.data.cvsReceiptNo).toMatch(/^[1-9]\d{12}$/);
     expect(res.body.data.cvsBrand).toBe("familymart");
     const row = await prisma.payment.findUniqueOrThrow({ where: { id: res.body.data.id } });
@@ -74,8 +74,8 @@ describe("K-1 konbini payments", () => {
 
     // Application list: konbini slips waiting for payment share the deadline lane with awaiting transfers.
     const list = await loadTransactions({ allowedStatuses: APPLICATION_STATUSES, filters: parseTransactionFilters(undefined, APPLICATION_STATUSES), page: 1, pageSize: 50, order: "applications", now: NOW });
-    const waiting = list.items.filter((i) => i.status === "awaiting_transfer" || (i.status === "pending" && i.cvsReceiptNo));
-    const others = list.items.filter((i) => !(i.status === "awaiting_transfer" || (i.status === "pending" && i.cvsReceiptNo)));
+    const waiting = list.items.filter((i) => i.status === "awaiting_transfer" || i.status === "awaiting_payment");
+    const others = list.items.filter((i) => !(i.status === "awaiting_transfer" || i.status === "awaiting_payment"));
     expect(list.items.slice(0, waiting.length).every((i) => i.transferDueAt !== null)).toBe(true);
     expect(others.length).toBeGreaterThan(0);
     expect(list.items.find((i) => i.id === SEED_IDS.payment14)?.cvsReceiptNo).toBe(SEED_CVS_RECEIPT_NOS[SEED_IDS.payment14]);
@@ -83,7 +83,7 @@ describe("K-1 konbini payments", () => {
 
   it("completes the slip through the store's payment notification (same deposit action) and webhooks the merchant", async () => {
     const before = await prisma.webhookDelivery.count({ where: { paymentId: SEED_IDS.payment14 } });
-    const res = await read(await cvsNotify(json("/api/demo/cvs-notify", "POST", { receiptNo: "4102-9938-27716" }, {}), {}));
+    const res = await read(await cvsNotify(json("/api/demo/cvs-notify", "POST", { receiptNo: "4102-9938-27716", mode: "test", eventId: "cvs-1" }, {}), {}));
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({ completed: true, status: "captured", paymentId: SEED_IDS.payment14 });
     const row = await prisma.payment.findUniqueOrThrow({ where: { id: SEED_IDS.payment14 }, include: { events: true } });
@@ -94,14 +94,17 @@ describe("K-1 konbini payments", () => {
     expect(await prisma.webhookDelivery.count({ where: { paymentId: SEED_IDS.payment14, event: "payment.completed" } })).toBe(before + 1);
     expect(await prisma.auditLog.count({ where: { action: "payment.deposit", actorType: "cvs", targetId: SEED_IDS.payment14 } })).toBe(1);
 
-    // Unknown / malformed numbers → 404; a second notification → 409 (already completed).
-    expect((await read(await cvsNotify(json("/api/demo/cvs-notify", "POST", { receiptNo: "1111111111111" }, {}), {}))).status).toBe(404);
-    expect((await read(await cvsNotify(json("/api/demo/cvs-notify", "POST", { receiptNo: "4102993827716" }, {}), {}))).status).toBe(409);
+    // Unknown / malformed numbers → 404; the same event re-sent → 200 duplicate (nothing re-applied); a new event on the completed slip → 409.
+    expect((await read(await cvsNotify(json("/api/demo/cvs-notify", "POST", { receiptNo: "1111111111111", mode: "test" }, {}), {}))).status).toBe(404);
+    const dup = await read(await cvsNotify(json("/api/demo/cvs-notify", "POST", { receiptNo: "4102993827716", mode: "test", eventId: "cvs-1" }, {}), {}));
+    expect(dup.status).toBe(200);
+    expect(dup.body.data.duplicate).toBe(true);
+    expect((await read(await cvsNotify(json("/api/demo/cvs-notify", "POST", { receiptNo: "4102993827716", mode: "test", eventId: "cvs-2" }, {}), {}))).status).toBe(409);
   });
 
   it("keeps a short store payment pending and lets the dashboard reconcile the rest", async () => {
-    const short = await read(await cvsNotify(json("/api/demo/cvs-notify", "POST", { receiptNo: "4102993827716", amount: 1000 }, {}), {}));
-    expect(short.body.data).toMatchObject({ completed: false, status: "pending", depositDiff: "short" });
+    const short = await read(await cvsNotify(json("/api/demo/cvs-notify", "POST", { receiptNo: "4102993827716", amount: 1000, mode: "test" }, {}), {}));
+    expect(short.body.data).toMatchObject({ completed: false, status: "awaiting_payment", depositDiff: "short" });
     const rest = await read(await paymentAction(json(`/api/payments/${SEED_IDS.payment14}/deposit`, "POST", { amount: 2980 }, ACCOUNTING), { params: { id: SEED_IDS.payment14, action: "deposit" } }));
     expect(rest.body.data.status).toBe("captured");
     // A deposit on a card transaction (no transfer id, no receipt number) is still refused.
@@ -233,7 +236,9 @@ describe("K-3 invoices", () => {
     const pdf = await get(ACCOUNTING);
     expect(pdf.status).toBe(200);
     expect(pdf.headers.get("content-type")).toBe("application/pdf");
-    expect(pdf.headers.get("content-disposition")).toContain("invoice-INV-202607-00001.pdf");
+    // Phase P1-5: the number is assigned on confirmation with a per-month sequence.
+    expect(pdf.headers.get("content-disposition")).toContain("invoice-INV-202607-00001-01.pdf");
+    expect((await prisma.settlementBatch.findUniqueOrThrow({ where: { id: batchId } })).invoiceNo).toBe("INV-202607-00001-01");
     expect(await pdfHead(pdf)).toBe("%PDF-");
     expect(await prisma.auditLog.count({ where: { action: "settlement.invoice_export", targetId: batchId } })).toBe(1);
   });
