@@ -34,7 +34,7 @@ A **qualified invoice PDF** from the PSP to the merchant covers the **settlement
 | Item | Content |
 |---|---|
 | Availability | Confirmed batches or later (collecting → 409). Roles: admin / accounting |
-| Invoice number | `INV-YYYYMM-<merchant number>` (month the period starts) |
+| Invoice number | `INV-YYYYMM-<merchant number>-<2-digit sequence>` (month the period starts; the merchant's confirmation order within that month). **Assigned and stored when the batch is confirmed**; the PDF prints the stored value (an unnumbered batch answers 409 `invoice_no_missing`; see [Settlements](/manual/settlements)) |
 | Issuer | Global settings: name / registration number (T + 13 digits) / address / phone |
 | Recipient | The merchant's company name / address / registration number (settlement tab) |
 | Lines | Fees per payment method (count, sales base, tax category, tax-inclusive amount) plus the transfer fee |

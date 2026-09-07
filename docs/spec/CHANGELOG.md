@@ -4,9 +4,9 @@
 
 Changes to the specifications (docs/spec) and to public interfaces. **Breaking changes** affect API consumers (merchants, bank / konbini integrations) and carry a reason.
 
-## 1.1.0（作業中 / in progress）— 修正フェーズ1: 資金・整合性
+## 1.1.0（2026-09-07）— 修正フェーズ1〜5
 
-対象コミット: 後述（フェーズ6 で確定）。
+対象コミット: `cf1c153`（`main`。修正フェーズ1〜5 の実装を含む。フェーズ6 は仕様書・マニュアルのみの変更）。
 
 ### 破壊的変更 / Breaking changes
 
@@ -44,6 +44,13 @@ Changes to the specifications (docs/spec) and to public interfaces. **Breaking c
 | C-5 | **IP 制限の許可リストモード**（修正フェーズ4-1）: `GlobalSetting.ipAllowlistAdmin` / `ipAllowlistMerchantApi`（既定 OFF）。ON のとき、対象の有効な許可ルールに一致しない接続元を 403 `ip_blocked`（`details.reason = "not_in_allowlist"`）で遮断する。加盟店 API では `/api/merchant-api/*` と `/api/v1/*` の両方に適用（加盟店ごとの許可ルール、ルールの無い加盟店は影響なし）。ブロックルールは常に優先。`GET/PUT /api/ip-restrictions/allowlist` | 許可ルールが表示専用で実効性が無かった。既定 OFF で互換を保ちつつ、ON 時の自己ロックアウトを API 側で防ぐ |
 | C-6 | 加盟店管理画面のサイドバーと加盟店ログイン画面の「管理画面（PSP）へ」リンクは `DEMO_LOGIN_HINT` 設定時のみ表示（修正フェーズ4-2）。加盟店ログインの入力欄は `name="merchant-code"` / `autoComplete="off"`（修正フェーズ4-3） | デモ専用の導線を本番に出さない。ブラウザが PSP 管理者 ID を加盟店IDに自動入力しないようにする |
 | C-4 | クレジット / QR の即時完了取引でも決済完了メール `payment_completed` を顧客へ送信する（定期課金の課金は除外） | 手動完了・入金消込では送っていたのに即時完了だけ送られていなかった（修正フェーズ2-1） |
+
+### 仕様書・マニュアル / Specifications and manuals（修正フェーズ6）
+
+- 仕様書 A / B / 用語集（ja / en）を 1.1.0 に更新（各文書冒頭の版数・対象コミット、巻末の改訂履歴）。第 4 章冒頭の節番号参照（4.16 → 4.17）と 5.1 節の表内 `\|` の未エスケープを修正し、第 14 章の未実装一覧から実装済み項目を除去。
+- 仕様書 A に付録 E「権限マトリクス（完全版）」（`scripts/gen-permissions.ts` が `lib/role.ts` から生成）と付録 F「よくある問い合わせ → 参照章」を追加。仕様書 B に付録 C「ベンダー通知の対応表（参考・未実装）」と付録 D「本番接続要件の一覧」を追加し、付録 A の ER 図を取引系 / 精算系 / 設定・通知系の 3 枚に分割。cron の表を `vercel.json` の実スケジュール（日次）と本番推奨（毎時）の 2 列に分離。
+- PDF（`docs/spec/build-pdf.mjs`）: インラインコードの折返し禁止、表 0.85em、幅の足りない表と横長の図を横向きページへ自動配置、`--png` による全ページの画像化。仕様書 A 2.3 の状態遷移図を `direction TB` に変更。
+- 管理画面マニュアル: コンビニ決済（`awaiting_payment`、入金通知の `mode` / `eventId`）、領収書（請求書番号の新形式）、はじめに（モード表示）を更新。他の章（決済申請の過不足入金・入金通知ログ・期限後入金、IP 制限の許可リストモード、メール、精算、Webhook、加盟店管理画面）は各修正フェーズで更新済み。
 
 ### 移行 / Migration
 

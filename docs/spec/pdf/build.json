@@ -1,47 +1,381 @@
 {
-  "builtAt": "2026-09-06T20:44:01.769Z",
+  "builtAt": "2026-09-07T10:41:07.076Z",
   "results": [
     {
       "file": "ja-A-merchant-integration-spec.pdf",
       "diagrams": {
         "total": 11,
-        "rendered": 11
-      }
+        "rendered": 11,
+        "broken": []
+      },
+      "layout": {
+        "landscapeTables": 1,
+        "landscapeDiagrams": 8,
+        "diagrams": [
+          {
+            "w": 2208,
+            "h": 829,
+            "scale": 0.46,
+            "landscape": true
+          },
+          {
+            "w": 1508,
+            "h": 981,
+            "scale": 0.58,
+            "landscape": true
+          },
+          {
+            "w": 1524,
+            "h": 546,
+            "scale": 0.67,
+            "landscape": true
+          },
+          {
+            "w": 1372,
+            "h": 537,
+            "scale": 0.74,
+            "landscape": true
+          },
+          {
+            "w": 2053,
+            "h": 1359,
+            "scale": 0.34,
+            "landscape": false
+          },
+          {
+            "w": 1926,
+            "h": 660,
+            "scale": 0.53,
+            "landscape": true
+          },
+          {
+            "w": 1734,
+            "h": 941,
+            "scale": 0.59,
+            "landscape": true
+          },
+          {
+            "w": 1501,
+            "h": 808,
+            "scale": 0.68,
+            "landscape": true
+          },
+          {
+            "w": 1413,
+            "h": 764,
+            "scale": 0.72,
+            "landscape": true
+          },
+          {
+            "w": 484,
+            "h": 552,
+            "scale": 1,
+            "landscape": false
+          },
+          {
+            "w": 488,
+            "h": 552,
+            "scale": 1,
+            "landscape": false
+          }
+        ]
+      },
+      "pages": null
     },
     {
       "file": "ja-B-provider-connection-spec.pdf",
       "diagrams": {
-        "total": 11,
-        "rendered": 11
-      }
+        "total": 13,
+        "rendered": 13,
+        "broken": []
+      },
+      "layout": {
+        "landscapeTables": 2,
+        "landscapeDiagrams": 10,
+        "diagrams": [
+          {
+            "w": 1416,
+            "h": 889,
+            "scale": 0.64,
+            "landscape": true
+          },
+          {
+            "w": 1316,
+            "h": 478,
+            "scale": 0.77,
+            "landscape": true
+          },
+          {
+            "w": 1399,
+            "h": 535,
+            "scale": 0.73,
+            "landscape": true
+          },
+          {
+            "w": 1706,
+            "h": 633,
+            "scale": 0.6,
+            "landscape": true
+          },
+          {
+            "w": 660,
+            "h": 448,
+            "scale": 1,
+            "landscape": false
+          },
+          {
+            "w": 2484,
+            "h": 849,
+            "scale": 0.41,
+            "landscape": true
+          },
+          {
+            "w": 1442,
+            "h": 494,
+            "scale": 0.71,
+            "landscape": true
+          },
+          {
+            "w": 1595,
+            "h": 155,
+            "scale": 0.64,
+            "landscape": true
+          },
+          {
+            "w": 1835,
+            "h": 635,
+            "scale": 0.55,
+            "landscape": true
+          },
+          {
+            "w": 1922,
+            "h": 524,
+            "scale": 0.53,
+            "landscape": true
+          },
+          {
+            "w": 1414,
+            "h": 1230,
+            "scale": 0.49,
+            "landscape": false
+          },
+          {
+            "w": 769,
+            "h": 1371,
+            "scale": 0.61,
+            "landscape": false
+          },
+          {
+            "w": 1520,
+            "h": 768,
+            "scale": 0.67,
+            "landscape": true
+          }
+        ]
+      },
+      "pages": null
     },
     {
       "file": "ja-glossary.pdf",
       "diagrams": {
         "total": 0,
-        "rendered": 0
-      }
+        "rendered": 0,
+        "broken": []
+      },
+      "layout": {
+        "landscapeTables": 0,
+        "landscapeDiagrams": 0,
+        "diagrams": []
+      },
+      "pages": null
     },
     {
       "file": "en-A-merchant-integration-spec.pdf",
       "diagrams": {
         "total": 11,
-        "rendered": 11
-      }
+        "rendered": 11,
+        "broken": []
+      },
+      "layout": {
+        "landscapeTables": 1,
+        "landscapeDiagrams": 8,
+        "diagrams": [
+          {
+            "w": 2284,
+            "h": 829,
+            "scale": 0.45,
+            "landscape": true
+          },
+          {
+            "w": 1436,
+            "h": 981,
+            "scale": 0.48,
+            "landscape": false
+          },
+          {
+            "w": 1496,
+            "h": 546,
+            "scale": 0.68,
+            "landscape": true
+          },
+          {
+            "w": 1455,
+            "h": 537,
+            "scale": 0.7,
+            "landscape": true
+          },
+          {
+            "w": 2149,
+            "h": 1359,
+            "scale": 0.42,
+            "landscape": true
+          },
+          {
+            "w": 2143,
+            "h": 654,
+            "scale": 0.47,
+            "landscape": true
+          },
+          {
+            "w": 1742,
+            "h": 939,
+            "scale": 0.58,
+            "landscape": true
+          },
+          {
+            "w": 1513,
+            "h": 808,
+            "scale": 0.67,
+            "landscape": true
+          },
+          {
+            "w": 1402,
+            "h": 763,
+            "scale": 0.73,
+            "landscape": true
+          },
+          {
+            "w": 525,
+            "h": 552,
+            "scale": 1,
+            "landscape": false
+          },
+          {
+            "w": 556,
+            "h": 552,
+            "scale": 1,
+            "landscape": false
+          }
+        ]
+      },
+      "pages": null
     },
     {
       "file": "en-B-provider-connection-spec.pdf",
       "diagrams": {
-        "total": 11,
-        "rendered": 11
-      }
+        "total": 13,
+        "rendered": 13,
+        "broken": []
+      },
+      "layout": {
+        "landscapeTables": 2,
+        "landscapeDiagrams": 10,
+        "diagrams": [
+          {
+            "w": 1568,
+            "h": 889,
+            "scale": 0.64,
+            "landscape": true
+          },
+          {
+            "w": 1297,
+            "h": 475,
+            "scale": 0.78,
+            "landscape": true
+          },
+          {
+            "w": 1615,
+            "h": 532,
+            "scale": 0.63,
+            "landscape": true
+          },
+          {
+            "w": 1886,
+            "h": 633,
+            "scale": 0.54,
+            "landscape": true
+          },
+          {
+            "w": 693,
+            "h": 448,
+            "scale": 0.99,
+            "landscape": false
+          },
+          {
+            "w": 2986,
+            "h": 849,
+            "scale": 0.34,
+            "landscape": true
+          },
+          {
+            "w": 1517,
+            "h": 494,
+            "scale": 0.67,
+            "landscape": true
+          },
+          {
+            "w": 1729,
+            "h": 155,
+            "scale": 0.59,
+            "landscape": true
+          },
+          {
+            "w": 2030,
+            "h": 631,
+            "scale": 0.5,
+            "landscape": true
+          },
+          {
+            "w": 1977,
+            "h": 524,
+            "scale": 0.51,
+            "landscape": true
+          },
+          {
+            "w": 1414,
+            "h": 1230,
+            "scale": 0.49,
+            "landscape": false
+          },
+          {
+            "w": 769,
+            "h": 1371,
+            "scale": 0.61,
+            "landscape": false
+          },
+          {
+            "w": 1520,
+            "h": 768,
+            "scale": 0.67,
+            "landscape": true
+          }
+        ]
+      },
+      "pages": null
     },
     {
       "file": "en-glossary.pdf",
       "diagrams": {
         "total": 0,
-        "rendered": 0
-      }
+        "rendered": 0,
+        "broken": []
+      },
+      "layout": {
+        "landscapeTables": 0,
+        "landscapeDiagrams": 0,
+        "diagrams": []
+      },
+      "pages": null
     }
   ]
 }
