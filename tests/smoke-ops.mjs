@@ -320,9 +320,10 @@ async function login(loginId, password) {
   const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
   await page.goto(BASE + "/unmatched-deposits", { waitUntil: "networkidle" });
   const udBody = await page.textContent("body");
-  check("unmatched deposits: seeded open row and header badge", udBody.includes("1 unmatched") && udBody.includes("Unmatched"));
+  check("unmatched deposits: seeded open rows (forgotten id + late deposit) and header badge", udBody.includes("2 unmatched") && udBody.includes("Unmatched") && udBody.includes("Late deposit") && udBody.includes("ORD-DEMO-016"));
   await page.screenshot({ path: `${OUT}/unmatched-deposits-en.png`, fullPage: true });
-  await page.getByRole("button", { name: "Match by transfer ID" }).first().click();
+  // The forgotten-id deposit (¥6,600); the late-deposit row for ORD-DEMO-016 sits above it and is handled in the Phase P1 section.
+  await page.locator("tbody tr").filter({ hasText: "6,600" }).first().getByRole("button", { name: "Match by transfer ID" }).click();
   // The candidate list suggests the awaiting transfer with the same amount (ORD-DEMO-005 → 7301256); pick it.
   await page.locator("dialog[open]").getByRole("button", { name: /7301256/ }).click();
   check("match dialog: candidate fills the transfer id", (await page.locator("dialog[open] #match-transfer-id").inputValue()) === "7301256");
@@ -450,6 +451,41 @@ async function login(loginId, password) {
   await page.getByText("Global settings saved").waitFor({ timeout: 8000 });
   await page.goto(BASE + "/notifications/settings", { waitUntil: "networkidle" });
   check("settings: Slack column enabled once configured", await page.getByLabel("Slack: Settlement generated").isEnabled());
+  await ctx.close();
+}
+
+// ── Phase P1: deposit notification log, late deposits, invoice numbers ─
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  await page.goto(BASE + "/deposit-notifications", { waitUntil: "networkidle" });
+  const logBody = await page.innerText("body");
+  check("deposit notification log: seeded applied / duplicate / unmatched rows", logBody.includes("DN-00001") && logBody.includes("Duplicate") && logBody.includes("Late deposit") && logBody.includes("ORD-DEMO-016"));
+  await page.screenshot({ path: `${OUT}/deposit-notifications-en.png`, fullPage: true });
+  await page.goto(BASE + "/deposit-notifications?result=duplicate", { waitUntil: "networkidle" });
+  check("deposit notification log: result filter", (await page.locator("tbody tr").count()) === 1);
+
+  // Late deposit: apply the seeded deposit for the expired ORD-DEMO-016.
+  await page.goto(BASE + "/unmatched-deposits", { waitUntil: "networkidle" });
+  const lateRow = page.locator("tbody tr").filter({ hasText: "ORD-DEMO-016" }).first();
+  await lateRow.getByRole("button", { name: "Apply as late deposit" }).click();
+  await page.locator("dialog[open] #late-reason").fill("merchant agreed to ship");
+  await page.locator("dialog[open]").getByRole("button", { name: "Apply as late deposit" }).click();
+  await page.getByText("merchant was notified through the API").waitFor({ timeout: 10000 });
+  await page.waitForTimeout(800);
+  check("late deposit applied: row matched", (await page.locator("tbody tr").filter({ hasText: "ORD-DEMO-016" }).first().innerText()).includes("Matched"));
+  await page.goto(BASE + "/payments", { waitUntil: "networkidle" });
+  await page.getByText("ORD-DEMO-016").first().click();
+  await page.waitForURL(/\/payments\/[a-z0-9_]+$/);
+  const lateBody = await page.innerText("body");
+  check("late deposit: transaction completed with the late-deposit event", lateBody.includes("Completed") && lateBody.includes("Late deposit applied"));
+  await page.screenshot({ path: `${OUT}/late-deposit-detail-en.png`, fullPage: true });
+
+  // Invoice number on the confirmed seeded batch.
+  await page.goto(BASE + "/settlements", { waitUntil: "networkidle" });
+  check("settlements list shows invoice numbers", (await page.innerText("body")).includes("INV-2026"));
+  await page.locator("tbody tr").filter({ hasText: "Confirmed" }).first().click();
+  await page.waitForURL(/\/settlements\/[a-z0-9_]+$/);
+  check("settlement detail shows the invoice number", /INV-\d{6}-\d{5}-\d{2}/.test(await page.innerText("body")));
   await ctx.close();
 }
 

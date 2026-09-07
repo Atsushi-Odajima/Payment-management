@@ -55,6 +55,7 @@ Roles (master / general) belong to the signed-in admin account and are enforced 
 | Unmatched deposits | Register | ○ | ○ | ○ |  |  |
 | Unmatched deposits | Match | ○ | ○ |  |  |  |
 | Unmatched deposits | Dismiss | ○ | ○ | ○ |  |  |
+| Deposit notification log | View | ○ | ○ | ○ | ○ | ○ |
 | Deposit differences | View | ○ | ○ | ○ | ○ | ○ |
 | Deposit differences | Update | ○ | ○ | ○ |  |  |
 | Refunds | View | ○ | ○ | ○ | ○ | ○ |

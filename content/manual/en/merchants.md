@@ -24,6 +24,8 @@ Use **+ Add Merchant** in the header.
 
 “Create merchant” stays disabled until every required field is filled. Validation errors appear under the field and the first one is scrolled into view.
 
+On success a **test signing secret** is issued automatically and shown **once**, in plain text, on the completion screen (like an API key: it cannot be shown again once you leave; reissue or rotate it from the API keys tab). Issue the live signing secret from the API keys tab. Webhooks for a mode without a signing secret are not sent ([Webhook deliveries](/manual/webhooks)).
+
 ## Details and editing
 
 The detail screen opens in **read-only mode**. Press **Edit** (top right) to switch to the form and **Update** (bottom) to save; the screen returns to read-only afterwards.

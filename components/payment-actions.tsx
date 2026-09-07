@@ -202,6 +202,7 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
   const style: Record<PaymentAction, string> = {
     capture: "btn-primary",
     deposit: "btn-primary",
+    late_deposit: "btn-primary",
     cancel: "btn-secondary",
     fail: "btn-secondary",
     expire: "btn-secondary",

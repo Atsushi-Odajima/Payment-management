@@ -42,7 +42,7 @@ export interface MerchantFormProps {
   merchantId?: string;
   /** Rendered instead of the password input's mask slot (edit/detail supplies reveal UI). */
   passwordSlot?: React.ReactNode;
-  onSaved: (merchant: MerchantView) => void;
+  onSaved: (merchant: MerchantView, extra?: { signingSecret?: { plaintext: string; key: { keyPrefix: string } } }) => void;
   onCancel?: () => void;
   /** Agents selectable as the referring agent. */
   agents: AgentOption[];
@@ -110,7 +110,7 @@ export function MerchantForm(props: MerchantFormProps) {
       return;
     }
     setSubmitting(true);
-    const res = await apiJson<Omit<MerchantView, "createdAt" | "updatedAt"> & { createdAt: string; updatedAt: string }>(
+    const res = await apiJson<Omit<MerchantView, "createdAt" | "updatedAt"> & { createdAt: string; updatedAt: string; signingSecret?: { plaintext: string; key: { keyPrefix: string } } }>(
       mode === "create" ? "/api/merchants" : `/api/merchants/${merchantId}`,
       {
         method: mode === "create" ? "POST" : "PATCH",
@@ -128,7 +128,8 @@ export function MerchantForm(props: MerchantFormProps) {
       setFormError(res.error.message);
       return;
     }
-    onSaved(withDates(res.data));
+    const { signingSecret, ...saved } = res.data;
+    onSaved(withDates(saved), { signingSecret });
   }
 
   const errorText = (key: MerchantFieldKey) => {

@@ -2,7 +2,7 @@
 // reconciliation (入金消込). Pure functions so the same rules run in the API,
 // the seed and unit tests.
 
-import type { PaymentStatus } from "./transitions";
+import { WAITING_STATUSES, type PaymentStatus } from "./transitions";
 
 export const TRANSFER_ID_DIGITS = [7, 8] as const;
 export type TransferIdDigits = (typeof TRANSFER_ID_DIGITS)[number];
@@ -44,19 +44,21 @@ export function transferDueDate(from: Date, days: number | undefined = TRANSFER_
 
 /**
  * True when a payment is still awaited (bank transfer awaiting_transfer, or a
- * konbini slip still pending — Phase K) but its deadline has passed.
+ * konbini slip awaiting_payment) but its deadline has passed.
  */
 export function isTransferOverdue(
   p: { status: PaymentStatus | string; transferDueAt: Date | null },
   now: Date = new Date(),
 ): boolean {
-  return (p.status === "awaiting_transfer" || p.status === "pending") && p.transferDueAt !== null && p.transferDueAt.getTime() < now.getTime();
+  return (WAITING_STATUSES as readonly string[]).includes(p.status) && p.transferDueAt !== null && p.transferDueAt.getTime() < now.getTime();
 }
+
+export type WaitingStatus = Extract<PaymentStatus, "awaiting_transfer" | "awaiting_payment">;
 
 export interface DepositOutcome {
   /** Cumulative amount received including this deposit. */
   total: number;
-  status: Extract<PaymentStatus, "captured" | "awaiting_transfer" | "pending">;
+  status: Extract<PaymentStatus, "captured" | "awaiting_transfer" | "awaiting_payment">;
   diff: DepositDiff | null;
 }
 
@@ -64,9 +66,9 @@ export interface DepositOutcome {
  * Deposit reconciliation: exact → completed; short → stays awaiting with the short flag
  * (further deposits accumulate); excess → completed with the excess flag.
  * `waiting` is the status a short deposit stays on (awaiting_transfer for bank
- * transfers, pending for konbini slips).
+ * transfers, awaiting_payment for konbini slips).
  */
-export function reconcileDeposit(amount: number, alreadyDeposited: number, deposit: number, waiting: "awaiting_transfer" | "pending" = "awaiting_transfer"): DepositOutcome {
+export function reconcileDeposit(amount: number, alreadyDeposited: number, deposit: number, waiting: WaitingStatus = "awaiting_transfer"): DepositOutcome {
   const total = alreadyDeposited + deposit;
   if (total < amount) return { total, status: waiting, diff: "short" };
   if (total === amount) return { total, status: "captured", diff: null };

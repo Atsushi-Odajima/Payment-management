@@ -8,7 +8,7 @@
 import { prisma } from "@/lib/db";
 import { DEMO_LIMITS } from "@/lib/demo";
 import { isPaymentMethod, toPaymentMethod, type PaymentMethod } from "@/lib/payments/methods";
-import { isPaymentStatus, toPaymentStatus, type PaymentStatus } from "@/lib/payments/transitions";
+import { WAITING_STATUSES, isPaymentStatus, toPaymentStatus, type PaymentStatus } from "@/lib/payments/transitions";
 import { isDepositDiff, isTransferOverdue, type DepositDiff } from "@/lib/payments/transfer";
 import { nextDayInTz, parseDateInTz } from "@/lib/time";
 import type { DataMode } from "@/lib/mode";
@@ -40,7 +40,7 @@ export interface TransactionListItem {
   /** Number of pinned internal notes (Phase I-2). */
   pinnedNotes: number;
   failureReason: string | null;
-  /** awaiting_transfer / pending konbini slip with a deadline in the past. */
+  /** awaiting_transfer / awaiting_payment with a deadline in the past. */
   overdue: boolean;
 }
 
@@ -163,9 +163,9 @@ export function toTransactionListItem(p: Row, now: Date): TransactionListItem {
   };
 }
 
-/** Bank transfers awaiting a deposit and konbini slips awaiting payment (Phase K) share the "waiting" lane. */
+/** Bank transfers awaiting a deposit and konbini slips awaiting payment share the "waiting" lane. */
 function waitingForPayment(p: TransactionListItem): boolean {
-  return p.transferDueAt !== null && (p.status === "awaiting_transfer" || (p.status === "pending" && p.cvsReceiptNo !== null));
+  return p.transferDueAt !== null && WAITING_STATUSES.includes(p.status);
 }
 
 /**

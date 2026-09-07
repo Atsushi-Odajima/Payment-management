@@ -127,6 +127,10 @@ model Payment {
   events      PaymentEvent[]
   chargebacks Chargeback[]
   unmatchedDeposits UnmatchedDeposit[]
+  // Unmatched deposits that name this transaction as the likely target
+  // (late / cancelled deposits, Phase P1-3).
+  candidateDeposits UnmatchedDeposit[] @relation("UnmatchedDepositCandidate")
+  depositNotifications DepositNotification[]
   notes             TransactionNote[]
   receipt           Receipt?
 
@@ -531,6 +535,9 @@ model SettlementBatch {
   settlementFee    Int      @default(0)
   netAmount        Int      @default(0)
   status           String   @default("collecting")
+  // Qualified invoice number, assigned once on confirmation (Phase P1-5):
+  // INV-YYYYMM-<merchant no>-<2-digit sequence within the month>.
+  invoiceNo        String?  @unique
   scheduledAt      DateTime?
   paidAt           DateTime?
   holdReason       String?
@@ -826,15 +833,23 @@ model UnmatchedDeposit {
   /// What the customer actually wrote on the remittance (wrong / partial), if anything.
   givenTransferId   String?
   note              String?
-  /// bank (deposit notification API) | manual (registered by support)
+  /// bank (deposit notification API) | cvs (konbini notification) | manual (registered by support)
   source            String    @default("manual")
   /// unmatched | matched | dismissed
   status            String    @default("unmatched")
+  /// Why the notification could not be applied (Phase P1): late_deposit
+  /// (transaction already expired) | cancelled_deposit | mode_mismatch | null (no usable id).
+  reason            String?
+  /// The transaction the deposit most likely belongs to (late / cancelled / mode mismatch).
+  candidatePaymentId String?
+  candidatePayment  Payment?  @relation("UnmatchedDepositCandidate", fields: [candidatePaymentId], references: [id], onDelete: SetNull)
   paymentId         String?
   payment           Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   matchedTransferId String?
   matchedById       String?
   matchedAt         DateTime?
+  /// Dismissal category: returned (組戻し手配) | other.
+  dismissKind       String?
   dismissReason     String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -843,6 +858,51 @@ model UnmatchedDeposit {
   @@index([livemode])
   @@index([receivedAt])
   @@index([paymentId])
+  @@index([candidatePaymentId])
+}
+
+/// Every bank / konbini deposit notification received (Phase P1-1), whether
+/// or not it could be applied. dedupeKey makes re-sent notifications
+/// idempotent: the external eventId when given, otherwise a hash of
+/// source | transfer id or receipt no | amount | receivedAt (minute) | bankReference.
+model DepositNotification {
+  id                 String    @id @default(cuid())
+  /// DN-00001 …
+  notificationNo     String    @unique
+  /// bank | cvs
+  source             String
+  eventId            String?
+  /// Idempotency key (see above). Indexed, not unique: a re-sent notification
+  /// is recorded too (result = duplicate) and points at the original.
+  dedupeKey          String
+  /// = dedupeKey on the row that first claimed it; null on duplicates. The
+  /// unique constraint here is what makes the claim race-free.
+  claimKey           String?   @unique
+  duplicateOfId      String?
+  livemode           Boolean   @default(false)
+  transferId         String?
+  cvsReceiptNo       String?
+  amount             Int
+  receivedAt         DateTime
+  payerName          String?
+  bankReference      String?
+  /// applied | duplicate | unmatched | rejected
+  result             String
+  /// mode_mismatch | late_deposit | cancelled_deposit | not_found | invalid_status | …
+  resultReason       String?
+  paymentId          String?
+  payment            Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  unmatchedDepositId String?
+  rawBody            String
+  createdAt          DateTime  @default(now())
+
+  @@index([dedupeKey])
+  @@index([source, result])
+  @@index([transferId])
+  @@index([cvsReceiptNo])
+  @@index([paymentId])
+  @@index([createdAt])
+  @@index([livemode])
 }
 
 /// Internal comments on a transaction (Phase I-2). Shown only in the

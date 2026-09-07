@@ -6,7 +6,7 @@
 
 | 画面 | 表示されるステータス |
 |---|---|
-| 決済申請一覧 | 申請中 / 振込待ち / 与信済 / 失敗 / 期限切れ / キャンセル |
+| 決済申請一覧 | 申請中 / 振込待ち / 支払待ち / 与信済 / 失敗 / 期限切れ / キャンセル |
 | 決済一覧 | 完了 / 一部返金 / 返金済 |
 
 ## 取引の項目
@@ -28,11 +28,13 @@
 
 | ステータス | 意味 | 次に進める操作 |
 |---|---|---|
-| 申請中 | 生成直後（コンビニなど支払い待ち） | 完了 / 失敗 / キャンセル / 期限切れ |
+| 申請中 | 生成直後（まだ決済手段側の結果が無い） | 完了 / 失敗 / キャンセル |
 | 振込待ち | 銀行振込。振込IDを発行し入金を待っている | 入金消込 / キャンセル / 期限切れ（期限超過時） |
+| 支払待ち | コンビニ決済。受付番号を発行し店頭での支払いを待っている | 入金消込（店頭支払通知）/ キャンセル / 期限切れ（期限超過時） |
 | 与信済 | クレジットの与信が取れている | 完了 / 失敗 / キャンセル |
 | 完了 | 決済が成立（決済一覧へ移動） | 返金 |
-| 失敗 / 期限切れ / キャンセル | 終了状態 | なし |
+| 期限切れ | 振込 / 支払期限を過ぎた | 期限後入金の消込（未消込入金画面から。期限切れ → 完了） |
+| 失敗 / キャンセル | 終了状態 | なし |
 | 返金済 | 全額返金済み（決済一覧） | なし |
 
 すべての状態変更は、変更前後のステータス・実行者（管理画面 / Webhook / 入金通知（銀行） / 初期データ）・日時とともに **ステータス変更履歴** に記録されます。
@@ -55,33 +57,43 @@
 
 ## 入金通知 API（デモ）
 
-銀行からの入金通知を模した API です。振込IDと入金額を送ると、上と同じ消込ルールが実行され、履歴には実行者「入金通知（銀行）」として記録されます。
+銀行からの入金通知を模した API です。振込IDと入金額を送ると、上と同じ消込ルールが実行され、履歴には実行者「入金通知（銀行）」として記録されます。コンビニ決済網からの店頭支払通知は `POST /api/demo/cvs-notify`（`receiptNo` = 受付番号）で、判定は同じです。
 
 ```
 POST /api/demo/deposit-notify
 Authorization: Bearer <DEPOSIT_NOTIFY_SECRET>
 Content-Type: application/json
 
-{ "transferId": "48213907", "amount": 24800 }
+{ "eventId": "bank-20260901-0007", "transferId": "48213907", "amount": 24800, "mode": "test" }
 ```
 
 | 項目 | 説明 |
 |---|---|
-| `transferId` | 振込ID（7 桁または 8 桁の数字） |
-| `amount` | 入金額（円、整数） |
+| `eventId` | 任意（128 文字以内）。送信元のイベント ID。**同じ ID の通知は 2 回目以降「重複」として扱い、消込を再適用しません** |
+| `transferId` | 振込ID（7 桁または 8 桁の数字）。コンビニ通知では `receiptNo`（13 桁の受付番号） |
+| `amount` | 入金額（円、整数）。コンビニ通知では省略可（伝票額） |
+| `mode` | **必須**。`test` または `live`。未指定は 400 `invalid_input`（`fieldErrors.mode = "required"`） |
+| `payerName` / `bankReference` / `receivedAt` | 任意。振込名義・銀行参照番号・入金日時（ISO 8601、省略時は受信時刻） |
+
+`eventId` が無い場合の重複判定キーは「送信元 | 振込ID または受付番号 | 金額 | 入金日時（分単位）| 銀行参照番号」のハッシュです。
 
 応答例:
 
 ```
-{ "ok": true, "data": { "transferId": "48213907", "paymentId": "pay_…", "amount": 24800,
-  "received": 24800, "depositAmount": 24800, "depositDiff": null, "status": "captured", "completed": true } }
+{ "ok": true, "data": { "notificationId": "…", "notificationNo": "DN-00012", "duplicate": false, "matched": true,
+  "transferId": "48213907", "paymentId": "pay_…", "amount": 24800, "received": 24800,
+  "depositAmount": 24800, "depositDiff": null, "status": "captured", "completed": true } }
 ```
 
 | 状況 | 応答 |
 |---|---|
-| 振込IDが無い・存在しない | 202、未消込入金として記録（`matched: false`, `unmatchedDepositId`） |
-| 振込待ち以外（完了済み・期限切れなど） | 409 `invalid_transition` |
-| 不足入金 | 200、`status: "awaiting_transfer"`, `depositDiff: "short"` |
+| 同じ通知の再送（`eventId` またはハッシュが一致） | 200、`duplicate: true`（`notificationId` / `paymentId` は最初の通知のもの）。消込は再適用しない |
+| 振込IDが無い・存在しない | 202、未消込入金として記録（`matched: false`, `reason: "not_found"`, `unmatchedDepositId`） |
+| `mode` と取引の環境（テスト / 本番）が違う | 202、消込せず未消込入金（`reason: "mode_mismatch"`, `paymentId`）。テストの通知で本番の取引が完了することはありません |
+| 取引が期限切れ | 202、未消込入金（`reason: "late_deposit"`, `paymentId`）。「期限後入金」として消込できます（下記） |
+| 取引がキャンセル済 | 202、未消込入金（`reason: "cancelled_deposit"`）。却下（組戻し手配）のみ |
+| 完了済みなど入金を受け付けない状態 | 409 `invalid_transition`（通知ログには「拒否」として残ります） |
+| 不足入金 | 200、`status: "awaiting_transfer"`（コンビニは `"awaiting_payment"`）, `depositDiff: "short"` |
 | 超過入金 | 200、`status: "captured"`, `depositDiff: "excess"` |
 
 環境変数 `DEPOSIT_NOTIFY_SECRET` を設定すると Bearer 認証が必須になります。未設定の場合、本番環境では 404、開発環境では認証なしで利用できます。curl の例:
@@ -89,8 +101,12 @@ Content-Type: application/json
 ```
 curl -X POST http://localhost:3000/api/demo/deposit-notify \
   -H "Content-Type: application/json" \
-  -d '{"transferId":"48213907","amount":24800}'
+  -d '{"eventId":"bank-20260901-0007","transferId":"48213907","amount":24800,"mode":"test"}'
 ```
+
+## 入金通知ログ
+
+受信した入金通知（銀行 / コンビニ）は結果にかかわらずすべて **入金通知ログ** 画面（取引グループ、未消込入金の隣）に記録されます。通知番号（`DN-00001` 形式）、送信元、振込ID / 受付番号、金額、入金日時、結果（消込済 / 重複 / 未消込 / 拒否）と理由、対象取引・未消込入金へのリンクを表示し、送信元・結果・受信日で絞り込めます。CSV 出力あり。ヘッダーのテスト / 本番スイッチで環境ごとに切り替わります。
 
 ## 未消込入金と API 再通知（銀行振込のみ）
 
@@ -98,17 +114,19 @@ curl -X POST http://localhost:3000/api/demo/deposit-notify \
 
 ### 流れ
 
-1. **未消込入金の発生**: `POST /api/demo/deposit-notify` に `transferId` が無い（または該当する取引が無い）入金通知が届くと、404 ではなく **202** で「未消込入金」として記録します（`payerName` / `bankReference` / `receivedAt` / `mode` を任意で受け付け）。銀行明細を見たサポートが **未消込入金 → ＋ 入金を登録** から手で登録することもできます。
-2. **振込IDの付与（消込）**: 一覧の **振込IDを付与して消込**（マスター）で振込IDを入力します。ダイアログには同じモードの振込待ち取引が **残額の一致するものを先頭に** 候補表示され、クリックで入力できます。実行すると通常の入金消込と同じ判定（一致 → 完了、不足 → 振込待ちのまま不足フラグ、超過 → 完了 + 超過フラグ）が走り、**完了した時点で加盟店の通知先に `payment.completed` が送信されます**。
-3. **API 再通知**: 加盟店側が通知を取りこぼした場合は、取引詳細の **API 再通知**（銀行振込の完了 / 一部返金済 / 返金済の取引のみ、マスター）で `payment.completed` を再送します。送信結果は Webhook 送信ログで確認でき、取引には再通知回数と最終再通知日時が残ります。
-4. **却下**: 組戻し（返金）済みや二重入金など取引に結び付けない入金は **却下** し、理由を残します。
+1. **未消込入金の発生**: `POST /api/demo/deposit-notify` に `transferId` が無い（または該当する取引が無い）入金通知が届くと、404 ではなく **202** で「未消込入金」として記録します。環境（`mode`）が取引と違う入金、期限切れ・キャンセル済の取引への入金も同様に未消込入金になり、理由（環境不一致 / 期限後入金 / キャンセル済への入金）と対象取引が一覧に表示されます。銀行明細を見たサポートが **未消込入金 → ＋ 入金を登録** から手で登録することもできます。
+2. **振込IDの付与（消込）**: 一覧の **振込IDを付与して消込**（admin / accounting）で振込IDを入力します。ダイアログには同じモードの振込待ち取引が **残額の一致するものを先頭に** 候補表示され、クリックで入力できます。環境の違う取引・期限切れの取引は候補に理由付きで表示されますが選択できません。実行すると通常の入金消込と同じ判定（一致 → 完了、不足 → 振込待ちのまま不足フラグ、超過 → 完了 + 超過フラグ）が走り、**完了した時点で加盟店の通知先に `payment.completed` が送信されます**。
+3. **期限後入金として消込**: 理由が「期限後入金」の行（取引が期限切れ）には **期限後入金として消込**（admin / accounting、理由必須）が表示されます。実行すると取引は **期限切れ → 完了** に遷移し（履歴の操作「期限後入金の消込」）、`payment.completed` の送信と決済完了メールが通常どおり行われます。金額が一致しない場合も完了にし、差額は過不足入金に記録します。キャンセル済の取引への入金は消込できません（却下のみ）。
+4. **API 再通知**: 加盟店側が通知を取りこぼした場合は、取引詳細の **API 再通知**（銀行振込の完了 / 一部返金済 / 返金済の取引のみ、admin / cs / developer）で `payment.completed` を再送します。送信結果は Webhook 送信ログで確認でき、取引には再通知回数と最終再通知日時が残ります。
+5. **却下**: 組戻し（返金）済みや二重入金など取引に結び付けない入金は **却下** し、区分（**組戻し手配** / その他）と理由を残します。期限後・キャンセル後の入金を組み戻す場合は「組戻し手配」を選びます。未処理の期限後入金は通知センターに日次で「期限後入金 N 件」（警告）として届きます。
 
 | 操作 | API | 権限 |
 |---|---|---|
 | 未消込入金の登録 | `POST /api/unmatched-deposits` `{ amount, payerName, receivedAt?, bankReference?, givenTransferId?, note? }` | ○ |
 | 候補の取得 | `GET /api/unmatched-deposits/<id>` → `{ deposit, candidates }` | ○ |
 | 振込IDを付与して消込 | `POST /api/unmatched-deposits/<id>/match` `{ transferId }` → `{ deposit, payment, renotified }` | M |
-| 却下 | `POST /api/unmatched-deposits/<id>/dismiss` `{ reason }` | ○ |
+| 期限後入金として消込 | `POST /api/unmatched-deposits/<id>/late-match` `{ reason }` → `{ deposit, payment, renotified }` | M |
+| 却下 | `POST /api/unmatched-deposits/<id>/dismiss` `{ reason, kind? }`（`kind`: `returned` = 組戻し手配 / `other`） | ○ |
 | API 再通知 | `POST /api/payments/<id>/renotify` → `{ deliveryId, renotifyCount, renotifiedAt }` | M |
 
 エラー: 振込IDが存在しない / 銀行振込でない → 404 `transfer_not_found`、振込待ち以外 → 409 `invalid_transition`、モード違い → 409 `mode_mismatch`、処理済みの入金 → 409 `deposit_not_open`、クレジット等への再通知 → 409 `not_bank_transfer`、未完了の取引への再通知 → 409 `invalid_transition`。すべて操作ログ（`deposit.register` / `deposit.match` / `deposit.dismiss` / `payment.renotify`）に記録されます。

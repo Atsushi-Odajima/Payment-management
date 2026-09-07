@@ -107,6 +107,7 @@ export function SettlementDetailView({ batch, lines }: { batch: SettlementRow; l
               </Link>
             </DetailRow>
             <DetailRow label={t("settlements.thPeriod")}>{period}</DetailRow>
+            <DetailRow label={t("settlements.invoiceNo")}>{batch.invoiceNo ? <span className="font-mono">{batch.invoiceNo}</span> : <span className="text-slate-400">{t("settlements.invoiceNoPending")}</span>}</DetailRow>
             <DetailRow label={t("settlements.gross")}>
               <span className="tabular-nums">{formatYen(batch.grossAmount)}</span>
             </DetailRow>

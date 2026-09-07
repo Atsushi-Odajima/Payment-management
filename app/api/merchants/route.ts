@@ -5,7 +5,9 @@ import { requirePermission } from "@/lib/api/role-guard";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateMerchantInput } from "@/lib/merchants/schema";
 import { nextMerchantCode } from "@/lib/merchants/ids";
-import { encryptMerchantPassword, generateMerchantPassword } from "@/lib/merchants/secrets";
+import { encryptMerchantPassword, encryptSigningSecret, generateMerchantPassword } from "@/lib/merchants/secrets";
+import { generateApiKey, hashApiKey } from "@/lib/merchants/api-keys-server";
+import { API_KEY_SELECT, toApiKeyView } from "@/lib/merchants/api-keys";
 import { DEMO_LIMITS } from "@/lib/demo";
 import { MERCHANT_SELECT, serialize, toMerchantData } from "./select";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
@@ -23,6 +25,11 @@ export const GET = withApiHandler(async () => {
  * merchantCode is auto-numbered and the password auto-generated; neither is
  * accepted from the client. The password is stored encrypted and only
  * revealed through GET /api/merchants/:id/password (master role).
+ *
+ * A test-mode signing secret is issued in the same transaction (Phase P1-4:
+ * webhooks are never signed with the password any more) and its plaintext is
+ * returned exactly once as `signingSecret`; the live secret is issued by the
+ * operator from the API keys tab.
  */
 export const POST = withApiHandler(async (req) => {
     await requirePermission(req, "merchant", "create");
@@ -43,6 +50,7 @@ export const POST = withApiHandler(async (req) => {
 
   const passwordEnc = encryptMerchantPassword(generateMerchantPassword());
   const audit = await auditContextFromRequest(req);
+  const signing = generateApiKey("test", "signing_secret");
 
   // Two attempts: a concurrent insert can take the same code; the unique
   // constraint rejects the loser and we recompute once.
@@ -55,10 +63,15 @@ export const POST = withApiHandler(async (req) => {
           select: MERCHANT_SELECT,
         });
         await recordAudit(tx, audit, { action: "merchant.create", targetType: "merchant", targetId: row.id, after: row });
+        const key = await tx.apiKey.create({
+          data: { merchantId: row.id, mode: "test", kind: "signing_secret", label: "auto", keyPrefix: signing.keyPrefix, keyHash: hashApiKey(signing.plaintext), secretEnc: encryptSigningSecret(signing.plaintext) },
+          select: API_KEY_SELECT,
+        });
+        await recordAudit(tx, audit, { action: "api_key.issue", targetType: "api_key", targetId: key.id, after: { merchantId: row.id, mode: "test", kind: "signing_secret", keyPrefix: signing.keyPrefix, label: "auto", issuedWithMerchant: true } });
         await emitNotification(tx, { kind: "merchant.created", title: `New merchant: ${merchantCode} ${row.siteName}`, body: `${row.companyName} was registered.`, href: `/merchants/${row.id}`, roles: ["admin", "accounting", "cs"], targetType: "merchant", targetId: row.id });
-        return row;
+        return { row, key };
       });
-      return ok(serialize(created), { status: 201 });
+      return ok({ ...serialize(created.row), signingSecret: { plaintext: signing.plaintext, key: toApiKeyView(created.key) } }, { status: 201 });
     } catch (err) {
       if (
         attempt === 0 &&

@@ -2,7 +2,7 @@
 // payment slip number (受付番号) the customer quotes at the till and the
 // payment deadline. Pure functions shared by the API, the seed and tests.
 //
-// Lifecycle: a konbini transaction starts `pending` (支払待ち) with a
+// Lifecycle: a konbini transaction starts `awaiting_payment` (支払待ち) with a
 // receipt number and a deadline (Payment.transferDueAt, shared with bank
 // transfers). The store's payment notification — POST /api/demo/cvs-notify,
 // or the demo "pay" button on the hosted page — runs the same `deposit`
@@ -41,9 +41,9 @@ export function cvsDueDate(from: Date, days: number | undefined = CVS_DUE_DAYS):
   return new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
-/** A konbini slip still waiting for payment (pending with a receipt number). */
+/** A konbini slip still waiting for payment (awaiting_payment, Phase P1-6). */
 export function isCvsWaiting(p: { status: PaymentStatus | string; cvsReceiptNo: string | null }): boolean {
-  return p.status === "pending" && p.cvsReceiptNo !== null;
+  return p.status === "awaiting_payment" && p.cvsReceiptNo !== null;
 }
 
 /** Group receipt numbers in blocks of 4-4-5 for display (1234-5678-90123). */

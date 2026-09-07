@@ -12,6 +12,7 @@ import { recordAudit, type AuditContext } from "@/lib/audit";
 import { isUniqueViolation } from "@/lib/ids";
 import { calculateFee, currentScheduleIndex, isFeeMethod, parseFeeRates } from "@/lib/merchants/fees";
 import { nextDayInTz, parseDateInTz } from "@/lib/time";
+import { partsInTz } from "./schedule";
 import { payoutDate } from "./schedule";
 import { defaultTaxCategory } from "./tax";
 import { SETTLEMENT_TRANSITIONS, isPayoutTerm, type SettlementAction, type TaxCategory } from "./types";
@@ -29,6 +30,7 @@ export const BATCH_SELECT = {
   settlementFee: true,
   netAmount: true,
   status: true,
+  invoiceNo: true,
   scheduledAt: true,
   paidAt: true,
   holdReason: true,
@@ -153,26 +155,42 @@ export async function generateBatch(
   }
 }
 
+/** INV-YYYYMM-<merchant no>-<seq>: the year-month of the period start and a 2-digit sequence per merchant and month. */
+export function formatInvoiceNo(periodFrom: Date, merchantCode: string, seq: number): string {
+  const p = partsInTz(periodFrom);
+  return `INV-${p.y}${String(p.m).padStart(2, "0")}-${merchantCode.replace(/^MER-/, "")}-${String(seq).padStart(2, "0")}`;
+}
+
+/** Next invoice number for a batch: one more than the highest sequence already used by the merchant in that month. */
+export async function nextInvoiceNo(db: Pick<PrismaClient, "settlementBatch">, batch: { merchantId: string; periodFrom: Date; merchant: { merchantCode: string } }): Promise<string> {
+  const prefix = formatInvoiceNo(batch.periodFrom, batch.merchant.merchantCode, 0).slice(0, -2);
+  const last = await db.settlementBatch.findFirst({ where: { merchantId: batch.merchantId, invoiceNo: { startsWith: prefix } }, orderBy: { invoiceNo: "desc" }, select: { invoiceNo: true } });
+  const seq = last?.invoiceNo ? Number(last.invoiceNo.slice(prefix.length)) + 1 : 1;
+  return `${prefix}${String(seq).padStart(2, "0")}`;
+}
+
 export async function transitionBatch(
   db: PrismaClient,
   opts: { batchId: string; action: SettlementAction; reason?: string; audit: AuditContext; now?: Date },
 ) {
   const now = opts.now ?? new Date();
   const t = SETTLEMENT_TRANSITIONS[opts.action];
-  const batch = await db.settlementBatch.findUnique({ where: { id: opts.batchId }, select: { id: true, status: true, scheduledAt: true, holdReason: true } });
+  const batch = await db.settlementBatch.findUnique({ where: { id: opts.batchId }, select: { id: true, merchantId: true, status: true, scheduledAt: true, holdReason: true, invoiceNo: true, periodFrom: true, merchant: { select: { merchantCode: true } } } });
   if (!batch) throw new ApiError(404, "not_found", "errors.notFound");
   if (!t.from.includes(batch.status as never)) throw new ApiError(409, "invalid_transition", "errors.settlementTransition");
   if (opts.action === "hold" && !opts.reason) {
     throw new ApiError(400, "invalid_input", "errors.invalidInput", undefined, { fieldErrors: { reason: "required" } });
   }
-  const data = {
-    status: t.to,
-    ...(opts.action === "pay" ? { paidAt: now } : {}),
-    ...(opts.action === "schedule" && !batch.scheduledAt ? { scheduledAt: now } : {}),
-    ...(opts.action === "hold" ? { holdReason: opts.reason } : {}),
-    ...(opts.action === "release" ? { holdReason: null } : {}),
-  };
-  return db.$transaction(async (tx) => {
+  const run = async (invoiceNo: string | null) => {
+    const data = {
+      status: t.to,
+      ...(invoiceNo ? { invoiceNo } : {}),
+      ...(opts.action === "pay" ? { paidAt: now } : {}),
+      ...(opts.action === "schedule" && !batch.scheduledAt ? { scheduledAt: now } : {}),
+      ...(opts.action === "hold" ? { holdReason: opts.reason } : {}),
+      ...(opts.action === "release" ? { holdReason: null } : {}),
+    };
+    return db.$transaction(async (tx) => {
     const updated = await tx.settlementBatch.updateMany({ where: { id: batch.id, status: { in: [...t.from] } }, data });
     if (updated.count === 0) throw new ApiError(409, "invalid_transition", "errors.settlementTransition");
     await recordAudit(tx, opts.audit, {
@@ -180,13 +198,25 @@ export async function transitionBatch(
       targetType: "settlement",
       targetId: batch.id,
       before: { status: batch.status, holdReason: batch.holdReason },
-      after: { status: t.to, holdReason: opts.action === "hold" ? opts.reason : null },
+      after: { status: t.to, holdReason: opts.action === "hold" ? opts.reason : null, ...(invoiceNo ? { invoiceNo } : {}) },
     });
     if (opts.action === "hold") {
       await emitNotification(tx, { kind: "settlement.held", title: "Settlement batch put on hold", body: opts.reason ?? "", href: `/settlements/${batch.id}`, roles: ["admin", "accounting"], targetType: "settlement", targetId: batch.id, now });
     }
     return tx.settlementBatch.findUniqueOrThrow({ where: { id: batch.id }, select: BATCH_SELECT });
-  });
+    });
+  };
+  // The invoice number is assigned once, on confirmation (Phase P1-5); a
+  // concurrent confirmation of another batch of the same month is retried once.
+  if (opts.action === "confirm" && !batch.invoiceNo) {
+    try {
+      return await run(await nextInvoiceNo(db, batch));
+    } catch (e) {
+      if (!isUniqueViolation(e)) throw e;
+      return run(await nextInvoiceNo(db, batch));
+    }
+  }
+  return run(null);
 }
 
 /** A batch that has not been confirmed can be discarded and regenerated. */

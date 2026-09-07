@@ -22,10 +22,6 @@ const METHOD_LABEL: Record<string, string> = {
 };
 const CATEGORY_LABEL: Record<TaxCategory, string> = { standard10: "10%", reduced8: "8%（軽減）", exempt: "非課税 / 対象外" };
 
-export function invoiceNumberFor(batch: { periodFrom: Date; merchant: { merchantCode: string } }): string {
-  const p = partsInTz(batch.periodFrom);
-  return `INV-${p.y}${String(p.m).padStart(2, "0")}-${batch.merchant.merchantCode.replace(/^MER-/, "")}`;
-}
 
 export interface InvoicePdfResult {
   bytes: Uint8Array;
@@ -39,6 +35,7 @@ export async function buildInvoicePdf(db: PrismaClient, batchId: string, now: Da
     select: {
       id: true,
       status: true,
+      invoiceNo: true,
       livemode: true,
       periodFrom: true,
       periodTo: true,
@@ -53,8 +50,11 @@ export async function buildInvoicePdf(db: PrismaClient, batchId: string, now: Da
   });
   if (!b) throw new ApiError(404, "not_found", "errors.notFound");
   if (b.status === "collecting") throw new ApiError(409, "settlement_not_confirmed", "errors.invoiceNotConfirmed");
+  // The number is assigned on confirmation (Phase P1-5) and never recomputed;
+  // a confirmed batch from before the column existed needs the backfill script.
+  if (!b.invoiceNo) throw new ApiError(409, "invoice_no_missing", "errors.invoiceNoMissing");
   const issuer = await loadGlobalSettings(db);
-  const invoiceNo = invoiceNumberFor(b);
+  const invoiceNo = b.invoiceNo;
   const period = `${ymd(partsInTz(b.periodFrom))} 〜 ${ymd(partsInTz(new Date(b.periodTo.getTime() - 1)))}`;
 
   // Fee lines grouped by method (+ the transfer fee), each with its tax category.
