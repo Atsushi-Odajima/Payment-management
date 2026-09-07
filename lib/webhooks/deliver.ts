@@ -11,14 +11,16 @@
 // Signature: X-Signature: v1=<HMAC-SHA256(secret, "<timestamp>.<payload>")>
 // and X-Timestamp: <unix seconds>; payload = body (POST) or query string
 // (GET). The secret is the merchant's newest usable signing secret of the
-// payment's mode, falling back to the merchant password when none exists.
+// payment's mode. Without one the delivery is NOT sent (fail closed, Phase
+// P1-4): it is recorded as failed with error signing_secret_missing and the
+// operators are warned once a day per merchant × mode.
 
 import { createHmac } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { emitNotification } from "@/lib/notifications/emit";
 import { buildNotificationRequest, signatureHeaders, type NotificationValues } from "@/lib/merchants/notification";
 import { isNotifyFormat, isNotifyIdFormat, isNotifyParamSet } from "@/lib/merchants/types";
-import { decryptMerchantPassword, decryptSigningSecret } from "@/lib/merchants/secrets";
+import { decryptSigningSecret } from "@/lib/merchants/secrets";
 import { apiKeyUsable } from "@/lib/merchants/api-keys";
 import type { MerchantWebhookEvent } from "./events";
 
@@ -52,15 +54,17 @@ export function resolveNotifyUrl(url: string): string {
   return url.startsWith("/") ? appBaseUrl() + url : url;
 }
 
-async function signingSecretFor(db: Db, merchantId: string, livemode: boolean, passwordEnc: string): Promise<string> {
+export const SIGNING_SECRET_MISSING = "signing_secret_missing";
+
+/** The merchant's newest usable signing secret of the mode, or null (no fallback — see the header comment). */
+export async function signingSecretFor(db: Db, merchantId: string, livemode: boolean): Promise<string | null> {
   const keys = await db.apiKey.findMany({
     where: { merchantId, kind: "signing_secret", mode: livemode ? "live" : "test", revokedAt: null, secretEnc: { not: null } },
     orderBy: { issuedAt: "desc" },
     select: { secretEnc: true, expiresAt: true, revokedAt: true },
   });
   const usable = keys.find((k) => apiKeyUsable(k));
-  if (usable?.secretEnc) return decryptSigningSecret(usable.secretEnc);
-  return decryptMerchantPassword(passwordEnc);
+  return usable?.secretEnc ? decryptSigningSecret(usable.secretEnc) : null;
 }
 
 export interface EnqueueInput {
@@ -71,11 +75,16 @@ export interface EnqueueInput {
   values: Omit<NotificationValues, "event" | "merchant_id">;
 }
 
-/** Build + sign the request and store it as a pending delivery. Returns the delivery id (null when the merchant has no notify URL). */
+/**
+ * Build + sign the request and store it as a pending delivery. Returns the
+ * delivery id (null when the merchant has no notify URL). When the merchant
+ * has no usable signing secret for the mode the row is stored as `failed`
+ * (error signing_secret_missing) and never attempted.
+ */
 export async function enqueueWebhook(db: Db, input: EnqueueInput): Promise<string | null> {
   const merchant = await db.merchant.findUnique({
     where: { id: input.merchantId },
-    select: { merchantCode: true, notifyUrl: true, notifyFormat: true, notifyParamSet: true, notifyIdFormat: true, passwordEnc: true },
+    select: { merchantCode: true, notifyUrl: true, notifyFormat: true, notifyParamSet: true, notifyIdFormat: true },
   });
   if (!merchant || !merchant.notifyUrl) return null;
   const req = buildNotificationRequest(
@@ -88,7 +97,35 @@ export async function enqueueWebhook(db: Db, input: EnqueueInput): Promise<strin
     { ...input.values, event: input.event, merchant_id: merchant.merchantCode },
   );
   const timestamp = String(Math.floor(Date.now() / 1000));
-  const secret = await signingSecretFor(db, input.merchantId, input.livemode, merchant.passwordEnc);
+  const secret = await signingSecretFor(db, input.merchantId, input.livemode);
+  if (secret === null) {
+    const mode = input.livemode ? "live" : "test";
+    const row = await db.webhookDelivery.create({
+      data: {
+        merchantId: input.merchantId,
+        paymentId: input.paymentId,
+        livemode: input.livemode,
+        event: input.event,
+        url: req.url,
+        method: req.method,
+        requestHeaders: JSON.stringify(req.headers),
+        requestBody: req.body,
+        status: "failed",
+        responseBody: `error: ${SIGNING_SECRET_MISSING}`,
+      },
+      select: { id: true },
+    });
+    await emitNotification(db, {
+      kind: "webhook.signing_secret_missing",
+      title: `Webhook not sent: no ${mode} signing secret for ${merchant.merchantCode}`,
+      body: `${input.event} could not be signed because the merchant has no usable ${mode} signing secret. Issue one on the merchant's API keys tab, then resend from the delivery log.`,
+      href: `/webhook-logs/${row.id}`,
+      roles: ["admin", "developer"],
+      targetType: "merchant",
+      targetId: `${input.merchantId}:${mode}`,
+    });
+    return row.id;
+  }
   const headers = { ...req.headers, ...signatureHeaders(timestamp, signPayload(secret, timestamp, req.signedPayload)) };
   const row = await db.webhookDelivery.create({
     data: {
@@ -118,6 +155,20 @@ export interface AttemptResult {
 export async function attemptDelivery(db: PrismaClient, deliveryId: string, trigger: "system" | "cron" | "dashboard" = "system", now: Date = new Date()): Promise<AttemptResult> {
   const d = await db.webhookDelivery.findUnique({ where: { id: deliveryId } });
   if (!d) throw new Error(`delivery not found: ${deliveryId}`);
+  // A delivery stored without a signature (no signing secret at the time) is
+  // re-signed on resend; still no secret → stays failed, nothing is sent.
+  if (!("X-Signature" in (JSON.parse(d.requestHeaders) as Record<string, string>))) {
+    const secret = await signingSecretFor(db, d.merchantId, d.livemode);
+    if (secret === null) {
+      await db.webhookDelivery.update({ where: { id: deliveryId }, data: { status: "failed", responseBody: `error: ${SIGNING_SECRET_MISSING}`, nextRetryAt: null } });
+      return { ok: false, status: "failed", responseStatus: null, error: SIGNING_SECRET_MISSING };
+    }
+    const timestamp = String(Math.floor(now.getTime() / 1000));
+    const payload = d.method === "GET" ? new URL(d.url).search.replace(/^\?/, "") : d.requestBody ?? "";
+    const headers = { ...(JSON.parse(d.requestHeaders) as Record<string, string>), ...signatureHeaders(timestamp, signPayload(secret, timestamp, payload)) };
+    await db.webhookDelivery.update({ where: { id: deliveryId }, data: { requestHeaders: JSON.stringify(headers) } });
+    d.requestHeaders = JSON.stringify(headers);
+  }
   const attemptNo = d.attempts + 1;
   const started = Date.now();
   let responseStatus: number | null = null;
@@ -168,7 +219,10 @@ export function deliveryDeferred(): boolean {
 export async function emitWebhook(db: PrismaClient, input: EnqueueInput): Promise<string | null> {
   try {
     const id = await enqueueWebhook(db, input);
-    if (id && !deliveryDeferred()) await attemptDelivery(db, id, "system");
+    if (id && !deliveryDeferred()) {
+      const row = await db.webhookDelivery.findUnique({ where: { id }, select: { status: true } });
+      if (row?.status === "pending") await attemptDelivery(db, id, "system");
+    }
     return id;
   } catch (e) {
     console.error("[webhook] emit failed", e);

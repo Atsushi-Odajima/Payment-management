@@ -14,6 +14,7 @@
 export const PAYMENT_STATUSES = [
   "pending", // 申請中: created at checkout, nothing confirmed yet
   "awaiting_transfer", // 振込待ち: bank transfer id issued, waiting for the deposit
+  "awaiting_payment", // 支払待ち: konbini slip issued, waiting for the counter payment (Phase P1-6)
   "authorized", // 与信済: card / QR authorization held
   "captured", // 完了
   "partially_refunded",
@@ -45,6 +46,7 @@ export function toPaymentStatus(value: string): PaymentStatus {
 export const APPLICATION_STATUSES: readonly PaymentStatus[] = [
   "pending",
   "awaiting_transfer",
+  "awaiting_payment",
   "authorized",
   "failed",
   "expired",
@@ -55,9 +57,12 @@ export const APPLICATION_STATUSES: readonly PaymentStatus[] = [
 export const SALES_STATUSES: readonly PaymentStatus[] = ["captured", "partially_refunded", "refunded", "chargeback"];
 
 /** Statuses that still expect an outcome (counted as "open" on the dashboard). */
-export const OPEN_STATUSES: readonly PaymentStatus[] = ["pending", "awaiting_transfer", "authorized"];
+export const OPEN_STATUSES: readonly PaymentStatus[] = ["pending", "awaiting_transfer", "awaiting_payment", "authorized"];
 
-export const PAYMENT_ACTIONS = ["capture", "cancel", "refund", "fail", "expire", "deposit", "chargeback"] as const;
+/** Statuses waiting for money from the customer (bank transfer / konbini); they carry a deadline in transferDueAt. */
+export const WAITING_STATUSES: readonly PaymentStatus[] = ["awaiting_transfer", "awaiting_payment"];
+
+export const PAYMENT_ACTIONS = ["capture", "cancel", "refund", "fail", "expire", "deposit", "late_deposit", "chargeback"] as const;
 export type PaymentAction = (typeof PAYMENT_ACTIONS)[number];
 
 export function isPaymentAction(value: unknown): value is PaymentAction {
@@ -76,15 +81,17 @@ export interface Transition {
   stampField?: "capturedAt" | "cancelledAt" | "refundedAt";
 }
 
+const WAITING_OR_AUTHORIZED: readonly PaymentStatus[] = ["pending", "authorized", "awaiting_transfer", "awaiting_payment"];
+
 export const TRANSITIONS: Record<PaymentAction, Transition> = {
   // 完了にする — also the webhook's payment.captured.
   capture: {
-    from: ["pending", "authorized", "awaiting_transfer"],
+    from: WAITING_OR_AUTHORIZED,
     to: "captured",
     stampField: "capturedAt",
   },
   cancel: {
-    from: ["pending", "authorized", "awaiting_transfer"],
+    from: WAITING_OR_AUTHORIZED,
     to: "cancelled",
     stampField: "cancelledAt",
   },
@@ -95,19 +102,27 @@ export const TRANSITIONS: Record<PaymentAction, Transition> = {
   },
   // 失敗にする — manual (master) or the webhook's payment.failed.
   fail: {
-    from: ["pending", "authorized", "awaiting_transfer"],
+    from: WAITING_OR_AUTHORIZED,
     to: "failed",
   },
   // 期限切れ — a transfer / konbini deadline passed without payment.
   expire: {
-    from: ["pending", "awaiting_transfer"],
+    from: WAITING_STATUSES,
     to: "expired",
   },
   // 入金消込 — bank transfer (awaiting_transfer) and the konbini payment
-  // notification (pending, Phase K). Lands on captured when the deposits cover
+  // notification (awaiting_payment). Lands on captured when the deposits cover
   // the amount, otherwise stays put with depositDiff = short.
   deposit: {
-    from: ["awaiting_transfer", "pending"],
+    from: WAITING_STATUSES,
+    to: "captured",
+    stampField: "capturedAt",
+  },
+  // 期限後入金 (Phase P1-3) — a deposit that arrived after the transfer /
+  // slip expired is applied by support from the unmatched-deposit screen.
+  // Always completes (a short / excess amount is kept in depositDiff).
+  late_deposit: {
+    from: ["expired"],
     to: "captured",
     stampField: "capturedAt",
   },
@@ -127,7 +142,7 @@ export const UI_ACTIONS: readonly PaymentAction[] = ["capture", "cancel", "refun
  * role; refunds keep the pre-existing rule (any logged-in operator).
  * Enforced in app/api/payments/[id]/[action]/route.ts via requireMaster.
  */
-export const MASTER_ACTIONS: readonly PaymentAction[] = ["capture", "cancel", "fail", "expire", "deposit"];
+export const MASTER_ACTIONS: readonly PaymentAction[] = ["capture", "cancel", "fail", "expire", "deposit", "late_deposit"];
 
 export function canTransition(status: PaymentStatus, action: PaymentAction): boolean {
   return TRANSITIONS[action].from.includes(status);
@@ -159,6 +174,7 @@ export const ASYNC_CATEGORIES: readonly string[] = ["convenience", "bank"];
 /** Initial status for a newly created transaction. */
 export function initialStatus(category: string, autoCapture: boolean): PaymentStatus {
   if (category === "bank") return "awaiting_transfer";
+  if (category === "convenience") return "awaiting_payment";
   if (ASYNC_CATEGORIES.includes(category)) return "pending";
   return autoCapture ? "captured" : "authorized";
 }
@@ -175,6 +191,7 @@ export function transitionErrorKey(
     case "refund":
       return "refundOnlyCaptured";
     case "deposit":
+    case "late_deposit":
       return "depositOnlyAwaiting";
     default:
       return "conflict";

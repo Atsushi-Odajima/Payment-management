@@ -51,12 +51,23 @@ export interface SearchCustomer {
   anonymized: boolean;
 }
 
+export interface SearchSettlement {
+  id: string;
+  invoiceNo: string;
+  merchantName: string;
+  merchantCode: string;
+  status: string;
+  netAmount: number;
+  periodFrom: Date;
+}
+
 export interface SearchResult {
   q: string;
   payments: SearchPayment[];
   customers: SearchCustomer[];
   merchants: SearchMerchant[];
   agents: SearchAgent[];
+  settlements: SearchSettlement[];
   admins: SearchAdmin[];
   total: number;
 }
@@ -71,12 +82,12 @@ export function normalizeQuery(raw: string | undefined | null): string {
 export async function searchAll(raw: string, opts: { limit?: number; includeAdmins?: boolean } = {}): Promise<SearchResult> {
   const q = normalizeQuery(raw);
   const limit = opts.limit ?? 5;
-  const empty: SearchResult = { q, payments: [], customers: [], merchants: [], agents: [], admins: [], total: 0 };
+  const empty: SearchResult = { q, payments: [], customers: [], merchants: [], agents: [], settlements: [], admins: [], total: 0 };
   if (q.length < SEARCH_MIN_LENGTH) return empty;
 
   // SQLite `contains` is case-sensitive by default; Postgres gets `mode: insensitive`.
   const contains = { contains: q };
-  const [payments, customers, merchants, agents, admins] = await Promise.all([
+  const [payments, customers, merchants, agents, settlements, admins] = await Promise.all([
     prisma.payment.findMany({
       where: {
         OR: [
@@ -126,6 +137,13 @@ export async function searchAll(raw: string, opts: { limit?: number; includeAdmi
       take: limit,
       select: { id: true, agentCode: true, name: true, companyName: true, email: true },
     }),
+    // Settlement batches by invoice number (Phase P1-5).
+    prisma.settlementBatch.findMany({
+      where: { invoiceNo: contains },
+      orderBy: { periodFrom: "desc" },
+      take: limit,
+      select: { id: true, invoiceNo: true, status: true, netAmount: true, periodFrom: true, merchant: { select: { merchantCode: true, siteName: true } } },
+    }),
     opts.includeAdmins
       ? prisma.adminUser.findMany({
           where: { OR: [{ loginId: contains }, { name: contains }, { email: contains }] },
@@ -155,9 +173,10 @@ export async function searchAll(raw: string, opts: { limit?: number; includeAdmi
     customers: customers.map((c) => ({ id: c.id, externalId: c.externalId, name: maskName(c.name), email: maskEmail(c.email), merchantName: c.merchant.siteName, anonymized: c.anonymizedAt !== null })),
     merchants,
     agents,
+    settlements: settlements.map((s) => ({ id: s.id, invoiceNo: s.invoiceNo ?? "", merchantName: s.merchant.siteName, merchantCode: s.merchant.merchantCode, status: s.status, netAmount: s.netAmount, periodFrom: s.periodFrom })),
     admins,
     total: 0,
   };
-  result.total = result.payments.length + result.customers.length + result.merchants.length + result.agents.length + result.admins.length;
+  result.total = result.payments.length + result.customers.length + result.merchants.length + result.agents.length + result.settlements.length + result.admins.length;
   return result;
 }

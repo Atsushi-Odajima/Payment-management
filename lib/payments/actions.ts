@@ -101,20 +101,21 @@ export async function applyPaymentAction(
     nextStatus = statusAfterRefund(payment.amount, payment.amountRefunded, refundAmount);
     eventAmount = refundAmount;
     extra = { amountRefunded: { increment: refundAmount } };
-  } else if (action === "deposit") {
+  } else if (action === "deposit" || action === "late_deposit") {
     // Bank transfers carry a transfer id; konbini slips (Phase K) a receipt number.
     const isCvs = payment.cvsReceiptNo !== null;
     if (!payment.transferId && !isCvs) throw new ApiError(400, "not_bank_transfer", "errors.notBankTransfer");
-    if (current === "pending" && !isCvs) throw new ApiError(409, "invalid_transition", "errors.depositOnlyAwaiting");
     const deposit = input.amount;
     if (deposit === undefined || !Number.isInteger(deposit) || deposit <= 0) {
       throw new ApiError(400, "invalid_input", "errors.depositAmountInvalid");
     }
-    const outcome = reconcileDeposit(payment.amount, payment.depositAmount ?? 0, deposit, isCvs ? "pending" : "awaiting_transfer");
-    nextStatus = outcome.status;
+    const outcome = reconcileDeposit(payment.amount, payment.depositAmount ?? 0, deposit, isCvs ? "awaiting_payment" : "awaiting_transfer");
+    // A late deposit (Phase P1-3) cannot go back to "awaiting": it completes
+    // and a short / excess amount is tracked through depositDiff.
+    nextStatus = action === "late_deposit" ? "captured" : outcome.status;
     eventAmount = deposit;
     // A short / excess deposit opens a follow-up case (Phase F-3).
-    extra = { depositAmount: outcome.total, depositDiff: outcome.diff, depositDiffStatus: outcome.diff ? "open" : null, ...(isCvs && outcome.status === "captured" ? { cvsPaidAt: new Date() } : {}) };
+    extra = { depositAmount: outcome.total, depositDiff: outcome.diff, depositDiffStatus: outcome.diff ? "open" : null, ...(isCvs && nextStatus === "captured" ? { cvsPaidAt: new Date() } : {}) };
   }
 
   const now = new Date();
@@ -185,7 +186,7 @@ export async function applyPaymentAction(
   if (event && payment.merchantId) await emitPaymentWebhook(prisma, paymentId, event);
   // Customer emails (Phase G-2): completion and refund confirmations.
   const finalStatus = toPaymentStatus(result.status);
-  if ((action === "capture" || action === "deposit") && finalStatus === "captured") await notifyPaymentCompleted(prisma, paymentId);
+  if ((action === "capture" || action === "deposit" || action === "late_deposit") && finalStatus === "captured") await notifyPaymentCompleted(prisma, paymentId);
   if (action === "refund") await notifyRefundCompleted(prisma, paymentId, eventAmount);
   // Repeated-failure detection (Phase F-2) after a failure.
   if (action === "fail") {
@@ -207,6 +208,7 @@ export function webhookEventFor(action: PaymentAction, status: PaymentStatus): M
     case "capture":
       return "payment.completed";
     case "deposit":
+    case "late_deposit":
       return status === "captured" ? "payment.completed" : null;
     case "fail":
       return "payment.failed";

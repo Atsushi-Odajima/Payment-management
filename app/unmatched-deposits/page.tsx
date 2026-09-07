@@ -13,5 +13,5 @@ export default async function UnmatchedDepositsPage({ searchParams }: { searchPa
   const filters = parseUnmatchedDepositFilters(searchParams, mode);
   const sort = parseUnmatchedDepositSort(searchParams);
   const { rows, total, openCount } = await loadUnmatchedDeposits({ filters, sort, page, pageSize: DEFAULT_PAGE_SIZE });
-  return <UnmatchedDepositsView rows={rows.map((r) => ({ ...r, payerName: maskName(r.payerName) ?? "" }))} total={total} page={page} pageSize={DEFAULT_PAGE_SIZE} sort={sort} filters={filters} openCount={openCount} />;
+  return <UnmatchedDepositsView rows={rows.map((r) => ({ ...r, payerName: maskName(r.payerName) ?? "" }))} total={total} page={page} pageSize={DEFAULT_PAGE_SIZE} sort={sort} filters={filters} openCount={openCount} highlight={searchParams?.highlight ?? null} />;
 }

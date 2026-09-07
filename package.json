@@ -22,6 +22,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "tsx scripts/db-reset.ts",
     "db:link-customers": "tsx scripts/link-customers.ts",
+    "db:backfill": "tsx scripts/backfill-phase1.ts",
     "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -21,6 +21,7 @@ export function formatYen(amount: number): string {
 export const PAYMENT_STATUS_COLOR: Record<PaymentStatus, string> = {
   pending: "bg-amber-100 text-amber-800 ring-amber-200",
   awaiting_transfer: "bg-sky-100 text-sky-800 ring-sky-200",
+  awaiting_payment: "bg-sky-100 text-sky-800 ring-sky-200",
   authorized: "bg-blue-100 text-blue-800 ring-blue-200",
   captured: "bg-emerald-100 text-emerald-800 ring-emerald-200",
   partially_refunded: "bg-violet-100 text-violet-800 ring-violet-200",

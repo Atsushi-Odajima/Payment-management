@@ -15,6 +15,9 @@ import { formatYen } from "@/lib/utils";
 export interface DashboardStats {
   unreadNotificationCount: number;
   unmatchedDepositCount: number;
+  /** Deposit notifications received today and how many were not applied (Phase P1-1). */
+  depositNotificationTodayCount: number;
+  depositNotificationAttentionCount: number;
   subscriptionActiveCount: number;
   subscriptionAttentionCount: number;
   paymentLinkActiveCount: number;
@@ -89,6 +92,8 @@ export function DashboardView({ stats }: { stats: DashboardStats }) {
         return { value: t("dashboard.valueUnread", { count: stats.unreadNotificationCount }), badge: stats.unreadNotificationCount > 0 ? t("dashboard.unreadBadge") : undefined };
       case "unmatchedDeposits":
         return { value: t("dashboard.valueUnmatched", { count: stats.unmatchedDepositCount }), badge: stats.unmatchedDepositCount > 0 ? t("dashboard.openBadge") : undefined };
+      case "depositNotifications":
+        return { value: t("dashboard.valueDepositNotifications", { count: stats.depositNotificationTodayCount }), badge: stats.depositNotificationAttentionCount > 0 ? t("dashboard.valueDepositNotificationsAttention", { count: stats.depositNotificationAttentionCount }) : undefined };
       case "subscriptions":
         return { value: t("dashboard.valueSubscriptions", { count: stats.subscriptionActiveCount }), badge: stats.subscriptionAttentionCount > 0 ? t("dashboard.valuePastDue", { count: stats.subscriptionAttentionCount }) : undefined };
       case "paymentLinks":

@@ -109,7 +109,7 @@ describe("transactions", () => {
     await prisma.apiKey.create({ data: { merchantId: SEED_IDS.merchant3, mode: "test", kind: "api_key", keyPrefix: key3.slice(0, 16), keyHash: (await import("@/lib/merchants/api-keys-server")).hashApiKey(key3) } });
     const cvs = await post({ method: "convenience", orderNumber: "API-C", amount: 2500, cvsBrand: "lawson", customerEmail: "c@example.com" }, key3);
     expect(cvs.status).toBe(201);
-    expect(cvs.body.data.status).toBe("pending");
+    expect(cvs.body.data.status).toBe("awaiting_payment");
     expect(cvs.body.data.konbini).toMatchObject({ brand: "lawson" });
     expect(cvs.body.data.konbini.receiptNo).toMatch(/^\d{13}$/);
     const transfer = await post({ method: "bank", orderNumber: "API-T", amount: 3000 }, key3);

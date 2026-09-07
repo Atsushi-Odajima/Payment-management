@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import type { DataMode } from "@/lib/mode";
 import { parseSort, type QueryParams, type SortState } from "@/lib/query";
 import { UNMATCHED_DEPOSIT_SELECT, findTransferCandidates } from "./service";
-import { UNMATCHED_DEPOSIT_SORT_KEYS, isUnmatchedDepositStatus, type TransferCandidate, type UnmatchedDepositFilters, type UnmatchedDepositRow } from "./types";
+import { UNMATCHED_DEPOSIT_SORT_KEYS, isUnmatchedDepositReason, isUnmatchedDepositSource, isUnmatchedDepositStatus, type TransferCandidate, type UnmatchedDepositFilters, type UnmatchedDepositRow } from "./types";
 
 export function parseUnmatchedDepositFilters(q: QueryParams | undefined, mode: DataMode): UnmatchedDepositFilters {
   return { status: isUnmatchedDepositStatus(q?.status) ? q!.status! : "", mode };
@@ -14,8 +14,14 @@ export function parseUnmatchedDepositSort(q: QueryParams | undefined): SortState
   return parseSort(q, UNMATCHED_DEPOSIT_SORT_KEYS, { key: "receivedAt", dir: "desc" });
 }
 
-type Raw = Omit<UnmatchedDepositRow, "status" | "source"> & { status: string; source: string };
-export const toUnmatchedDepositRow = (r: Raw): UnmatchedDepositRow => ({ ...r, status: isUnmatchedDepositStatus(r.status) ? r.status : "unmatched", source: r.source === "bank" ? "bank" : "manual" });
+type Raw = Omit<UnmatchedDepositRow, "status" | "source" | "reason" | "dismissKind"> & { status: string; source: string; reason: string | null; dismissKind: string | null };
+export const toUnmatchedDepositRow = (r: Raw): UnmatchedDepositRow => ({
+  ...r,
+  status: isUnmatchedDepositStatus(r.status) ? r.status : "unmatched",
+  source: isUnmatchedDepositSource(r.source) ? r.source : "manual",
+  reason: isUnmatchedDepositReason(r.reason) ? r.reason : null,
+  dismissKind: r.dismissKind === "returned" ? "returned" : r.dismissKind === "other" ? "other" : null,
+});
 
 function whereFor(f: UnmatchedDepositFilters) {
   return { livemode: f.mode === "live", ...(f.status ? { status: f.status } : {}) };
@@ -49,6 +55,6 @@ export async function loadUnmatchedDeposit(id: string): Promise<{ deposit: Unmat
   const r = await prisma.unmatchedDeposit.findUnique({ where: { id }, select: UNMATCHED_DEPOSIT_SELECT });
   if (!r) return null;
   const deposit = toUnmatchedDepositRow(r);
-  const candidates = deposit.status === "unmatched" ? await findTransferCandidates(prisma, deposit) : [];
+  const candidates = deposit.status === "unmatched" ? await findTransferCandidates(prisma, { amount: deposit.amount, livemode: deposit.livemode, candidatePaymentId: deposit.candidatePayment?.id ?? null }) : [];
   return { deposit, candidates };
 }

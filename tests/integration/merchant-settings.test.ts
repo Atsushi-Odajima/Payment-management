@@ -166,7 +166,7 @@ describe("API keys", () => {
   it("lists keys without secrets and authenticates the seeded ones", async () => {
     const list = await read(await listKeys(json(`/api/merchants/${m1}/api-keys`, "GET"), ctx(m1)));
     expect(list.status).toBe(200);
-    expect(list.body.data.keys).toHaveLength(3);
+    expect(list.body.data.keys).toHaveLength(4); // test / live api keys, test / live signing secrets
     for (const k of list.body.data.keys) {
       expect(k.keyHash).toBeUndefined();
       expect(k.keyPrefix).toMatch(/…$/);
@@ -234,13 +234,13 @@ describe("API keys", () => {
 describe("transfer expiry cron", () => {
   it("expires overdue bank transfers as actor cron and audits each", async () => {
     // Make every awaiting transfer overdue; seed dates are relative to NOW and may not be yet.
-    await prisma.payment.updateMany({ where: { OR: [{ status: "awaiting_transfer" }, { status: "pending", cvsReceiptNo: { not: null } }] }, data: { transferDueAt: new Date("2026-01-01T00:00:00Z") } });
+    await prisma.payment.updateMany({ where: { status: { in: ["awaiting_transfer", "awaiting_payment"] } }, data: { transferDueAt: new Date("2026-01-01T00:00:00Z") } });
     const result = await expireOverdueTransfers();
     expect(result).toEqual({ expired: 5, skipped: 0 }); // payment4, payment5, the live payment9 / payment10 and the konbini slip payment14
     const rows = await prisma.payment.findMany({ where: { id: { in: [SEED_IDS.payment4, SEED_IDS.payment5, SEED_IDS.payment9, SEED_IDS.payment10, SEED_IDS.payment14] } }, select: { status: true } });
     expect(rows.every((r) => r.status === "expired")).toBe(true);
     expect(await prisma.auditLog.count({ where: { action: "payment.expire", actorType: "cron" } })).toBe(5);
-    expect(await prisma.paymentEvent.count({ where: { type: "expire", actor: "system" } })).toBe(5);
+    expect(await prisma.paymentEvent.count({ where: { type: "expire", actor: "system" } })).toBe(6); // 5 by the cron + the seeded expired ORD-DEMO-016
     expect(await expireOverdueTransfers()).toEqual({ expired: 0, skipped: 0 });
   });
 

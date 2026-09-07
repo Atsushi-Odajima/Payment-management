@@ -32,7 +32,7 @@ export const limitsInputSchema = z
   .refine((list) => new Set(list.map((l) => l.method)).size === list.length, "duplicate");
 
 /** Statuses that consume the limit (everything except failed / cancelled / expired). */
-export const COUNTED_STATUSES = ["pending", "awaiting_transfer", "authorized", "captured", "partially_refunded", "refunded"] as const;
+export const COUNTED_STATUSES = ["pending", "awaiting_transfer", "awaiting_payment", "authorized", "captured", "partially_refunded", "refunded"] as const;
 
 export interface LimitUsage {
   method: FeeMethod;

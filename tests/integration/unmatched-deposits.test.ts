@@ -39,8 +39,9 @@ describe("unmatched deposits", () => {
   it("lists the seeded deposits (unmatched first), registers new ones and exports CSV", async () => {
     const list = await read(await listDeposits(new Request(BASE + "/api/unmatched-deposits?mode=test"), {}));
     expect(list.status).toBe(200);
-    expect(list.body.data.openCount).toBe(1);
-    expect(list.body.data.items[0]).toMatchObject({ id: SEED_IDS.unmatched1, status: "unmatched", source: "bank", amount: 6600 });
+    expect(list.body.data.openCount).toBe(2); // the forgotten-id deposit and the late deposit for ORD-DEMO-016
+    expect(list.body.data.items[0].status).toBe("unmatched");
+    expect(list.body.data.items.find((r: { id: string }) => r.id === SEED_IDS.unmatched1)).toMatchObject({ status: "unmatched", source: "bank", amount: 6600 });
 
     expect((await read(await registerDeposit(json("/api/unmatched-deposits?mode=test", "POST", { amount: 100, payerName: "x" }), {}))).status).toBe(401);
     const bad = await read(await registerDeposit(json("/api/unmatched-deposits?mode=test", "POST", { amount: 0, payerName: "" }, GENERAL), {}));
@@ -57,7 +58,7 @@ describe("unmatched deposits", () => {
 
   it("files a bank notification without a usable transfer id as an unmatched deposit", async () => {
     vi.stubEnv("DEPOSIT_NOTIFY_SECRET", "");
-    const res = await read(await depositNotify(json("/api/demo/deposit-notify", "POST", { amount: 6600, payerName: "WATANABE KEN", bankReference: "b-2" }), {}));
+    const res = await read(await depositNotify(json("/api/demo/deposit-notify", "POST", { amount: 6600, payerName: "WATANABE KEN", bankReference: "b-2", mode: "test" }), {}));
     expect(res.status).toBe(202);
     expect(res.body.data).toMatchObject({ matched: false, received: 6600 });
     const row = await prisma.unmatchedDeposit.findUniqueOrThrow({ where: { id: res.body.data.unmatchedDepositId } });

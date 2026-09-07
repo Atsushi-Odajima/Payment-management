@@ -70,6 +70,7 @@ export function SettlementsView({
     { key: "deductions", header: t("settlements.thDeductions"), align: "right", render: (r) => <span className="tabular-nums text-slate-600">−{formatYen(r.feeAmount + r.refundAmount + r.chargebackAmount + r.settlementFee)}</span> },
     { key: "netAmount", header: t("settlements.thNet"), sortable: true, align: "right", render: (r) => <span className="font-semibold tabular-nums">{formatYen(r.netAmount)}</span> },
     { key: "status", header: t("settlements.thStatus"), sortable: true, render: (r) => <SettlementStatusBadge status={r.status} /> },
+    { key: "invoiceNo", header: t("settlements.invoiceNo"), render: (r) => <span className="font-mono text-xs text-slate-600">{r.invoiceNo ?? "—"}</span> },
     { key: "scheduledAt", header: t("settlements.thScheduled"), sortable: true, render: (r) => <span className="whitespace-nowrap text-xs">{r.paidAt ? formatDate(r.paidAt) : r.scheduledAt ? formatDate(r.scheduledAt).slice(0, 10) : "—"}</span> },
     { key: "lines", header: t("settlements.thLines"), align: "right", render: (r) => <span className="tabular-nums text-xs text-slate-600">{r.lineCount}</span> },
   ];

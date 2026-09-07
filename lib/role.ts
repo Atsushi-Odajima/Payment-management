@@ -46,6 +46,7 @@ export const PERMISSIONS = {
   payment: { view: ALL, create: ADMIN_CS, state: ADMIN, deposit: ADMIN_ACCOUNTING, renotify: ["admin", "cs", "developer"], simulate_webhook: ADMIN_DEV },
   payment_note: { view: ALL, create: STAFF, update_own: STAFF, delete: ADMIN, pin: ADMIN_CS },
   unmatched_deposit: { view: ALL, register: ADMIN_ACCOUNTING_CS, match: ADMIN_ACCOUNTING, dismiss: ADMIN_ACCOUNTING_CS },
+  deposit_notification: { view: ALL },
   deposit_diff: { view: ALL, update: ADMIN_ACCOUNTING_CS },
   refund: { view: ALL, request: ADMIN_CS, force: ADMIN, decide: ADMIN_ACCOUNTING },
   receipt: { view: ALL, issue: ADMIN_ACCOUNTING_CS },
