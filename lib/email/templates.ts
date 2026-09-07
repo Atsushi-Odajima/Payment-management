@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 
-export const EMAIL_TEMPLATE_KEYS = ["transfer_guide", "cvs_guide", "payment_completed", "refund_completed", "deposit_short", "statement", "admin_invite", "subscription_failed", "subscription_suspended", "notification"] as const;
+export const EMAIL_TEMPLATE_KEYS = ["transfer_guide", "cvs_guide", "payment_completed", "refund_completed", "deposit_short", "statement", "admin_invite", "subscription_failed", "subscription_suspended", "notification", "merchant_payment_notice", "merchant_daily_summary"] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
 export function isEmailTemplateKey(v: unknown): v is EmailTemplateKey {
   return typeof v === "string" && (EMAIL_TEMPLATE_KEYS as readonly string[]).includes(v);
@@ -40,6 +40,16 @@ export const EMAIL_PLACEHOLDERS = [
   "link",
   "receiptNo",
   "cvsBrand",
+  // Merchant notices (Phase P2-2): per-payment notice and the daily summary.
+  "paymentMethod",
+  "completedAt",
+  "date",
+  "mode",
+  "completedCount",
+  "completedAmount",
+  "methodBreakdown",
+  "failedCount",
+  "expiredCount",
 ] as const;
 export type EmailPlaceholder = (typeof EMAIL_PLACEHOLDERS)[number];
 export type EmailVars = Partial<Record<EmailPlaceholder, string>>;
@@ -74,7 +84,24 @@ export const SAMPLE_EMAIL_VARS: Required<EmailVars> = {
   retryDate: "2026/09/06",
   receiptNo: "4102-9938-27716",
   cvsBrand: "セブン-イレブン",
+  paymentMethod: "クレジットカード",
+  completedAt: "2026/09/01 12:34",
+  date: "2026/09/01",
+  mode: "本番",
+  completedCount: "12",
+  completedAmount: "¥58,600",
+  methodBreakdown: "クレジットカード: 8 件 ¥41,200\nQR コード決済: 3 件 ¥12,000\n銀行振込: 1 件 ¥5,400",
+  failedCount: "1",
+  expiredCount: "0",
 };
+
+/** Fixed wording used inside merchant e-mails (ja / en), Phase P2-2. */
+export const EMAIL_TEXTS = {
+  modeLive: { ja: "本番", en: "live" },
+  modeTest: { ja: "テスト", en: "test" },
+  countUnit: { ja: "件", en: "" },
+  noCompleted: { ja: "（完了した決済はありません）", en: "(no completed payments)" },
+} as const satisfies Record<string, { ja: string; en: string }>;
 
 /** Konbini store names as printed in customer e-mails and PDFs (ja / en), Phase K-1. */
 export const CVS_BRAND_NAMES: Record<string, { ja: string; en: string }> = {
@@ -222,5 +249,29 @@ export const DEFAULT_EMAIL_TEMPLATES: DefaultTemplate[] = [
     lang: "en",
     subject: "[Wire Pay] {{title}}",
     body: "{{title}}\n\n{{body}}\n\n{{link}}\n\n(You receive this because e-mail is enabled for this kind in your notification settings.)",
+  },
+  {
+    key: "merchant_payment_notice",
+    lang: "ja",
+    subject: "【Wire Pay】決済が完了しました（注文番号 {{orderNumber}}）",
+    body: "{{merchantName}} ご担当者様\n\n以下の決済が完了しました。\n\n注文番号: {{orderNumber}}\n金額: {{amount}}\n決済種別: {{paymentMethod}}\n完了日時: {{completedAt}}\n取引ID: {{transactionId}}\n環境: {{mode}}\n\n（このメールは加盟店設定「メール通知設定」が「決済ごと」の場合に送信されます）",
+  },
+  {
+    key: "merchant_payment_notice",
+    lang: "en",
+    subject: "[Wire Pay] Payment completed (order {{orderNumber}})",
+    body: "Dear {{merchantName}} team,\n\nThe following payment has completed.\n\nOrder number: {{orderNumber}}\nAmount: {{amount}}\nPayment method: {{paymentMethod}}\nCompleted at: {{completedAt}}\nTransaction ID: {{transactionId}}\nEnvironment: {{mode}}\n\n(Sent because the merchant's e-mail notification setting is \"every payment\".)",
+  },
+  {
+    key: "merchant_daily_summary",
+    lang: "ja",
+    subject: "【Wire Pay】{{date}} の決済サマリー（{{merchantName}} / {{mode}}）",
+    body: "{{merchantName}} ご担当者様\n\n{{date}}（{{mode}}環境）の決済状況をお知らせします。\n\n完了: {{completedCount}} 件 / {{completedAmount}}\n\n決済種別別:\n{{methodBreakdown}}\n\n失敗: {{failedCount}} 件\n期限切れ: {{expiredCount}} 件\n\n（このメールは加盟店設定「メール通知設定」が「1 日まとめて通知」の場合に、翌朝 9 時に送信されます）",
+  },
+  {
+    key: "merchant_daily_summary",
+    lang: "en",
+    subject: "[Wire Pay] Daily payment summary for {{date}} ({{merchantName}} / {{mode}})",
+    body: "Dear {{merchantName}} team,\n\nHere is your payment summary for {{date}} ({{mode}} environment).\n\nCompleted: {{completedCount}} payment(s) / {{completedAmount}}\n\nBy payment method:\n{{methodBreakdown}}\n\nFailed: {{failedCount}}\nExpired: {{expiredCount}}\n\n(Sent at 09:00 JST because the merchant's e-mail notification setting is \"daily digest\".)",
   },
 ];

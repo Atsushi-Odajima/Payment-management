@@ -6,8 +6,9 @@ import type { PrismaClient } from "@prisma/client";
 import { formatDateTime } from "@/lib/i18n";
 import { formatYen } from "@/lib/utils";
 import { CUSTOMER_EMAIL_LANG, sendTemplatedEmail } from "./send";
-import { cvsBrandName, type EmailVars } from "./templates";
+import { EMAIL_TEXTS, cvsBrandName, type EmailVars } from "./templates";
 import { formatCvsReceiptNo } from "@/lib/payments/konbini";
+import { methodLabelText } from "./merchant-digest";
 
 const PAYMENT_SELECT = {
   id: true,
@@ -67,6 +68,44 @@ export const notifyPaymentCompleted = (db: PrismaClient, paymentId: string) => s
 export const notifyRefundCompleted = (db: PrismaClient, paymentId: string, refundAmount: number) => sendForPayment(db, paymentId, "refund_completed", { amount: formatYen(refundAmount) });
 /** A short deposit was recorded and the operator asked the customer for the balance. */
 export const notifyDepositShort = (db: PrismaClient, paymentId: string) => sendForPayment(db, paymentId, "deposit_short");
+
+/**
+ * Merchant notice of a completed payment (Phase P2-2): sent to the merchant's
+ * contact e-mail when the merchant's e-mail notification setting is
+ * "per_payment". "daily" merchants get the morning summary instead
+ * (lib/email/merchant-digest.ts); "none" gets nothing.
+ */
+export async function notifyMerchantPaymentCompleted(db: PrismaClient, paymentId: string): Promise<void> {
+  try {
+    const p = await db.payment.findUnique({
+      where: { id: paymentId },
+      select: { id: true, orderNumber: true, amount: true, method: true, livemode: true, capturedAt: true, merchantId: true, merchant: { select: { siteName: true, email: true, emailNotification: true } } },
+    });
+    if (!p?.merchant || !p.merchantId || p.merchant.emailNotification !== "per_payment" || !p.merchant.email) return;
+    await sendTemplatedEmail(db, {
+      key: "merchant_payment_notice",
+      lang: CUSTOMER_EMAIL_LANG,
+      to: p.merchant.email,
+      vars: {
+        merchantName: p.merchant.siteName,
+        orderNumber: p.orderNumber,
+        amount: formatYen(p.amount),
+        paymentMethod: methodLabelText(p.method, CUSTOMER_EMAIL_LANG),
+        completedAt: formatDateTime(p.capturedAt ?? new Date(), CUSTOMER_EMAIL_LANG),
+        transactionId: p.id,
+        mode: modeLabelText(p.livemode, CUSTOMER_EMAIL_LANG),
+      },
+      paymentId: p.id,
+      merchantId: p.merchantId,
+    });
+  } catch (e) {
+    console.error("[email] merchant_payment_notice failed", e);
+  }
+}
+
+export function modeLabelText(livemode: boolean, lang: "ja" | "en"): string {
+  return (livemode ? EMAIL_TEXTS.modeLive : EMAIL_TEXTS.modeTest)[lang];
+}
 
 async function subscriptionVars(db: PrismaClient, subscriptionId: string) {
   const s = await db.subscription.findUnique({ where: { id: subscriptionId }, select: { customerName: true, customerEmail: true, merchantId: true, merchant: { select: { siteName: true } }, plan: { select: { name: true, amount: true } } } });

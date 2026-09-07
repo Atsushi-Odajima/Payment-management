@@ -219,7 +219,7 @@ async function login(loginId, password) {
   await page.screenshot({ path: `${OUT}/reports-en.png`, fullPage: true });
 
   await page.goto(BASE + "/email-templates", { waitUntil: "networkidle" });
-  check("email templates: 20 rows", (await page.locator("tbody tr").count()) === 20);
+  check("email templates: 24 rows", (await page.locator("tbody tr").count()) === 24);
   await page.locator("tbody tr").first().getByRole("link").first().click();
   await page.waitForURL(/\/email-templates\/[a-z0-9_]+$/);
   await page.fill("#tpl-subject", "Smoke subject {{orderNumber}}");

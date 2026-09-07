@@ -29,6 +29,7 @@ Changes to the specifications (docs/spec) and to public interfaces. **Breaking c
 | A-5 | 通知センターの種別 `deposit.late`（日次まとめ）と `webhook.signing_secret_missing` を追加 |
 | A-6 | 加盟店の新規登録（`POST /api/merchants`）がテスト環境の署名シークレットを同時発行し、応答 `signingSecret.plaintext` で 1 回だけ返す |
 | A-7 | `SettlementBatch.invoiceNo`（@unique）。横断検索が請求書番号で精算バッチを返す |
+| A-8 | 加盟店設定「メール通知設定」を実装（修正フェーズ2-2）: テンプレート `merchant_payment_notice`（決済ごと、完了のたびに担当者メールへ）と `merchant_daily_summary`（1 日まとめて、`GET/POST /api/cron/merchant-daily-summary` が 09:00 JST に前日分を環境ごとに 1 通。0 件の日は送らない、再実行しても重複しない）。プレースホルダー 9 種を追加。加盟店管理画面ホームに現在の設定を表示 |
 
 ### 動作変更 / Behaviour changes
 
@@ -36,6 +37,8 @@ Changes to the specifications (docs/spec) and to public interfaces. **Breaking c
 |---|---|---|
 | C-1 | Webhook の署名で **加盟店パスワードへのフォールバックを廃止**（fail closed）。使用可能な署名シークレットが無い環境への通知は送信せず、`WebhookDelivery.status = failed`、`error: signing_secret_missing` で記録し、通知センターに警告を出す。シークレット発行後の再送で署名して送る | パスワードを署名鍵に流用すると、鍵の失効・ローテーションが管理できず、加盟店側の検証実装も二重になる |
 | C-2 | 英語 UI のステータス `pending` の表示を "Applied" から "Pending" に変更 | `awaiting_payment` の追加に合わせて意味を正確にするため |
+| C-3 | **`/api/merchant-api/*`（ping / announcements / settlements）にレート制限を適用**: 公開 API `/api/v1` と同じ加盟店 × 環境 × 分のバケットで 60 回 / 分。超過は 429 `rate_limited` + `Retry-After`、成功応答に `X-RateLimit-Limit` / `X-RateLimit-Remaining` | 旧 API だけ無制限で、同じキーからの過負荷を防げなかった。同じバケットにすることで合計の上限を 1 つにする（修正フェーズ2-3） |
+| C-4 | クレジット / QR の即時完了取引でも決済完了メール `payment_completed` を顧客へ送信する（定期課金の課金は除外） | 手動完了・入金消込では送っていたのに即時完了だけ送られていなかった（修正フェーズ2-1） |
 
 ### 移行 / Migration
 

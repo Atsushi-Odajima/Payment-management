@@ -68,7 +68,7 @@ describe("email templates and log", () => {
     expect(renderTemplate("Hi {{customerName}}, {{ amount }} / {{missing}}", { customerName: "A", amount: "¥1" })).toBe("Hi A, ¥1 / ");
     expect(placeholdersIn("{{a}} {{b}} {{a}}")).toEqual(["a", "b"]);
     const list = await read(await getTemplates(new Request(BASE + "/api/email-templates"), {}));
-    expect(list.body.data.templates).toHaveLength(20);
+    expect(list.body.data.templates).toHaveLength(24); // 12 keys × 2 languages
   });
 
   it("logs event emails (demo provider) and lets a master edit / disable templates", async () => {

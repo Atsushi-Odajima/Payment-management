@@ -270,6 +270,12 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - **`awaiting_payment`（支払待ち）**: コンビニ取引は作成時にこのステータス（`initialStatus("convenience")`）。`WAITING_STATUSES = ["awaiting_transfer", "awaiting_payment"]` を capture / cancel / fail / expire / deposit の遷移元、`APPLICATION_STATUSES` / `OPEN_STATUSES` / `COUNTED_STATUSES`、期限切れ cron、日次ダイジェスト、ダッシュボードの期限超過 KPI、一覧の待機レーン（`waitingForPayment`）、`isTransferOverdue` / `isCvsWaiting` / `reconcileDeposit` の待機先で共用する。`pending` + `cvsReceiptNo` による判定は廃止。移行は migration の SQL と `runPhase1Backfill` の両方（冪等）。英語辞書の `status.pending` は "Pending"。公開 API の status 値は `lib/public-api/openapi.ts` の `TRANSACTION_STATUS_DOC`
 - 破壊的変更は `docs/spec/CHANGELOG.md`（1.1.0）に理由付きで記録する。以降の修正フェーズも同じファイルに追記する
 
+## 修正フェーズ2: 通知まわり（即時完了メール / 加盟店宛メール通知 / 加盟店 API のレート制限）
+
+- **決済完了メール**: `createTransaction` が captured で作成した取引（クレジット / QR の即時完了）も `notifyPaymentCompleted` を送る（`source === "subscription"` は除外。定期課金は `subscription_*` テンプレートに任せる）
+- **加盟店宛メール通知**（`Merchant.emailNotification`）: `lib/email/hooks.ts` の `notifyMerchantPaymentCompleted` が **per_payment** の加盟店に `merchant_payment_notice` を担当者メール（`Merchant.email`）へ送る。呼び出しは `createTransaction`（captured 作成、定期課金を含む）と `applyPaymentAction`（capture / deposit / late_deposit → captured）。**daily** は `lib/email/merchant-digest.ts` の `sendMerchantDailySummaries(db, now)`（前日 0:00〜24:00 JST を `summarizeMerchantDay` で集計、加盟店 × 環境で 1 通、完了 + 失敗 + 期限切れが 0 件なら送らない、本文末尾の `[YYYY-MM-DD/mode]` マーカーで同日の再送を抑止）を `GET/POST /api/cron/merchant-daily-summary`（`CRON_SECRET`、`vercel.json` で `0 0 * * *` = 09:00 JST）が呼ぶ。**none** は何も送らない。明細送付先メール（`statementEmail`）は精算関連にのみ使う。加盟店管理画面ホームに現在の設定を表示（変更は PSP）。テンプレートは 12 キー × 2 言語 = 24 行、プレースホルダーに `paymentMethod / completedAt / date / mode / completedCount / completedAmount / methodBreakdown / failedCount / expiredCount` を追加
+- **加盟店 API のレート制限**: `lib/public-api/rate-limit.ts` の `enforceApiRateLimit` / `rateLimitHeaders` を `/api/v1`（`authenticatePublicApi`）と `/api/merchant-api/*`（`lib/merchants/api-auth.ts` の `authenticateMerchantApi` = キー認証 + 制限 + 応答ヘッダー）で共用。バケットは加盟店 × 環境 × 分で共通（60 回 / 分）
+
 ## 代理店・決済申請・IP制限・マニュアル
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
@@ -340,7 +346,7 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **フェーズL 公開 API v1・加盟店ログイン・API ドキュメント**（完了）: `/api/v1`（取引の作成 / 取得 / 一覧、返金申請、決済リンク、OpenAPI 3 を Zod から生成しテストで route と照合）、加盟店 × 環境のレート制限（DB 計数、429 + Retry-After）、テストカード番号によるシナリオ、加盟店管理画面（別 Cookie のログイン・ロックアウト・取引 / 返金申請 / Webhook 再送 / 精算 + 請求書 PDF / テストキーの自己ローテーション / 決済手段の状態 / お知らせ）、公開 API ドキュメント（手書き 6 章 + 自動生成リファレンス）とサンドボックス
 - [x] **フェーズM 顧客・PaymentToken・個人情報保護**（完了）: 加盟店 × ユーザーID の顧客マスタと保存カード（取引作成時に自動作成、既存行は冪等バックフィル）、管理画面全体のマスク表示（姓のみ / メール 2 文字 / 電話下 4 桁 / IP 第 4 オクテット、操作ログは保存時点でマスク）、監査付きマスク解除（admin / cs）、CSV の個人情報モード、手動匿名化（admin・理由必須）と保持期間による日次匿名化 + 操作ログの保持期間削除、加盟店管理画面の顧客一覧
 - [x] **修正フェーズ1 資金・整合性**（完了）: 入金通知の冪等化（`DepositNotification` + 入金通知ログ画面）、`mode` 必須と環境照合、期限後・キャンセル後入金の保留と `late_deposit` 遷移、Webhook 署名鍵の fail-closed と加盟店登録時の署名シークレット自動発行、精算バッチの請求書番号（確定時採番・一意）、コンビニ支払待ちの独立ステータス `awaiting_payment`、`docs/spec/CHANGELOG.md`
-- [ ] **修正フェーズ2 通知まわり**: 即時完了取引の決済完了メール、加盟店宛メール通知設定の実装（per_payment / daily cron）、`/api/merchant-api/*` のレート制限
+- [x] **修正フェーズ2 通知まわり**（完了）: 即時完了取引の決済完了メール、加盟店宛メール通知設定の実装（`merchant_payment_notice` / `merchant_daily_summary` + 09:00 JST の cron）、`/api/merchant-api/*` のレート制限（公開 API と同じバケット）
 - [ ] **修正フェーズ3 運用画面の改善**（3-1〜3-8）
 - [ ] **修正フェーズ4 設計判断項目**（IP 許可リストモード / PSP リンクのデモ限定 / 加盟店ログイン autocomplete）
 - [ ] **修正フェーズ5 文言・デモデータ・小修正**
