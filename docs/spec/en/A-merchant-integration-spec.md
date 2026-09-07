@@ -2,9 +2,9 @@
 
 | Item | Value |
 |---|---|
-| Version | 1.0.0 |
-| Target system | Wire Pay (payment management dashboard) — commit `6b72a40` (`main`) |
-| Date | 2026-09-06 |
+| Version | 1.1.0 |
+| Target system | Wire Pay (payment management dashboard) — commit `cf1c153` (`main`) |
+| Date / revised | 2026-09-06 (1.0.0) / 2026-09-07 (1.1.0; see the revision history at the end and `docs/spec/CHANGELOG.md`) |
 | Language | English (Japanese edition: `docs/spec/ja/A-merchant-integration-spec.md`) |
 | Terminology | Follows `docs/spec/en/glossary.md` |
 
@@ -44,6 +44,9 @@ Connection requirements for the parties Wire Pay **entrusts processing to** (Str
 - Appendix B [Statuses](#appendix-b-statuses)
 - Appendix C [Webhook events](#appendix-c-webhook-events)
 - Appendix D [Screens](#appendix-d-screens)
+- Appendix E [Permission matrix (complete)](#appendix-e-permission-matrix-complete)
+- Appendix F [Frequent questions → where to look](#appendix-f-frequent-questions--where-to-look)
+- [Revision history](#revision-history)
 
 ---
 
@@ -120,7 +123,7 @@ A merchant may use only the methods enabled by its contract (the merchant's "ena
 |---|---|---|---|
 | `credit` | Credit card | `captured` (`autoCapture: true`, default) or `authorized` (`autoCapture: false`) | Completes at creation. An authorized transaction is completed from the PSP dashboard ("Complete") |
 | `qr` | QR code payment | Same as `credit` | Same |
-| `convenience` | Konbini payment | `pending` (awaiting payment) + 13-digit receipt number + payment deadline | The store's payment notification (the `deposit` action) |
+| `convenience` | Konbini payment | `awaiting_payment` + 13-digit receipt number + payment deadline | The store's payment notification (the `deposit` action) |
 | `bank` | Bank transfer | `awaiting_transfer` + 7- or 8-digit transfer ID + transfer deadline | The bank's deposit notification or the PSP's reconciliation (the `deposit` action) |
 | `other` | Other | Cannot be requested through the public API (`API_METHODS` are the four above) | — |
 
@@ -151,9 +154,10 @@ In Wire Pay the record created when a customer picks a payment method on the mer
 
 | List | Statuses (`lib/payments/transitions.ts`) |
 |---|---|
-| Payment applications (`APPLICATION_STATUSES`) | `pending`, `awaiting_transfer`, `authorized`, `failed`, `expired`, `cancelled` |
+| Payment applications (`APPLICATION_STATUSES`) | `pending`, `awaiting_transfer`, `awaiting_payment`, `authorized`, `failed`, `expired`, `cancelled` |
 | Payments (`SALES_STATUSES`) | `captured`, `partially_refunded`, `refunded`, `chargeback` |
-| Open (dashboard KPI, `OPEN_STATUSES`) | `pending`, `awaiting_transfer`, `authorized` |
+| Open (dashboard KPI, `OPEN_STATUSES`) | `pending`, `awaiting_transfer`, `awaiting_payment`, `authorized` |
+| Waiting for money (carry a deadline in `transferDueAt`, `WAITING_STATUSES`) | `awaiting_transfer`, `awaiting_payment` |
 
 The glossary (`glossary.md`) is authoritative for terminology. The most frequent terms of this chapter:
 
@@ -173,15 +177,16 @@ The glossary (`glossary.md`) is authoritative for terminology. The most frequent
 
 | Status (DB value) | Label (ja / en) | Meaning |
 |---|---|---|
-| `pending` | 申請中 / Applied | Just created, nothing confirmed. For konbini: "awaiting payment" (receipt number issued) |
+| `pending` | 申請中 / Pending | Just created, nothing confirmed (the English label changed from "Applied" to "Pending" in 1.1.0) |
 | `awaiting_transfer` | 振込待ち / Awaiting transfer | Bank transfer; transfer ID issued, waiting for the deposit |
+| `awaiting_payment` | 支払待ち / Awaiting payment | Konbini; receipt number issued, waiting for the counter payment (**added in 1.1.0**; `pending` was reused before) |
 | `authorized` | 与信済 / Authorized | Card / QR authorization held (`autoCapture: false`, or the "authorized only" test card) |
 | `captured` | 完了 / Completed | Payment settled; `capturedAt` stamped |
 | `partially_refunded` | 一部返金 / Partially refunded | Refunded total below the amount |
 | `refunded` | 返金済 / Refunded | Refunded total reached the amount |
 | `cancelled` | キャンセル / Cancelled | Abandoned before completion (`cancelledAt`) |
 | `failed` | 失敗 / Failed | Rejected at creation (limit, blacklist, test card) or failed manually / by webhook. Reason in `failureReason` |
-| `expired` | 期限切れ / Expired | Transfer / payment deadline passed |
+| `expired` | 期限切れ / Expired | Transfer / payment deadline passed. A deposit that arrives afterwards is held as an unmatched deposit and can be applied by the PSP through `late_deposit` (7.3) |
 | `chargeback` | チャージバック / Chargeback | A chargeback was lost or confirmed |
 
 Values of `failureReason` are listed in 5.3 ("Values of `failureReason`").
@@ -192,27 +197,35 @@ The transitions are defined once in `TRANSITIONS` (`lib/payments/transitions.ts`
 
 ```mermaid
 stateDiagram-v2
-  [*] --> pending: create (convenience)
-  [*] --> awaiting_transfer: create (bank)
-  [*] --> authorized: create (credit/qr, autoCapture=false)
-  [*] --> captured: create (credit/qr, autoCapture=true)
-  [*] --> failed: rejected at creation<br/>(limit / blacklist / test card)
+  direction TB
+  state "create" as create
+  [*] --> create
+  create --> pending: other
+  create --> awaiting_transfer: bank
+  create --> awaiting_payment: convenience
+  create --> authorized: credit/qr<br/>autoCapture=false
+  create --> captured: credit/qr<br/>autoCapture=true
+  create --> failed: rejected at creation<br/>(limit / blacklist / test card)
 
-  pending --> captured: capture / deposit (exact or excess)
-  pending --> pending: deposit (short) ※depositDiff=short
+  state "waiting for money (awaiting_transfer / awaiting_payment)" as waiting {
+    awaiting_transfer
+    awaiting_payment
+  }
+  waiting --> waiting: deposit (short)<br/>depositDiff=short
+  waiting --> captured: deposit (exact or excess) / capture
+  waiting --> expired: expire (past deadline only)
+  waiting --> cancelled: cancel
+  waiting --> failed: fail
+
+  pending --> captured: capture
   pending --> cancelled: cancel
   pending --> failed: fail
-  pending --> expired: expire (past deadline only)
-
-  awaiting_transfer --> captured: deposit (exact or excess) / capture
-  awaiting_transfer --> awaiting_transfer: deposit (short) ※depositDiff=short
-  awaiting_transfer --> cancelled: cancel
-  awaiting_transfer --> failed: fail
-  awaiting_transfer --> expired: expire (past deadline only)
 
   authorized --> captured: capture
   authorized --> cancelled: cancel
   authorized --> failed: fail
+
+  expired --> captured: late_deposit (late deposit applied, 1.1.0)
 
   captured --> partially_refunded: refund (partial)
   captured --> refunded: refund (full)
@@ -224,7 +237,6 @@ stateDiagram-v2
 
   cancelled --> [*]
   failed --> [*]
-  expired --> [*]
   chargeback --> [*]
 ```
 
@@ -232,12 +244,13 @@ Actions, sources and targets (`TRANSITIONS`):
 
 | Action | From | To (nominal) | Timestamp stamped | Who triggers it |
 |---|---|---|---|---|
-| `capture` | `pending`, `authorized`, `awaiting_transfer` | `captured` | `capturedAt` | PSP dashboard (permission `payment.state`), the hosted page's "Complete payment (demo)", provider webhook `payment.captured` |
-| `cancel` | `pending`, `authorized`, `awaiting_transfer` | `cancelled` | `cancelledAt` | PSP dashboard, provider webhook `payment.cancelled` |
+| `capture` | `pending`, `authorized`, `awaiting_transfer`, `awaiting_payment` | `captured` | `capturedAt` | PSP dashboard (permission `payment.state`), the hosted page's "Complete payment (demo)", provider webhook `payment.captured` |
+| `cancel` | `pending`, `authorized`, `awaiting_transfer`, `awaiting_payment` | `cancelled` | `cancelledAt` | PSP dashboard, provider webhook `payment.cancelled` |
 | `refund` | `captured`, `partially_refunded` | `refunded` (`partially_refunded` when partial) | `refundedAt` (full) | Approval of a refund request (chapter 8), provider webhook `payment.refunded` |
-| `fail` | `pending`, `authorized`, `awaiting_transfer` | `failed` | — | PSP dashboard, provider webhook `payment.failed` |
-| `expire` | `pending`, `awaiting_transfer` | `expired` | — | Hourly cron (past deadline only), PSP dashboard |
-| `deposit` | `awaiting_transfer`, `pending` | `captured` (stays put when short) | `capturedAt` (on completion) | Bank / konbini deposit notification (demo API), PSP reconciliation (permission `payment.deposit`), matching an unmatched deposit |
+| `fail` | `pending`, `authorized`, `awaiting_transfer`, `awaiting_payment` | `failed` | — | PSP dashboard, provider webhook `payment.failed` |
+| `expire` | `awaiting_transfer`, `awaiting_payment` | `expired` | — | The expiry cron (past deadline only; schedule in Specification B 8.4), PSP dashboard |
+| `deposit` | `awaiting_transfer`, `awaiting_payment` | `captured` (stays put when short) | `capturedAt` (on completion) | Bank / konbini deposit notification (demo API), PSP reconciliation (permission `payment.deposit`), matching an unmatched deposit |
+| `late_deposit` | `expired` | `captured` (completes even when short / excess; the difference is kept in `depositDiff`) | `capturedAt` | "Apply as late deposit" on the unmatched-deposit screen (permission `unmatched_deposit.match`, reason required; **added in 1.1.0**; never triggered by the API or webhooks) |
 | `chargeback` | `captured`, `partially_refunded`, `refunded` | `chargeback` | — | A chargeback lost or confirmed (never a direct dashboard action) |
 
 ### 2.4 Differences per payment method
@@ -253,15 +266,17 @@ Actions, sources and targets (`TRANSITIONS`):
 - A **transfer ID** of the merchant's configured length (7 or 8 digits, `transferIdDigits`) is issued at creation. Its first digit is never 0 and it is unique system-wide.
 - **Transfer deadline** = creation time + the merchant's `transferDueDays` (default 7 days, 1–60).
 - Deposits are evaluated **cumulatively** (`reconcileDeposit`): exact → `captured`; short → stays `awaiting_transfer` with `depositDiff = "short"` (the next deposit accumulates); excess → `captured` + `depositDiff = "excess"`. Short / excess cases are tracked on the PSP's "Short / excess deposits" screen: the excess is refunded through a refund request, the shortfall triggers an additional-deposit e-mail.
-- Awaiting transfers past the deadline are expired by the cron at minute 0 of every hour (webhook `payment.expired`).
+- Awaiting transfers past the deadline are expired by the cron `/api/cron/expire-transfers` (webhook `payment.expired`; the demo's `vercel.json` runs it once a day, hourly is recommended in production — Specification B 8.4).
 - A deposit that arrives without a transfer ID is recorded as an "unmatched deposit"; PSP support attaches the transfer ID and the same reconciliation runs (`payment.completed` is delivered on completion).
+- **Deposits that arrive after expiry or cancellation, and deposits whose environment (test / live) does not match**, are not reconciled but held as unmatched deposits (1.1.0). A late deposit applied by the PSP (reason required) moves the transaction to `captured` and delivers `payment.completed` and the completion e-mail as usual; a deposit on a cancelled transaction can only be dismissed as a return (7.3).
+- A re-sent deposit notification (same `eventId`, or identical content) is never counted twice (1.1.0).
 
 #### Konbini (receipt number, payment deadline)
 
 - A **13-digit receipt number** (first digit never 0, unique) and the **store** (`cvsBrand`: `seven` / `lawson` / `familymart` / `ministop` / `other`, default `seven`) are recorded at creation.
 - **Payment deadline** = creation time + the merchant's `cvsDueDays` (default 3 days, 1–30), stored in the same column as the transfer deadline (`transferDueAt`).
-- No new status: `pending` means awaiting payment. The store's notification runs the same `deposit` action as a bank deposit and stamps `cvsPaidAt` on completion.
-- Expiry uses the same cron as bank transfers.
+- The initial status is **`awaiting_payment`** (added in 1.1.0; `pending` was reused before). The store's notification runs the same `deposit` action as a bank deposit and stamps `cvsPaidAt` on completion.
+- Expiry, late deposits, environment mismatches and re-sent notifications are handled exactly as for bank transfers.
 
 #### Common
 
@@ -292,7 +307,7 @@ Merchant accounts are issued by **Wire Pay administrators (PSP operators)** on t
 | Enabled methods (`enabledMethods`) | Any of `credit` / `qr` / `convenience` / `bank` / `other`. Methods not listed answer 400 `method_not_enabled` in the API |
 | Transfer ID length (`transferIdDigits`) | 7 or 8 |
 
-After issuing, the PSP creates API keys (`api_key`) and signing secrets (`signing_secret`) per environment (test / live) on the merchant detail's **API keys** tab. The plaintext is shown once; the database keeps only a SHA-256 hash (signing secrets additionally keep a ciphertext for webhook signing).
+Registration **issues the test-environment signing secret (`wp_test_ss_…`) automatically** and shows its plaintext once on the completion screen (1.1.0). API keys (`api_key`) and the live signing secret (`signing_secret`) are issued by the PSP per environment (test / live) on the merchant detail's **API keys** tab. The plaintext is shown once; the database keeps only a SHA-256 hash (signing secrets additionally keep a ciphertext for webhook signing). Webhooks are not delivered to an environment without a usable signing secret (6.4).
 
 ### 3.2 API keys and signing secrets
 
@@ -339,7 +354,8 @@ Merchants are limited to the following through the portal, the public API and th
 | Create payment links | `/api/v1/payment-links` | Disabling is PSP-dashboard only (chapter 14) |
 | Resend webhooks | Portal | Own deliveries only |
 | Rotate test keys | Portal | Live keys excluded |
-| Read settlement batches / lines, export the invoice PDF | Portal, `/api/merchant-api/settlements` | Invoice for confirmed batches and later only |
+| Read settlement batches / lines, export the invoice PDF | Portal, `/api/merchant-api/settlements` | Invoice for confirmed batches and later only (the invoice number is assigned at confirmation) |
+| Issue receipts (own completed / partially refunded transactions) | Portal transaction detail | Addressee and description; PDF (4.5, 1.1.0) |
 | Read payment-method status and announcements | Portal, `/api/merchant-api/announcements` | |
 | Read own customers | Portal | Personal data unmasked (own data) |
 | Call the API from the sandbox | Portal | Test keys only |
@@ -356,7 +372,8 @@ Operations merchants **cannot** perform (PSP permissions):
 | Issuing / rotating / revoking live API keys, issuing signing secrets | PSP (admin / developer) |
 | Suspending / resuming payment methods, IP restrictions, blacklist | PSP |
 | Generating, confirming and paying settlement batches | PSP (admin / accounting) |
-| Issuing receipts from the dashboard | PSP (admin / accounting / cs). Customers obtain their own receipt through the payment page |
+| Issuing receipts from the PSP dashboard | PSP (admin / accounting / cs). Merchants issue from the portal's transaction detail; customers obtain theirs through the payment page |
+| Matching unmatched deposits, applying late deposits, returns | PSP (admin / accounting) |
 | Reading internal notes (transaction notes) | PSP only (never shown in the portal) |
 
 ### 3.5 PSP roles (reference)
@@ -371,10 +388,14 @@ PSP dashboard roles are `admin` / `accounting` / `cs` / `developer` / `viewer`; 
 | Issue / rotate / revoke API keys and signing secrets | ○ | | | ○ | |
 | Complete / fail / cancel / expire transactions | ○ | | | | |
 | Deposit reconciliation | ○ | ○ | | | |
+| Match unmatched deposits (including late deposits) | ○ | ○ | | | |
 | Approve / reject refunds | ○ | ○ | | | |
 | Generate / confirm / pay settlement batches | ○ | ○ | | | |
 | Resend webhooks (PSP side) | ○ | | | ○ | |
 | Suspend payment methods globally / per merchant | ○ | | ○ (per merchant only) | | |
+| Change IP restriction rules and the allow-list mode | ○ | | | ○ | |
+
+The complete permission matrix is in Appendix E.
 
 ### 3.6 Not implemented / planned (chapter 3)
 
@@ -392,7 +413,8 @@ This chapter describes the **merchant portal (`/merchant/*`)** and the **hosted 
 | Element | Content |
 |---|---|
 | Header | Wire Pay logo (→ `/merchant`), "Merchant portal", **Test / Live** switch (when logged in), "API docs" link (→ `/docs/api`), language switch, logout (`POST /api/merchant-portal/logout` → `/merchant/login`). On phones the switch and the language toggle move to a second row |
-| Sidebar | Site name and merchant ID, the menu below, "Which environment (test / live) to show; matches the API key's environment.", link to the PSP dashboard |
+| Live-mode indication | In live mode a red line at the left of the header and a red stripe "Live mode — showing real data" across the top are shown, and every page title carries a badge with the current mode. Switching test → live shows a warning toast (1.1.0) |
+| Sidebar | Site name and merchant ID, the menu below, "Which environment (test / live) to show; matches the API key's environment.". The link to the PSP dashboard is shown only in the demo (`DEMO_LOGIN_HINT` set) (1.1.0) |
 | Guard | Every page except login requires a merchant session; otherwise redirect to `/merchant/login` |
 
 | Menu | Path | Section |
@@ -418,7 +440,7 @@ Payment-method names come from `CATEGORIES` in `lib/providers/registry.ts` (Cred
 | Inputs | Merchant ID (`MER-00001` format, case-insensitive), password |
 | Action | "Log in" → `POST /api/merchant-portal/login` `{ merchantCode, password }`; success redirects to `/merchant` |
 | Errors | Wrong password 401; 5 consecutive failures 423 ("Too many failed logins; the account is locked. Try again in {minutes} minutes"). Section 3.3 |
-| Other | Already logged in → redirect to `/merchant`. With `DEMO_LOGIN_HINT` set, demo accounts are shown. Footer links to the API docs and the PSP dashboard |
+| Other | Already logged in → redirect to `/merchant`. With `DEMO_LOGIN_HINT` set, demo accounts and a link to the PSP dashboard are shown (never in production). Footer link to the API docs. The inputs are named `merchant-code` (`autocomplete="off"`) / `merchant-password` so browsers do not autofill the PSP operator's login ID (1.1.0) |
 
 ### 4.3 Home (`/merchant`)
 
@@ -427,19 +449,19 @@ An overview of the merchant's account. Everything is read-only; each card links 
 | Card | Aggregation | Link |
 |---|---|---|
 | Completed today | Count and amount of transactions in a sales status (completed / partially refunded / refunded / chargeback) whose `capturedAt` is today (JST) | Transactions |
-| Awaiting payment / authorized | Count of `pending` / `awaiting_transfer` / `authorized` | Transactions |
+| Awaiting payment / authorized | Count of `pending` / `awaiting_transfer` / `awaiting_payment` / `authorized` | Transactions |
 | Refund requests under review | Count of refund requests with status `requested` | Refund requests |
 | Failed / retrying webhooks | Count of deliveries with status `failed` / `abandoned` / `retrying` | Webhook log |
 | Next payout | Earliest scheduled payout date and net payout among batches in `confirmed` / `scheduled`; "None scheduled" when none | That batch / Settlements |
 
-Below: "Recent transactions" (8 newest: order number, method, created, amount, status) and "Announcements" (currently published: title, kind, published date).
+Below: "Recent transactions" (8 newest: order number, method, created, amount, status), "Announcements" (currently published: title, kind, published date) and the current **e-mail notification setting** (per payment / daily digest / none; ask the PSP to change it, 11.1) (1.1.0).
 
 ### 4.4 Transaction list (`/merchant/transactions`)
 
 | Item | Content |
 |---|---|
 | Purpose | Browse the merchant's payment applications and completed payments |
-| Filter | Status (All + 10 statuses); URL `?status=<value>`. Environment from the header switch |
+| Filter | Status (All + 11 statuses); URL `?status=<value>`. Environment from the header switch |
 | Order | Completed transactions first (`order: "sales"`), 20 per page |
 | Columns | Order (+ transaction ID), Customer (name + customer id), Method, Amount (with `−refunded` when any), Status (with an "Overdue" badge when past the deadline), Created |
 | Actions | The order number opens the detail. No CSV export, no operator actions |
@@ -456,6 +478,7 @@ Other merchants' transactions answer 404. Internal notes (the PSP's transaction 
 | Konbini (when a receipt number exists) | Store, receipt number (4-4-5 grouping), deadline, paid at ("Unpaid" until paid) |
 | History | Status history (type → resulting status, time) |
 | Refunds | Refund requests (reason code, time, amount, status) |
+| Receipt (completed / partially refunded transactions) | Addressee (≤120) and description (≤120; blank = previous value → product name → "Goods") then "Issue" → `POST /api/merchant-portal/receipts/{paymentId}` `{ recipientName?, description? }`; the PDF is `GET` on the same path. Number `RC-YYYYMM-00001` (same sequence as the PSP dashboard); reissues keep the number and count +1. `source = merchant`, audit `receipt.issue` (1.1.0) |
 
 **Request refund** (form on the right):
 
@@ -497,13 +520,13 @@ Delivery details (request headers / body, attempt history) are not in the portal
 |---|---|
 | Purpose | Review settlement batches (sales minus fees, refunds and chargebacks) and payout dates |
 | Data | Latest 100 of the selected environment |
-| Columns | Period (→ detail), Gross sales, Net payout (red when negative), Status (Collecting / Confirmed / Scheduled / Paid / Held), Payout date (paid date once paid) |
+| Columns | Period (→ detail), Invoice number (once confirmed), Gross sales, Net payout (red when negative), Status (Collecting / Confirmed / Scheduled / Paid / Held), Payout date (paid date once paid) |
 
 ### 4.9 Settlement detail (`/merchant/settlements/[id]`)
 
 | Section | Fields |
 |---|---|
-| Summary | Gross sales, fee total, refund total, chargeback total, settlement fee (transfer fee), net payout, payout date, paid at |
+| Summary | Invoice number (`INV-YYYYMM-<merchant number>-<2-digit sequence>`, assigned at confirmation; blank while collecting), gross sales, fee total, refund total, chargeback total, settlement fee (transfer fee), net payout, payout date, paid at |
 | Lines | Occurred, kind (payment / refund / chargeback), order (→ transaction detail), method, amount (red when negative), fee |
 | Invoice PDF | While collecting: "Available after the batch is confirmed." Otherwise `GET /api/merchant-portal/settlements/{id}/invoice` opens in a new tab (audit `settlement.invoice_export`) |
 
@@ -591,6 +614,8 @@ Merchants cannot change these themselves; ask the PSP.
 | Settlement | Cycle, payout term, bank account, settlement fee, registration number and address for invoices | 9 |
 | Payment methods | Per-merchant suspension | 10.3 |
 | Webhook log | Recent deliveries to this merchant (details, resend) | 6 |
+| IP restrictions (`/ip-restrictions`) | Allow / block rules for the merchant API and the **allow-list mode** (target "merchant API") | 10.1 |
+| Deposit notification log (`/deposit-notifications`) / Unmatched deposits (`/unmatched-deposits`) | Every bank / konbini notification, and held deposits: match, apply as late deposit, return | 7.3 |
 
 ### 4.18 Not implemented / planned (chapter 4)
 
@@ -609,10 +634,10 @@ This chapter is derived from the OpenAPI 3.0.3 document returned by `GET /api/v1
 |---|---|
 | Base URL | `https://<host>/api/v1` (`servers[0].url`) |
 | Format | JSON requests and responses (`Content-Type: application/json`); amounts are whole yen |
-| Authentication | `Authorization: Bearer <API key>`. Key format `wp_(test|live)_(ak|ss)_[A-Za-z0-9]{32}`. Anything other than `ak` (a signing secret) answers 401 `invalid_api_key` |
+| Authentication | `Authorization: Bearer <API key>`. Key format `wp_(test\|live)_(ak\|ss)_[A-Za-z0-9]{32}`. Anything other than `ak` (a signing secret) answers 401 `invalid_api_key` |
 | Environment | The key's `test` / `live` is the data environment; the endpoints are shared |
-| IP restriction | When the merchant has **block** rules for target "merchant API", a matching caller receives 403 `ip_blocked`. The caller IP is the first hop of `X-Forwarded-For`, else `X-Real-IP` |
-| Rate limit | **60 requests per minute per merchant × environment** (fixed UNIX-minute windows counted in the database). Over the limit: 429 `rate_limited` + `Retry-After` (seconds) + `X-RateLimit-Limit` + `X-RateLimit-Remaining: 0`. Successful responses also carry `X-RateLimit-Limit` / `X-RateLimit-Remaining`. The counter is consumed **after authentication and before business processing**, so requests that fail with 4xx count too |
+| IP restriction | When the merchant has **block** rules for target "merchant API", a matching caller receives 403 `ip_blocked`. When the PSP has switched the **allow-list mode** (merchant API) on, a merchant with at least one allow rule also gets 403 `ip_blocked` (`details.reason = "not_in_allowlist"`) from callers matching none of them; merchants without allow rules are unaffected (1.1.0, 10.1). The caller IP is the first hop of `X-Forwarded-For`, else `X-Real-IP` |
+| Rate limit | **60 requests per minute per merchant × environment** (fixed UNIX-minute windows counted in the database; calls to `/api/merchant-api/*` consume the same budget, 1.1.0). Over the limit: 429 `rate_limited` + `Retry-After` (seconds) + `X-RateLimit-Limit` + `X-RateLimit-Remaining: 0`. Successful responses also carry `X-RateLimit-Limit` / `X-RateLimit-Remaining`. The counter is consumed **after authentication and before business processing**, so requests that fail with 4xx count too |
 | Idempotency | `POST /transactions` accepts an `Idempotency-Key` header (or `idempotencyKey` in the body, 8–128 characters). A retry with the same key returns **the same transaction** (HTTP 201, identical shape) and never creates a duplicate. Keys are unique system-wide (`Payment.idempotencyKey @unique`) |
 | Language | The error `message` follows the `x-lang` header (`ja` / `en`), else `Accept-Language`, default `ja` |
 | CSRF / session | `/api/v1/*` is exempt from the middleware's session and CSRF checks (Bearer only) |
@@ -687,7 +712,7 @@ Header: `Idempotency-Key` (optional, 8–128 chars). When both header and body a
    5. Limits (only when not blacklisted): per transaction → daily → monthly; exceeding records **`failed`** (`failureReason = "limit_exceeded:<per_transaction|daily|monthly>"`) and delivers the webhook `limit.exceeded`.
    6. Customer master upsert (when `customerId` is given).
    7. Row creation. `bank` gets a transfer ID + deadline, `convenience` a receipt number + deadline + store. A uniqueness collision of the transfer ID / receipt number is redrawn once.
-   8. A transaction created `captured` delivers `payment.completed`; `bank` sends the "transfer instructions" e-mail, `convenience` the "konbini payment instructions" e-mail.
+   8. A transaction created `captured` delivers `payment.completed` and the customer's "payment completed" e-mail (1.1.0; not for subscription charges); `bank` sends the "transfer instructions" e-mail, `convenience` the "konbini payment instructions" e-mail. With the merchant's e-mail setting "per payment" the merchant contact is notified too (11.1).
    9. A `failed` transaction feeds repeated-failure detection (blacklist candidates).
 
 Limit hits, blacklist hits and test-card failures all return **HTTP 201 with `status: "failed"`** — not an error response. Check `failureReason`.
@@ -746,7 +771,7 @@ Idempotency-Key: order-2026-00042
 ```
 
 Bank transfer (excerpt): `"status": "awaiting_transfer", "bankTransfer": { "transferId": "4821390", "dueAt": "2026-09-08T03:00:00.000Z", "depositAmount": 0 }`
-Konbini (excerpt): `"status": "pending", "konbini": { "brand": "lawson", "receiptNo": "4102993827716", "dueAt": "2026-09-04T03:00:00.000Z", "paidAt": null }`
+Konbini (excerpt): `"status": "awaiting_payment", "konbini": { "brand": "lawson", "receiptNo": "4102993827716", "dueAt": "2026-09-04T03:00:00.000Z", "paidAt": null }`
 
 #### Errors
 
@@ -768,7 +793,7 @@ Returns the merchant's transactions of the key's environment, newest `createdAt`
 
 | Query | Type | Constraints | Description |
 |---|---|---|---|
-| `status` | string | ≤32 | Exact status filter |
+| `status` | string | ≤32 | Exact status filter (the 11 values of 2.2, including `awaiting_payment`) |
 | `method` | string | `credit` / `qr` / `convenience` / `bank` | Method filter |
 | `from` | string | `YYYY-MM-DD` | Created on or after (JST midnight) |
 | `to` | string | `YYYY-MM-DD` | Created on or before (JST, inclusive) |
@@ -844,12 +869,12 @@ Response (`data`: PaymentLink):
 
 ### 5.8 Merchant API (`/api/merchant-api/*`)
 
-Auxiliary endpoints authenticated with the same API key. IP restrictions and key states behave as in the public API, but **the merchant × environment rate limit is not applied** (only `authenticateMerchantApiKey` runs, without `consumePublicApiRateLimit`). The middleware treats `/api/merchant-api/` as a self-authenticating path, so no per-IP rate limit, CSRF or session check applies either.
+Auxiliary endpoints authenticated with the same API key. IP restrictions (including the allow-list mode) and key states behave as in the public API, and **the rate limit uses the same bucket as the public API** (merchant × environment × minute, 60 per minute together with `/api/v1`; 429 `rate_limited` + `Retry-After` when exceeded, `X-RateLimit-Limit` / `X-RateLimit-Remaining` on responses) (1.1.0; previously unlimited). The middleware treats `/api/merchant-api/` as a self-authenticating path, so no per-IP rate limit, CSRF or session check applies.
 
 | Endpoint | Response `data` |
 |---|---|
 | `GET` / `POST /api/merchant-api/ping` | `{ merchantCode, siteName, mode, kind, keyPrefix, status }`; connectivity / key check |
-| `GET /api/merchant-api/settlements` | `{ merchantCode, mode, settlements: [ { id, periodFrom, periodTo, status, grossAmount, feeAmount, refundAmount, chargebackAmount, settlementFee, netAmount, scheduledAt, paidAt, holdReason, createdAt } ] }` (the key's environment, latest 100) |
+| `GET /api/merchant-api/settlements` | `{ merchantCode, mode, settlements: [ { id, periodFrom, periodTo, status, invoiceNo, grossAmount, feeAmount, refundAmount, chargebackAmount, settlementFee, netAmount, scheduledAt, paidAt, holdReason, createdAt } ] }` (the key's environment, latest 100; `invoiceNo` is assigned at confirmation and null while collecting, 1.1.0) |
 | `GET /api/merchant-api/settlements?id=<batchId>` | `{ batch, lines: [ { kind, method, description, amount, fee, occurredAt } ] }`; other merchants / environments answer 404 |
 | `GET /api/merchant-api/announcements` | `{ merchantCode, announcements: [ { id, kind, title, body, publishFrom, publishUntil, updates } ] }`; published announcements targeting everyone or this merchant |
 
@@ -882,7 +907,7 @@ When a transaction, refund, chargeback or subscription changes state, Wire Pay s
 
 | `event` | When | `status` value | Transaction (`payment_id`) |
 |---|---|---|---|
-| `payment.completed` | The transaction completed (immediate card / QR completion, the PSP's "Complete", an exact / excess deposit, hosted-page completion, matching an unmatched deposit, API re-notify) | `captured` | The transaction |
+| `payment.completed` | The transaction completed (immediate card / QR completion, the PSP's "Complete", an exact / excess deposit, hosted-page completion, matching an unmatched deposit, a late deposit applied through `late_deposit`, API re-notify) | `captured` | The transaction |
 | `payment.failed` | The transaction failed (PSP "Fail", provider webhook) | `failed` | The transaction |
 | `payment.expired` | Expired past the transfer / payment deadline (including the hourly cron) | `expired` | The transaction |
 | `payment.cancelled` | The transaction was cancelled | `cancelled` | The transaction |
@@ -961,10 +986,10 @@ signed_payload = "<X-Timestamp>" + "." + <payload>      # payload: body, or the 
 v1 = hex( HMAC_SHA256( key = signing key, message = signed_payload ) )
 ```
 
-**Signing key** precedence:
+The **signing key** is the merchant's **signing secret** (`wp_<test\|live>_ss_…`) of the same environment (test / live): the **most recently issued** one (`issuedAt` descending) that is `apiKeyUsable` (neither revoked nor expired).
 
-1. The merchant's **signing secret** (`wp_<test|live>_ss_…`) of the same environment (test / live): the **most recently issued** one (`issuedAt` descending) that is `apiKeyUsable` (neither revoked nor expired)
-2. When no signing secret exists, **the merchant password**
+- **No webhook is sent to an environment without a usable signing secret** (fail closed, 1.1.0; earlier versions fell back to the merchant password). The delivery is logged as `failed` with `error: signing_secret_missing`, and the PSP notification centre gets a warning (`webhook.signing_secret_missing`, once per 24 hours per merchant × environment). After a signing secret is issued a manual resend signs and sends it.
+- The test signing secret is issued automatically at merchant registration (3.1); the live one is issued by the PSP at go-live.
 
 Because the key differs per environment, keep both the test and the live signing secret and verify according to the environment of the transaction (※ the payload carries no environment field; notifications for transactions created with a test key are signed with the test secret).
 
@@ -1044,7 +1069,8 @@ With form-urlencoded (POST) the body is `payment_id=…&event=payment.completed&
 | Trigger | **After** the state change is committed (a failing webhook never fails the operation) |
 | Timeout | **10 seconds** (`WEBHOOK_TIMEOUT_MS`). Redirects are not followed (`redirect: "manual"`; a 3xx counts as failure) |
 | Success | HTTP **2xx** |
-| Automatic retries | After a failure (non-2xx, timeout, network error): **1 min → 5 min → 30 min → 2 h → 24 h** (`RETRY_DELAYS_MS`). Due retries are sent by the cron `/api/cron/webhook-retry` at minute 30 of every hour (up to 100 per run) |
+| Automatic retries | After a failure (non-2xx, timeout, network error): **1 min → 5 min → 30 min → 2 h → 24 h** (`RETRY_DELAYS_MS`). Due retries are sent by the cron `/api/cron/webhook-retry` (up to 100 per run; the demo's `vercel.json` runs it once a day at 01:30 UTC so retries are effectively daily, hourly is recommended in production — Specification B 8.4) |
+| No signing key | Deliveries to an environment without a usable signing secret are not sent and are logged as `failed` (`error: signing_secret_missing`) (6.4, 1.1.0) |
 | Abandonment | After **5** failures (`MAX_ATTEMPTS`) the delivery becomes `abandoned` and the PSP notification centre gets a critical notice. A manual resend revives it |
 | Delivery statuses | `pending` / `success` / `retrying` / `failed` / `abandoned` |
 | Records | One `WebhookAttempt` per try (attempt number, response code, first 1 KB of the response body, duration, trigger = `system` / `cron` / `dashboard`) |
@@ -1059,7 +1085,7 @@ With form-urlencoded (POST) the body is `payment_id=…&event=payment.completed&
 | Idempotency | The same `payment_id` + `event` **may arrive more than once** (automatic retry, manual resend, API re-notify). De-duplicate on `payment_id` + `event` |
 | Ordering | Several events may arrive for one transaction (e.g. `payment.completed` → `refund.completed`) and order is not guaranteed. Decide from your own state and `event`, not from `paid_at` / `status` recency |
 | Verification | When in doubt, `GET /api/v1/transactions/{id}` returns the current state |
-| Key management | Keep the per-environment signing secrets safe; during a rotation accept both old and new keys |
+| Key management | Keep the per-environment signing secrets safe; during a rotation accept both old and new keys. Revoking a signing secret without issuing a new one stops deliveries for that environment (6.4) |
 | IP allow list | Wire Pay's source IP is not fixed (serverless). Verify by signature, not IP (**※要確認**: the production egress range depends on the hosting environment) |
 
 ### 6.8 Requesting a resend
@@ -1141,7 +1167,8 @@ sequenceDiagram
   S-->>C: show transfer ID and deadline
   C->>B: transfer (transfer ID prefixed to the payer name)
   alt deposit notification (demo: POST /api/demo/deposit-notify)
-    B->>W: {transferId, amount}
+    B->>W: {eventId?, transferId, amount, mode, payerName?, bankReference?, receivedAt?}
+    Note over W: logged in the deposit notification log — a resend (same eventId / content) answers 200 duplicate and is not re-applied<br/>mode ≠ transaction environment / expired / cancelled → 202, held as an unmatched deposit
   else PSP reconciles manually
     P->>W: transaction detail "Reconcile deposit" {amount}
   end
@@ -1150,15 +1177,24 @@ sequenceDiagram
     W->>R: Webhook payment.completed
     W->>C: e-mail "payment completed"
   else short
-    Note over W: no webhook; listed on "Short / excess deposits" as short
+    Note over W: no webhook — listed on "Short / excess deposits" as short
     P->>C: (PSP action) e-mail "additional deposit request"
   end
-  Note over W: unpaid past the deadline → hourly cron expires it
+  Note over W: unpaid past the deadline → the expiry cron expires it
   W->>R: Webhook payment.expired (on expiry)
+  opt a deposit arrives after expiry (1.1.0)
+    B->>W: deposit notification (transferId matches, transaction is expired)
+    W-->>B: 202 {matched: false, reason: "late_deposit", unmatchedDepositId, paymentId}
+    P->>W: unmatched deposit "Apply as late deposit" {reason} → late_deposit (expired → captured)
+    W->>R: Webhook payment.completed
+    W->>C: e-mail "payment completed"
+  end
 ```
 
 - Deposits without or with a wrong transfer ID are held as "unmatched deposits"; PSP support attaches the correct transfer ID, the same reconciliation runs, and `payment.completed` is delivered on completion. No merchant action is needed.
 - For an excess deposit the PSP files a refund request (reason `duplicate`); `refund.completed` follows approval.
+- **Late deposits** (arriving after the transaction is `expired`) and **environment mismatches** (e.g. a test notification whose transfer ID matches a live transaction) are held as unmatched deposits too (1.1.0). A late deposit applied by the PSP with a reason runs the `late_deposit` transition to `captured`; it completes even when the amount differs and the difference is recorded in `depositDiff`. A deposit on a cancelled transaction cannot be applied; it is dismissed as a return (refund arranged outside the system).
+- A notification the bank re-sends (same `eventId`, or same source / transfer ID / amount / minute of receipt / bank reference) is never counted twice (1.1.0). Every notification is kept in the PSP dashboard's "Deposit notification log".
 
 ### 7.4 Konbini
 
@@ -1171,19 +1207,19 @@ sequenceDiagram
   participant R as Merchant receiver
 
   S->>W: POST /transactions {method: convenience, cvsBrand, customerEmail}
-  W-->>S: 201 {status: "pending", konbini: {brand, receiptNo, dueAt}}
+  W-->>S: 201 {status: "awaiting_payment", konbini: {brand, receiptNo, dueAt}}
   W->>C: e-mail "konbini payment instructions" (store, receipt number, amount, deadline)
   S-->>C: show receipt number and deadline
   C->>K: pay at the counter with the receipt number
-  K->>W: payment notification (demo: POST /api/demo/cvs-notify {receiptNo})
-  Note over W: deposit action (waiting = pending) → captured, cvsPaidAt
+  K->>W: payment notification (demo: POST /api/demo/cvs-notify {eventId?, receiptNo, amount?, mode})
+  Note over W: logged in the deposit notification log (resends are not re-applied)<br/>deposit action (waiting = awaiting_payment) → captured, cvsPaidAt
   W->>R: Webhook payment.completed
   W->>C: e-mail "payment completed"
-  Note over W: unpaid past the deadline → hourly cron expires it → payment.expired
+  Note over W: unpaid past the deadline → the expiry cron expires it → payment.expired<br/>a notification after expiry is held as an unmatched deposit (as in 7.3)
 ```
 
 - The receipt number has 13 digits (displayed 4-4-5, plain in the API). The notification accepts hyphens.
-- A short notification leaves the transaction `pending` with `depositDiff = short` (same handling as bank transfers).
+- A short notification leaves the transaction `awaiting_payment` with `depositDiff = short` (same handling as bank transfers).
 
 ### 7.5 Payment links (hosted payment page)
 
@@ -1204,7 +1240,7 @@ sequenceDiagram
   alt bank
     W-->>C: awaiting_transfer, transfer ID and deadline (then as in 7.3)
   else convenience
-    W-->>C: pending, receipt number and deadline + "Mark as paid at the store (demo)"
+    W-->>C: awaiting_payment, receipt number and deadline + "Mark as paid at the store (demo)"
     C->>W: POST /api/pay/<token>/complete {paymentId} → deposit (actor cvs)
   else credit / qr / other
     W-->>C: authorized + "Complete payment (demo)"
@@ -1470,7 +1506,7 @@ stateDiagram-v2
 | Status | Label | Meaning | Visible to the merchant |
 |---|---|---|---|
 | `collecting` | Collecting | Just generated; the PSP reviews the lines | List / detail (no invoice) |
-| `confirmed` | Confirmed | Amounts fixed, lines immutable | Invoice PDF available; shown as "Next payout" on the home screen |
+| `confirmed` | Confirmed | Amounts fixed, lines immutable. **The invoice number is assigned at confirmation** (1.1.0) | Invoice number and invoice PDF available; shown as "Next payout" on the home screen |
 | `scheduled` | Scheduled | To be paid on the scheduled date | Same |
 | `paid` | Paid | Paid (`paidAt`) | Paid date |
 | `held` | Held | Payout stopped, e.g. during a dispute (`holdReason`) | Hold reason (`holdReason` in the API) |
@@ -1482,6 +1518,7 @@ stateDiagram-v2
 | Period | `periodFrom` to `periodTo − 1 day` (the screen shows the inclusive end; `periodTo` in the API is exclusive) |
 | Gross sales / fee total / refund total / chargeback total / settlement fee / net payout | 9.5 |
 | Scheduled payout / paid at | `scheduledAt` / `paidAt` |
+| Invoice number | `invoiceNo` (once confirmed; null while collecting). Searchable in the PSP's global search |
 | Lines | Occurred, kind, order (→ transaction detail), method, amount (negative for refunds / chargebacks), fee |
 
 ### 9.8 Qualified invoice PDF
@@ -1492,7 +1529,7 @@ A qualified invoice PDF from the PSP to the merchant for the **payment fees** of
 |---|---|
 | Availability | Batches at `confirmed` / `scheduled` / `paid` / `held`. Collecting → 409 `settlement_not_confirmed` |
 | Paths | Portal settlement detail (`GET /api/merchant-portal/settlements/{id}/invoice`), PSP dashboard (permission `invoice.export` = admin / accounting) |
-| Invoice number | `INV-YYYYMM-<merchant number>` (the period's start month; the merchant number is the merchant ID without `MER-`) |
+| Invoice number | `INV-YYYYMM-<merchant number>-<2-digit sequence>` (the period's start month; the merchant number is the merchant ID without `MER-`; the sequence counts the merchant's batches confirmed in that month). **Assigned at confirmation and stored in `SettlementBatch.invoiceNo` (unique)**; the PDF prints the stored value. An unnumbered batch answers 409 `invoice_no_missing` (1.1.0; the former `INV-YYYYMM-<merchant number>` collided when several batches of one month existed under semi-monthly / weekly cycles) |
 | Issuer | The PSP's global settings (name, registration number `T` + 13 digits, address, phone) |
 | Recipient | The merchant's company name, address and registration number (settlement tab) |
 | Lines | Fees per payment method (count, sales base, tax category, tax-inclusive amount) and the transfer fee |
@@ -1518,8 +1555,14 @@ For merchants with an agent, `floor(net payout × the agent's fee rate %)` is ag
 
 | Target (`target`) | Content |
 |---|---|
-| `merchant_api` (merchant API) | Per merchant. Callers matching a **block (`deny`)** rule receive 403 `ip_blocked` on `/api/v1/*` and `/api/merchant-api/*`. Allow (`allow`) rules are informational only and never block non-matching callers |
-| `admin` (dashboard) | For the PSP dashboard; not relevant to merchants |
+| `merchant_api` (merchant API) | Per merchant. Callers matching a **block (`deny`)** rule receive 403 `ip_blocked` on `/api/v1/*` and `/api/merchant-api/*`. Allow (`allow`) rules are enforced when the PSP switches the **allow-list mode** on (below); otherwise they are informational |
+| `admin` (dashboard) | For the PSP dashboard; not relevant to merchants (has the same allow-list mode) |
+
+**Allow-list mode** (`GlobalSetting.ipAllowlistMerchantApi`, default off, 1.1.0):
+
+- When on, a merchant with at least one enabled allow rule gets 403 `ip_blocked` (`details.reason = "not_in_allowlist"`) from callers that match none of its allow rules. Merchants without allow rules are unaffected. Block rules always take precedence.
+- The mode cannot be switched on without at least one enabled allow rule for the target (400 `allowlist_no_rules`). For the dashboard target (`admin`) the operator's own address must also be covered (400 `ip_self_block`), and while the mode is on, changes to allow rules that would drop the operator's own address are refused.
+- Merchant action: where the allow-list mode is on, have all egress IPs of your API servers registered by the PSP before connecting.
 
 - Rules are a single IPv4 address (`203.0.113.10`) or CIDR (`198.51.100.0/24`, `/0`–`/32`). IPv6 is not evaluated (never blocked; the IPv4-mapped form `::ffff:a.b.c.d` is treated as IPv4).
 - The caller IP is the first hop of `X-Forwarded-For`, else `X-Real-IP`.
@@ -1590,7 +1633,7 @@ The PSP can temporarily stop **new transactions only** for a payment method, e.g
 |---|---|
 | Notification URL | https only |
 | API key | Bearer only; no query-string keys |
-| Rate limits | Public API 60 / minute (merchant × environment). Portal mutation APIs 60 / minute per IP, login 10 / minute |
+| Rate limits | Public API and merchant API together 60 / minute (merchant × environment). Portal mutation APIs 60 / minute per IP, login 10 / minute |
 | CSRF | Portal mutation APIs require a same-origin `Origin` / `Referer` and `X-Requested-With: fetch` (browser use only) |
 | Demo caps | 1,000 transactions, 200 merchants, 20 API keys per merchant, etc. (`DEMO_LIMITS`); 403 `demo_limit` when reached |
 | Cookie | Merchant session `wirepay.merchant`: `Path=/; HttpOnly; SameSite=Lax; Max-Age=43200`, plus `Secure` in production (`NODE_ENV=production`) |
@@ -1609,13 +1652,15 @@ This chapter covers notifications other than webhooks: **e-mails to customers an
 
 ### 11.1 The three e-mail notification settings (merchant setting `emailNotification`)
 
-| Value | Label | Meaning |
-|---|---|---|
-| `per_payment` | Per payment | Setting value for a mail per payment |
-| `daily` | Daily digest | Setting value for one digest per day |
-| `none` | None | No notification |
+Merchant-facing payment mail follows the merchant setting `emailNotification` and goes to the **contact e-mail (`Merchant.email`)** (implemented in 1.1.0; the statement e-mail `statementEmail` is used for settlement matters only).
 
-The value is stored on the merchant (`Merchant.emailNotification`) and displayed / edited on the PSP dashboard's merchant list, detail and form, but **at the target commit no code reads it to decide whether or how often to send mail** (`lib/email/*` never reads `emailNotification`, and no transaction mail is sent to merchants). It is a reserved setting for a future merchant-facing payment notification mail (14.4).
+| Value | Label | What is sent (template) |
+|---|---|---|
+| `per_payment` | Per payment | `merchant_payment_notice` (order number, amount, method, completed at, transaction ID) every time a transaction becomes `captured` — immediate completion, PSP "Complete", deposit reconciliation, late deposits and subscription charges alike |
+| `daily` | Daily digest | The cron `/api/cron/merchant-daily-summary` at 09:00 JST sends one `merchant_daily_summary` per merchant × environment for **the previous day 0:00–24:00 (JST)**: completed count and amount, breakdown by method, failed count, expired count. Nothing is sent on a day with no transactions, and a re-run never duplicates a day |
+| `none` | None | Nothing |
+
+The current setting is shown on the portal home screen (ask the PSP to change it). In the demo the mail is only logged, as in 11.2.
 
 ### 11.2 E-mails to customers
 
@@ -1625,7 +1670,7 @@ For transactions with a customer e-mail (`customerEmail`), mails are produced on
 |---|---|---|
 | `transfer_guide` transfer instructions | Bank-transfer transaction created | Amount, transfer ID, deadline, product |
 | `cvs_guide` konbini payment instructions | Konbini transaction created | Store, receipt number (4-4-5), amount, deadline |
-| `payment_completed` payment completed | The transaction completed through `capture` or an exact / excess `deposit` (PSP "Complete", hosted-page completion, reconciliation / deposit notification). **Not sent for transactions that are `captured` at creation (`autoCapture: true` credit / QR)** — `createTransaction` does not call the completion hook | Order number, amount, transaction ID |
+| `payment_completed` payment completed | The transaction completed: `capture`, an exact / excess `deposit`, or a late deposit `late_deposit` (PSP "Complete", hosted-page completion, reconciliation / deposit notification, matching an unmatched deposit). **Also sent for transactions that are `captured` at creation (`autoCapture: true` credit / QR)** (1.1.0; subscription charges are excluded because they use the `subscription_*` templates) | Order number, amount, transaction ID |
 | `refund_completed` refund completed | A refund request was approved | Refund amount, order number, transaction ID |
 | `deposit_short` additional deposit request | The PSP marks a short deposit as "customer notified" | Transfer ID, shortfall, amount due, deadline |
 | `subscription_failed` | A recurring charge failed (retry pending) | Plan, amount, retry date |
@@ -1633,7 +1678,7 @@ For transactions with a customer e-mail (`customerEmail`), mails are produced on
 
 - **The demo does not send mail**; it records it in the send log (PSP dashboard "E-mail log") as "demo (not sent)" (`EMAIL_PROVIDER=log`, default). Connecting a real provider is a PSP-side configuration.
 - Disabled templates produce no mail.
-- The merchant-facing `statement` (settlement statement) is a manual-use text; nothing sends it automatically.
+- Merchant-facing mail: the two templates of 11.1 (`merchant_payment_notice` / `merchant_daily_summary`) are sent automatically; `statement` (settlement statement) is a manual-use text that nothing sends automatically.
 
 ### 11.3 Announcements, maintenance and incidents
 
@@ -1649,7 +1694,7 @@ For transactions with a customer e-mail (`customerEmail`), mails are produced on
 
 ### 11.4 The PSP notification centre (reference)
 
-Operator notifications (abandoned webhooks, method suspension, limit hits, refund requests, subscription failures, daily overdue digests, blacklist candidates, etc. — 15 kinds) go to the PSP dashboard's notification centre and to e-mail / Slack. Merchants do not receive them, but knowing which ones are triggered by merchant activity helps when contacting the PSP.
+Operator notifications (abandoned webhooks, method suspension, limit hits, refund requests, subscription failures, daily overdue digests, blacklist candidates, etc. — 17 kinds) go to the PSP dashboard's notification centre and to e-mail / Slack. Merchants do not receive them, but knowing which ones are triggered by merchant activity helps when contacting the PSP.
 
 | PSP notification | Trigger |
 |---|---|
@@ -1657,11 +1702,13 @@ Operator notifications (abandoned webhooks, method suspension, limit hits, refun
 | `limit.exceeded` | The merchant's limit was exceeded |
 | `refund.requested` | A refund request from the merchant |
 | `transfer.overdue` / `cvs.overdue` | Overdue transfers / konbini payments (daily) |
+| `deposit.late` | Unprocessed deposits that arrived after expiry / cancellation (daily, 1.1.0) |
+| `webhook.signing_secret_missing` | A merchant webhook that could not be sent for lack of a signing secret (once per 24 hours per merchant × environment, 1.1.0) |
 | `blacklist.candidate` | Repeated-failure detection |
 
 ### 11.5 Not implemented / planned (chapter 11)
 
-- Merchant-facing mail driven by the "e-mail notification setting" is not implemented (the value is only stored).
+- Merchants cannot edit the wording of the mail sent to them (templates are edited by the PSP).
 - No automatic statement mail and no webhook / e-mail delivery of announcements.
 - A real mail provider must be added to `lib/email/send.ts`.
 
@@ -1695,7 +1742,9 @@ In the test environment (`wp_test_ak_` key), sending one of these numbers in `ca
 |---|---|
 | Konbini | (a) PSP dashboard transaction detail "Reconcile deposit", (b) demo notification API `POST /api/demo/cvs-notify`, (c) the payment page's "Mark as paid at the store (demo)" |
 | Bank transfer | (a) PSP dashboard "Reconcile deposit" (short / excess reproducible), (b) demo notification API `POST /api/demo/deposit-notify` |
-| Expiry | Wait for the hourly cron, or the PSP dashboard's "Expire" (only after the deadline) |
+| Expiry | Wait for the expiry cron (`/api/cron/expire-transfers`), or the PSP dashboard's "Expire" (only after the deadline) |
+| Late deposit / environment mismatch | Calling the demo deposit API with an expired transfer ID, or with a `mode` that differs from the transaction's environment, answers 202 and holds the deposit as unmatched. On the PSP dashboard's "Unmatched deposits" it can be applied as a late deposit (reason required) or dismissed |
+| Re-sent notification | Sending the same `eventId` twice answers 200 `{ duplicate: true }` the second time and applies nothing |
 
 ### 12.3 Demo endpoints
 
@@ -1703,9 +1752,11 @@ The demo deposit APIs are protected by the **PSP-side environment variable `DEPO
 
 | Endpoint | Request | Response |
 |---|---|---|
-| `POST /api/demo/deposit-notify` | `Authorization: Bearer <DEPOSIT_NOTIFY_SECRET>`, `{ transferId, amount, payerName?, bankReference?, receivedAt?, mode? }` | Exact / excess: 200 `{ matched: true, status: "captured", depositDiff: null \| "excess", completed: true, … }`; short: 200 `{ status: "awaiting_transfer", depositDiff: "short", completed: false }`; unknown transfer ID: **202** `{ matched: false, unmatchedDepositId }` (recorded as an unmatched deposit); not awaiting: 409 `invalid_transition` |
-| `POST /api/demo/cvs-notify` | Same Bearer, `{ receiptNo (13 digits, hyphens allowed), amount? }` | 200 `{ receiptNo, paymentId, status, depositDiff, completed }`; unknown: 404 `receipt_not_found` |
+| `POST /api/demo/deposit-notify` | `Authorization: Bearer <DEPOSIT_NOTIFY_SECRET>`, `{ eventId?, transferId, amount, mode, payerName?, bankReference?, receivedAt? }`. **`mode` (`test` / `live`) is mandatory** (missing → 400 `invalid_input`, `fieldErrors.mode = "required"`); `eventId` is an optional de-duplication key of ≤128 characters (1.1.0) | Exact / excess: 200 `{ matched: true, notificationId, notificationNo, duplicate: false, status: "captured", depositDiff: null \| "excess", completed: true, … }`; short: 200 `{ status: "awaiting_transfer", depositDiff: "short", completed: false }`; unknown transfer ID / environment mismatch / expired / cancelled: **202** `{ matched: false, reason: "not_found" \| "mode_mismatch" \| "late_deposit" \| "cancelled_deposit", unmatchedDepositId, paymentId }` (held as an unmatched deposit); a resend (same `eventId`, or identical content): 200 `{ duplicate: true, notificationId, paymentId }` without re-applying; completed etc.: 409 `invalid_transition` |
+| `POST /api/demo/cvs-notify` | Same Bearer, `{ eventId?, receiptNo (13 digits, hyphens allowed), amount?, receivedAt?, mode }` (`mode` mandatory) | 200 `{ receiptNo, paymentId, status, depositDiff, completed, notificationId, … }`; environment mismatch / expired / cancelled: 202 (as above); unknown: 404 `receipt_not_found`; resend: 200 `{ duplicate: true }` |
 | `GET` / `POST /api/demo/webhook-receiver?result=ok\|error\|timeout` | None | Simulated webhook receiver: `ok` = 200 (echoes the request), `error` = 500, `timeout` = waits 12 seconds. The seeded merchants' notification URL points here |
+
+Every deposit notification (applied / duplicate / unmatched / rejected) is recorded in the PSP dashboard's "Deposit notification log" (`/deposit-notifications`, number `DN-00001`) and linked from the transaction detail's "Related deposit notifications / unmatched deposits" (1.1.0). The full contract is in Specification B, chapter 3.
 
 ### 12.4 Using the sandbox console
 
@@ -1768,7 +1819,7 @@ Items a merchant (or downstream PSP / wallet) confirms before going live. Sectio
 - [ ] `POST /api/v1/transactions` sends an `Idempotency-Key` and retries with the same key on 5xx / network failure (5.1)
 - [ ] The code branches on the response `status` and explains `failureReason` to the user when `failed` (5.3)
 - [ ] `bank`: `bankTransfer.transferId` and `dueAt` are shown to the customer with "prefix the transfer ID to the payer name" (7.3)
-- [ ] `convenience`: `konbini.receiptNo` (shown 4-4-5), `brand` and `dueAt` are shown to the customer (7.4)
+- [ ] `convenience`: `konbini.receiptNo` (shown 4-4-5), `brand` and `dueAt` are shown to the customer, and `status` `awaiting_payment` is treated as "awaiting payment" (7.4)
 - [ ] `credit` / `qr`: the `autoCapture` policy is decided; with authorization only, the PSP completion procedure is agreed (7.2)
 - [ ] 429 `rate_limited` is retried after `Retry-After` (5.1)
 - [ ] The 9 test cards were exercised: success, authorized only, each failure (12.1)
@@ -1780,6 +1831,7 @@ Items a merchant (or downstream PSP / wallet) confirms before going live. Sectio
 - [ ] `X-Timestamp` + `X-Signature` are verified with HMAC-SHA256 over the **raw body (or the GET query string)** in constant time (6.4)
 - [ ] Notifications whose timestamp is off by 5 minutes or more are rejected (6.4)
 - [ ] Both the test and the live signing secret can verify (6.4)
+- [ ] The portal's "API keys" shows a usable signing secret for each environment (no webhook is sent to an environment without one) (6.4)
 - [ ] Processing is **idempotent** on `payment_id` + `event` and order-independent (6.7)
 - [ ] 2xx is returned within 10 seconds (heavy work asynchronous) (6.6)
 - [ ] Every event (`payment.completed` / `payment.failed` / `payment.expired` / `payment.cancelled` / `refund.completed` / `chargeback.opened` / `limit.exceeded` / `subscription.*`) gets a 2xx, and unknown events are ignored safely (6.1)
@@ -1792,6 +1844,7 @@ Items a merchant (or downstream PSP / wallet) confirms before going live. Sectio
 - [ ] Settlement batches / lines (portal, `/api/merchant-api/settlements`) and the invoice PDF were checked (9.7, 9.8)
 - [ ] A way to read announcements / incidents (portal or `GET /api/merchant-api/announcements`) is chosen (11.3)
 - [ ] Customer mail texts (transfer, konbini, completion, refund) were reviewed with the PSP (11.2)
+- [ ] Agreed the merchant e-mail notification setting (per payment / daily digest / none) and its recipient (contact e-mail) with the PSP (11.1)
 - [ ] The personal-data retention (default 24 months) and the effect of anonymisation are understood (10.5)
 
 ### 13.6 Switching to live
@@ -1799,6 +1852,7 @@ Items a merchant (or downstream PSP / wallet) confirms before going live. Sectio
 - [ ] Switched to the live key and no test card numbers are sent (no `test_card_in_live`) (12.1)
 - [ ] Transactions, webhooks and settlements were checked with the header switch set to "Live" (1.3)
 - [ ] Webhook verification works with the live signing secret (6.4)
+- [ ] If the allow-list mode is on, every egress IP of the live API servers is registered as an allow rule (10.1)
 
 ---
 
@@ -1842,7 +1896,6 @@ A consolidated list of the items scattered at the chapter ends. None of them exi
 
 | Item | Status |
 |---|---|
-| Merchant mail driven by the "e-mail notification setting" | Only the value is stored |
 | Real mail delivery | `EMAIL_PROVIDER=log` records only |
 | Automatic settlement generation, payout API, automatic statement mail | None |
 | Webhooks for refund rejection and chargeback won / lost / confirmed | None |
@@ -1856,6 +1909,8 @@ A consolidated list of the items scattered at the chapter ends. None of them exi
 | IPv6 IP restrictions | Not evaluated |
 | Fixed webhook egress IP | None (verify by signature) |
 
+Items removed from this list because 1.1.0 implemented them: merchant mail driven by the e-mail notification setting (11.1), receipts issued from the portal (4.5), the merchant API rate limit (5.8), de-duplication of deposit notifications and holding of late deposits (7.3), fail-closed webhook signing (6.4), enforcement of IP allow rules (10.1).
+
 ---
 
 ## Appendix A: Error codes
@@ -1867,7 +1922,7 @@ Error codes a merchant may receive. Response format: 5.1.
 | code | HTTP | Meaning |
 |---|---|---|
 | `invalid_api_key` | 401 | Missing, malformed, revoked or expired key, or a signing secret used for authentication |
-| `ip_blocked` | 403 | Matches the merchant's IP block rule |
+| `ip_blocked` | 403 | Refused by the merchant's IP restrictions (a block rule, or no matching allow rule while the allow-list mode is on; `details.reason` = `deny` / `not_in_allowlist`) |
 | `invalid_input` | 400 | Validation failed; `details.fieldErrors` names the fields |
 | `invalid_json` | 400 | Body is not JSON |
 | `test_card_in_live` | 400 | Test card number in live |
@@ -1898,6 +1953,8 @@ The shared handler may additionally return `conflict` (409, uniqueness violation
 | `live_key_rotation` | 403 | Rotating a live key |
 | `key_not_active` | 409 | Rotating a revoked / expired key |
 | `settlement_not_confirmed` | 409 | Invoice PDF of a collecting batch |
+| `invoice_no_missing` | 409 | Batch without an invoice number (batches confirmed before 1.1.0 are numbered by `npm run db:backfill`) |
+| `receipt_not_completed` | 409 | Receipt for a transaction that is not completed / partially refunded (portal receipt issue) |
 
 ### A.3 Hosted payment page APIs (`/api/pay/*`)
 
@@ -1916,15 +1973,16 @@ The shared handler may additionally return `conflict` (409, uniqueness violation
 |---|---|---|
 | `unauthorized` | 401 | `DEPOSIT_NOTIFY_SECRET` mismatch |
 | `not_found` | 404 | Secret unset in production (disabled) |
-| `receipt_not_found` | 404 | Unknown receipt number |
-| `invalid_transition` | 409 | Deposit on a transaction not awaiting transfer / payment |
+| `invalid_input` | 400 | Missing `mode` (`fieldErrors.mode = "required"`), invalid `amount` or `receivedAt`, etc. |
+| `receipt_not_found` | 404 | Unknown receipt number (konbini) |
+| `invalid_transition` | 409 | Deposit on a transaction that is completed or otherwise not awaiting transfer / payment. Deposits on expired / cancelled transactions answer 202 and are held as unmatched instead (1.1.0) |
 | `not_bank_transfer` | 400 | Transaction with neither transfer ID nor receipt number |
 
 ## Appendix B: Statuses
 
 | Object | Values (label ja / en) |
 |---|---|
-| Transaction (`Payment.status`) | The 10 values of 2.2 |
+| Transaction (`Payment.status`) | The 11 values of 2.2 (including `awaiting_payment`) |
 | Refund request (`Refund.status`) | `requested` 申請中 / Requested, `approved` 承認 / Approved, `rejected` 否認 / Rejected, `processing` 処理中 / Processing, `completed` 完了 / Completed, `failed` 失敗 / Failed |
 | Refund kind (`Refund.kind`) | `full`, `partial` |
 | Refund reason (`reasonCode`) | `customer` customer request, `defect` defective goods, `duplicate` duplicate payment, `other` |
@@ -1939,6 +1997,9 @@ The shared handler may additionally return `conflict` (409, uniqueness violation
 | Short / excess deposit (`Payment.depositDiff` / `depositDiffStatus`) | `short` / `excess`; follow-up `open`, `refund_arranged`, `notified`, `resolved` |
 | Announcement (`Announcement.status` / `kind`) | `draft`, `published`, `ended`; kinds `notice` / `maintenance` / `incident`; incident updates `occurred` / `investigating` / `resolved` |
 | Customer | `anonymizedAt` set = anonymised |
+| Deposit notification (`DepositNotification.result`) | `applied`, `duplicate`, `unmatched`, `rejected`; `resultReason`: `mode_mismatch` / `late_deposit` / `cancelled_deposit` / `not_found` / `no_id` / `invalid_status` / `apply_failed` |
+| Unmatched deposit (`UnmatchedDeposit.status` / `reason` / `dismissKind`) | `unmatched`, `matched`, `dismissed`; reasons `late_deposit` / `cancelled_deposit` / `mode_mismatch`; dismissal kinds `returned` (return arranged) / `other` |
+| Receipt origin (`Receipt.source`) | `dashboard` PSP dashboard, `customer` payment page, `merchant` merchant portal |
 
 ## Appendix C: Webhook events
 
@@ -1977,11 +2038,138 @@ Section 6.1 is authoritative. Event names are `MERCHANT_WEBHOOK_EVENTS` in `lib/
 | `/settlements`, `/settlements/[id]` | Settlements |
 | `/webhook-logs`, `/webhook-logs/[id]` | Webhook log (detail, resend) |
 | `/chargebacks`, `/chargebacks/new`, `/chargebacks/[id]` | Chargebacks |
-| `/unmatched-deposits`, `/deposit-diffs` | Unmatched deposits / Short & excess deposits |
+| `/unmatched-deposits`, `/deposit-diffs`, `/deposit-notifications` | Unmatched deposits (match, late deposit, return) / Short & excess deposits / Deposit notification log |
 | `/payment-links`, `/payment-links/[id]` | Payment links (disable, QR) |
 | `/subscriptions`, `/subscriptions/[id]` | Subscriptions |
 | `/payment-method-controls` | Payment method suspension (global) |
-| `/ip-restrictions`, `/blacklist` | IP restrictions / Blacklist |
+| `/ip-restrictions`, `/blacklist` | IP restrictions (rules, allow-list mode) / Blacklist |
 | `/announcements` | Announcements |
 | `/customers`, `/customers/[id]` | Customers (masked, anonymisation) |
 | `/email-templates`, `/email-logs` | E-mail templates / E-mail log |
+
+## Appendix E: Permission matrix (complete)
+
+Permissions per PSP dashboard role (`admin` / `accounting` / `cs` / `developer` / `viewer`). **The single source is `PERMISSIONS` in `lib/role.ts`**; the table below is generated by `npx tsx scripts/gen-permissions.ts` (never edited by hand). The rows that concern merchants directly are excerpted in 3.5. Anonymous visitors can only read; with `DEMO_READONLY=1` deletions and provider updates answer 403 for everyone.
+
+<!-- permissions:start -->
+| Feature | Action | admin | accounting | cs | developer | viewer |
+|---|---|---|---|---|---|---|
+| Merchants | View | ○ | ○ | ○ | ○ | ○ |
+| Merchants | Create | ○ |  | ○ |  |  |
+| Merchants | Update | ○ |  | ○ |  |  |
+| Merchants | Reveal password | ○ |  |  |  |  |
+| Merchants | Regenerate password | ○ |  |  |  |  |
+| Contract & fees / limits / deadlines / settlement settings | View | ○ | ○ | ○ | ○ | ○ |
+| Contract & fees / limits / deadlines / settlement settings | Update | ○ | ○ |  |  |  |
+| API keys and signing secrets | View | ○ | ○ | ○ | ○ | ○ |
+| API keys and signing secrets | Issue | ○ |  |  | ○ |  |
+| API keys and signing secrets | Rotate | ○ |  |  | ○ |  |
+| API keys and signing secrets | Revoke | ○ |  |  | ○ |  |
+| Agents | View | ○ | ○ | ○ | ○ | ○ |
+| Agents | Create | ○ |  | ○ |  |  |
+| Agents | Update | ○ |  | ○ |  |  |
+| Transactions | View | ○ | ○ | ○ | ○ | ○ |
+| Transactions | Create | ○ |  | ○ |  |  |
+| Transactions | Complete / fail / cancel / expire | ○ |  |  |  |  |
+| Transactions | Reconcile deposit | ○ | ○ |  |  |  |
+| Transactions | API re-notify | ○ |  | ○ | ○ |  |
+| Transactions | Simulate webhook | ○ |  |  | ○ |  |
+| Transaction notes | View | ○ | ○ | ○ | ○ | ○ |
+| Transaction notes | Create | ○ | ○ | ○ | ○ |  |
+| Transaction notes | Edit own notes | ○ | ○ | ○ | ○ |  |
+| Transaction notes | Delete | ○ |  |  |  |  |
+| Transaction notes | Pin | ○ |  | ○ |  |  |
+| Unmatched deposits | View | ○ | ○ | ○ | ○ | ○ |
+| Unmatched deposits | Register | ○ | ○ | ○ |  |  |
+| Unmatched deposits | Match | ○ | ○ |  |  |  |
+| Unmatched deposits | Dismiss | ○ | ○ | ○ |  |  |
+| Deposit notification log | View | ○ | ○ | ○ | ○ | ○ |
+| Deposit differences | View | ○ | ○ | ○ | ○ | ○ |
+| Deposit differences | Update | ○ | ○ | ○ |  |  |
+| Refunds | View | ○ | ○ | ○ | ○ | ○ |
+| Refunds | Request | ○ |  | ○ |  |  |
+| Refunds | Force past the window | ○ |  |  |  |  |
+| Refunds | Approve / reject | ○ | ○ |  |  |  |
+| Receipts | View | ○ | ○ | ○ | ○ | ○ |
+| Receipts | Issue | ○ | ○ | ○ |  |  |
+| Settlement batches | View | ○ | ○ | ○ | ○ | ○ |
+| Settlement batches | Generate | ○ | ○ |  |  |  |
+| Settlement batches | Confirm / schedule / pay / hold / release | ○ | ○ |  |  |  |
+| Settlement batches | Delete | ○ | ○ |  |  |  |
+| Invoices | Export | ○ | ○ |  |  |  |
+| Agent fees | View | ○ | ○ | ○ | ○ | ○ |
+| Reports | View | ○ | ○ | ○ | ○ | ○ |
+| Webhook deliveries | View | ○ | ○ | ○ | ○ | ○ |
+| Webhook deliveries | Resend | ○ |  |  | ○ |  |
+| Chargebacks | View | ○ | ○ | ○ | ○ | ○ |
+| Chargebacks | Create | ○ | ○ |  |  |  |
+| Chargebacks | Update | ○ | ○ |  |  |  |
+| Blacklist | View | ○ | ○ | ○ | ○ | ○ |
+| Blacklist | Create | ○ |  | ○ |  |  |
+| Blacklist | Update | ○ |  | ○ |  |  |
+| Detection rule | View | ○ | ○ | ○ | ○ | ○ |
+| Detection rule | Update | ○ |  | ○ |  |  |
+| E-mail templates | View | ○ | ○ | ○ | ○ | ○ |
+| E-mail templates | Update | ○ |  |  | ○ |  |
+| E-mail log | View | ○ | ○ | ○ | ○ | ○ |
+| Announcements | View | ○ | ○ | ○ | ○ | ○ |
+| Announcements | Create | ○ |  | ○ |  |  |
+| Announcements | Update | ○ |  | ○ |  |  |
+| Announcements | Publish / end / add update | ○ |  | ○ |  |  |
+| Billing plans | View | ○ | ○ | ○ | ○ | ○ |
+| Billing plans | Create | ○ |  | ○ |  |  |
+| Billing plans | Update | ○ |  | ○ |  |  |
+| Subscriptions | View | ○ | ○ | ○ | ○ | ○ |
+| Subscriptions | Create | ○ |  | ○ |  |  |
+| Subscriptions | Charge / pause / resume / cancel | ○ |  | ○ |  |  |
+| Demo charge failure rate | View | ○ | ○ | ○ | ○ | ○ |
+| Demo charge failure rate | Update | ○ |  |  | ○ |  |
+| Payment links | View | ○ | ○ | ○ | ○ | ○ |
+| Payment links | Create | ○ |  | ○ |  |  |
+| Payment links | Disable | ○ |  | ○ |  |  |
+| IP restrictions | View | ○ | ○ | ○ | ○ | ○ |
+| IP restrictions | Create | ○ |  |  | ○ |  |
+| IP restrictions | Update | ○ |  |  | ○ |  |
+| IP restrictions | Delete | ○ |  |  | ○ |  |
+| Payment providers | View | ○ | ○ | ○ | ○ | ○ |
+| Payment providers | Create | ○ |  |  | ○ |  |
+| Payment providers | Update | ○ |  |  | ○ |  |
+| Payment providers | Delete | ○ |  |  | ○ |  |
+| Payment providers | Connection test | ○ |  |  | ○ |  |
+| Payment method suspension | View | ○ | ○ | ○ | ○ | ○ |
+| Payment method suspension | Suspend globally | ○ |  |  |  |  |
+| Payment method suspension | Suspend per merchant | ○ |  | ○ |  |  |
+| Admin accounts | View | ○ |  |  |  |  |
+| Admin accounts | Create | ○ |  |  |  |  |
+| Admin accounts | Update | ○ |  |  |  |  |
+| Admin accounts | Temporary password / 2FA reset | ○ |  |  |  |  |
+| Own account | Update | ○ | ○ | ○ | ○ | ○ |
+| Audit log | View | ○ | ○ | ○ | ○ | ○ |
+| Global search (admins) | View | ○ |  |  |  |  |
+| Global settings | View | ○ |  |  |  |  |
+| Global settings | Update | ○ |  |  |  |  |
+| Customers | View | ○ | ○ | ○ | ○ | ○ |
+| Customers | Anonymise | ○ |  |  |  |  |
+| CSV export | Export | ○ | ○ | ○ | ○ |  |
+| Personal data | Unmask | ○ |  | ○ |  |  |
+| API docs | View | ○ | ○ | ○ | ○ | ○ |
+<!-- permissions:end -->
+
+## Appendix F: Frequent questions → where to look
+
+| Question | Check first | Sections |
+|---|---|---|
+| A deposit is not reflected (bank transfer / konbini) | The transaction's status and deadline (`expired` means the deposit is held as a late deposit among the unmatched deposits). Whether the transfer ID was written correctly. Whether the notification's `mode` matches the transaction's environment. Whether the PSP dashboard's "Deposit notification log" / "Unmatched deposits" show the notification | 2.4, 7.3, 7.4, 12.3, Specification B 3.2–3.5 / 5.3 |
+| Webhooks do not arrive | Status and response in the portal's "Webhook log" (`failed` / `abandoned`; `error: signing_secret_missing` means no signing secret is issued). Whether the notification URL is https and answers 2xx within 10 seconds. Whether you verify with the secret of the right environment (test / live). Resend from the log | 4.7, 6.4, 6.6, 6.7, 6.8 |
+| A refund is refused | Whether the transaction is `captured` / `partially_refunded` (`authorized` is cancelled, `chargeback` cannot be refunded). The refundable balance (amount − refunded − pending requests) and the refund window (`refundWindowDays`). Past the window only the PSP's admin can force it | 5.6, 8.1, 8.2 |
+| The settlement amount looks wrong | The line rules (sales by `capturedAt`, refunds by `completedAt`, chargebacks by `resolvedAt` within the period), the contract rate in force at completion, the settlement fee, and separate batches per environment (test / live). Invoice tax is tax-inclusive, per rate, with the configured rounding | 9.2–9.5, 9.8 |
+| The live key answers 400 | `test_card_in_live` (test card number in live), `method_not_enabled` (method not in the contract), `provider_not_found` (no active live provider), `invalid_input` (`details.fieldErrors`). 403 `ip_blocked` is an IP restriction (block rule / allow-list mode) | 5.3, 10.1, 12.1, Appendix A |
+| Transactions are created as `failed` | `failureReason` (limits `limit_exceeded:*`, blacklist `blocked:*`, test-card failure scenarios). The HTTP status is 201 | 5.3, 10.2, 10.4, 12.1 |
+| No e-mail arrives | The demo only logs mail. Customer mail needs the transaction's `customerEmail`; merchant mail follows `emailNotification` and goes to the contact e-mail | 11.1, 11.2 |
+
+## Revision history
+
+| Version | Date | Commit | Changes |
+|---|---|---|---|
+| 1.0.0 | 2026-09-06 | `6b72a40` | First edition |
+| 1.1.0 | 2026-09-07 | `cf1c153` | Reflects the implementation changes of fix phases 1–5. **Breaking**: the transaction status `awaiting_payment` (2.2, 2.3, 7.4); `mode` mandatory on deposit notifications with environment matching, and 202 holding of late / cancelled deposits (7.3, 12.3, Appendix A.4); the invoice number format `INV-YYYYMM-<merchant number>-<2-digit sequence>` (9.8). **Added**: idempotent deposit notifications (`eventId`) and the deposit notification log, the `late_deposit` transition, the automatic test signing secret at registration (3.1), fail-closed webhook signing (6.4), merchant e-mail notification settings (11.1), the completion e-mail for immediately captured transactions (11.2), the merchant API rate limit (5.8), receipts from the portal (4.5), the IP allow-list mode (10.1), live-mode indication (4.1), the demo-only PSP link and login autocomplete (4.2), the English label `pending` = "Pending", Appendix E (permission matrix) and Appendix F (frequent questions). Details in `docs/spec/CHANGELOG.md` |

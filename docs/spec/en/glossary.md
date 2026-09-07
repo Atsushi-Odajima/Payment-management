@@ -2,9 +2,9 @@
 
 | Item | Value |
 |---|---|
-| Version | 1.0.0 |
-| Target system | commit `6b72a40` (`main`) |
-| Date | 2026-09-06 |
+| Version | 1.1.0 |
+| Target system | commit `cf1c153` (`main`) |
+| Date / revised | 2026-09-06 / 2026-09-07 (rows added or changed in 1.1.0 say "1.1.0" in the definition) |
 
 This glossary fixes the terminology used in Specifications A and B (Japanese and English editions). DB / API values are the literal strings used by the implementation; UI labels come from the dictionaries (`lib/i18n/messages/ja.ts` / `en.ts`). It includes the fixed term pairs from `CLAUDE.md`.
 
@@ -45,8 +45,9 @@ This glossary fixes the terminology used in Specifications A and B (Japanese and
 | Konbini payments | コンビニ決済 | `convenience` | Convenience-store counter payments |
 | Bank transfer payments | 銀行振込決済 | `bank` | |
 | Other web payment services | その他 Web サービス決済 | `other` | |
-| Applied | 申請中 | `pending` | Just created; "awaiting payment" for konbini |
-| Awaiting payment (konbini) | 支払待ち（コンビニ） | `pending` + `cvsReceiptNo` | Receipt number issued, waiting for the counter payment |
+| Pending | 申請中 | `pending` | Just created (the English label changed from "Applied" to "Pending" in 1.1.0) |
+| Awaiting payment (konbini) | 支払待ち（コンビニ） | `awaiting_payment` | Receipt number issued, waiting for the counter payment (its own status since 1.1.0; previously `pending` + `cvsReceiptNo`) |
+| Waiting for money | 入金待ち | `WAITING_STATUSES`: `awaiting_transfer` / `awaiting_payment` | Statuses that carry a deadline (`transferDueAt`) (1.1.0) |
 | Awaiting transfer | 振込待ち | `awaiting_transfer` | Transfer ID issued, waiting for the deposit |
 | Authorization / Authorized | 与信 / 与信済 | `authorized` | Funds reserved |
 | Capture / Completed | 売上確定 / 完了 | `captured`, action `capture` | Payment settled |
@@ -54,7 +55,9 @@ This glossary fixes the terminology used in Specifications A and B (Japanese and
 | Refunded | 返金済 | `refunded` | |
 | Void / Cancelled | 取消 / キャンセル | `cancelled`, action `cancel` | Abandoning a transaction before completion; UI label "Cancelled" |
 | Failed | 失敗 | `failed` | |
-| Expired | 期限切れ | `expired`, action `expire` | |
+| Expired | 期限切れ | `expired`, action `expire` | A later deposit can be applied through `late_deposit` |
+| Late deposit | 期限後入金 | action `late_deposit` (`expired` → `captured`), `UnmatchedDeposit.reason = late_deposit` | A deposit that arrived after expiry, applied by the PSP with a reason (1.1.0) |
+| Overdue | 期限超過 | `?overdue=1`, `overdue` flag | Past the deadline while the status is unchanged |
 | Chargeback (status) | チャージバック（ステータス） | `chargeback` | A lost / confirmed dispute |
 | Failure reason | 失敗理由 | `failureReason` | `limit_exceeded:*` / `blocked:*` / test-card reasons / `charge_declined` |
 | Status history | ステータス変更履歴 | `PaymentEvent` | Append-only log of transitions |
@@ -78,7 +81,10 @@ This glossary fixes the terminology used in Specifications A and B (Japanese and
 | Payment deadline (konbini) | 支払期限（コンビニ） | `transferDueAt` / `cvsDueDays` | Default 3 days |
 | Paid at | 支払日時 | `cvsPaidAt` | |
 | Deposit | 入金 | action `deposit` | Money received from a bank / konbini |
-| Deposit notification | 入金通知 | `/api/demo/deposit-notify`, `/api/demo/cvs-notify` | Notification from a bank / konbini network |
+| Deposit notification | 入金通知 | `/api/demo/deposit-notify`, `/api/demo/cvs-notify` | Notification from a bank / konbini network; `mode` mandatory, `eventId` optional (1.1.0) |
+| Deposit notification log | 入金通知ログ | `DepositNotification` (`DN-00001`), `/deposit-notifications` | Record of every received notification; result `applied` / `duplicate` / `unmatched` / `rejected` (1.1.0) |
+| De-duplication key | 重複排除キー | `dedupeKey` / `claimKey` | `eventId` or a content hash; a resend with the same key is not re-applied (1.1.0) |
+| Environment mismatch | 環境不一致 | `mode_mismatch` | A deposit whose `mode` differs from the transaction's `livemode` (held as unmatched, 1.1.0) |
 | Deposit reconciliation | 入金消込 | `reconcileDeposit` | Matching a deposit to a transaction |
 | Deposited amount (total) | 入金額（累計） | `depositAmount` | |
 | Short / excess deposit | 過不足入金 | `depositDiff`: `short` / `excess` | |
@@ -86,9 +92,12 @@ This glossary fixes the terminology used in Specifications A and B (Japanese and
 | Excess | 超過 | `excess` | total > amount due |
 | Follow-up status | 対応状況（過不足） | `depositDiffStatus`: `open` / `refund_arranged` / `notified` / `resolved` | |
 | Additional deposit request | 追加入金案内 | e-mail `deposit_short` | |
-| Unmatched deposit | 未消込入金 | `UnmatchedDeposit`: `unmatched` / `matched` / `dismissed` | A deposit without a usable transfer ID |
+| Unmatched deposit | 未消込入金 | `UnmatchedDeposit`: `unmatched` / `matched` / `dismissed`; `source`: `bank` / `cvs` / `manual` | Holding place for deposits with an unknown transfer ID, late, after cancellation, or in the wrong environment |
+| Hold reason | 保留理由 | `reason`: `late_deposit` / `cancelled_deposit` / `mode_mismatch` | Why the deposit became unmatched (1.1.0) |
 | Match (attach transfer ID) | 振込IDを付与して消込 | `POST .../match` | |
-| Dismiss | 却下 | `dismissed` | |
+| Apply as late deposit | 期限後入金として消込 | `POST .../late-match` (reason required) | Runs the `late_deposit` transition (1.1.0) |
+| Dismiss | 却下 | `dismissed`, `dismissKind`: `returned` / `other` | |
+| Return (of a deposit) | 組戻し | `dismissKind = returned` | Sending the money back to the payer (funds move outside the system, 1.1.0) |
 | API re-notify | API 再通知 | `POST /api/payments/{id}/renotify` | Re-send `payment.completed` |
 | Payout | 入金（PSP → 加盟店） | `SettlementBatch` | Settlement payment to the merchant |
 
@@ -127,11 +136,13 @@ This glossary fixes the terminology used in Specifications A and B (Japanese and
 | Contract plan | 契約プラン | `plan`: `standard` / `premium` / `custom` | |
 | Settlement fee (transfer fee) | 精算手数料（振込手数料） | `settlementFee` | |
 | Net payout | 差引支払額 | `netAmount` | |
-| Qualified invoice | 適格請求書（インボイス） | `INV-YYYYMM-<number>` | Invoice PDF for the payment fees |
+| Qualified invoice | 適格請求書（インボイス） | `GET .../invoice` | Invoice PDF for the payment fees |
+| Invoice number | 請求書番号 | `SettlementBatch.invoiceNo`: `INV-YYYYMM-<merchant number>-<2-digit sequence>` | Assigned and stored when the batch is confirmed (1.1.0; the old format had no sequence) |
 | Registration number | 登録番号 | `issuerRegistrationNo` / `invoiceNumber` (`T` + 13 digits) | Qualified-invoice issuer number |
 | Tax category | 税区分 | `taxCategory`: `standard10` / `reduced8` / `exempt` | |
 | Tax rounding | 端数処理 | `taxRounding`: `floor` / `round` / `ceil` | |
-| Receipt | 領収書 | `Receipt` (`RC-YYYYMM-00001`) | Customer receipt PDF |
+| Receipt | 領収書 | `Receipt` (`RC-YYYYMM-00001`), `source`: `dashboard` / `customer` / `merchant` | Customer receipt PDF; also issued from the merchant portal (1.1.0) |
+| Addressee / Description | 宛名 / 但し書き | `recipientName` / `description` | Receipt wording (description added in 1.1.0) |
 | Re-issue | 再発行 | `reissueCount` | |
 | Agent fee | 代理店手数料 | — | `floor(net payout × fee rate)` |
 
@@ -146,7 +157,8 @@ This glossary fixes the terminology used in Specifications A and B (Japanese and
 | Parameter set | 送信パラメータセット | `notifyParamSet`: `minimal` / `standard` / `full` | |
 | Identifier format | 決済識別子の形式 | `notifyIdFormat`: `payment_id` / `transaction_id` / `both` | |
 | Signature | 署名 | `X-Signature` / `Wirepay-Signature` | HMAC-SHA256 |
-| Signing secret | 署名シークレット | `ApiKey.kind = signing_secret` (`wp_*_ss_`) | Webhook signing key |
+| Signing secret | 署名シークレット | `ApiKey.kind = signing_secret` (`wp_*_ss_`) | Webhook signing key; no delivery to an environment without one (fail closed); the test secret is issued at merchant registration (1.1.0) |
+| Signing secret missing | 署名鍵なし | `signing_secret_missing`, notification `webhook.signing_secret_missing` | A webhook that could not be sent for lack of a signing secret (1.1.0) |
 | API key | API キー | `ApiKey.kind = api_key` (`wp_*_ak_`) | Bearer credential |
 | Issue / Rotate / Revoke | 発行 / ローテーション / 失効 | `api_key.issue` / `rotate` / `revoke` | |
 | Grace period | 猶予期間 | `ROTATION_GRACE_DAYS` = 7 | Overlap of old and new key |
@@ -164,9 +176,11 @@ This glossary fixes the terminology used in Specifications A and B (Japanese and
 | Disable | 無効化 | `disabled` | |
 | Used count / Max uses | 利用回数 / 最大利用回数 | `usedCount` / `maxUses` | |
 | Sandbox | サンドボックス | `/merchant/sandbox` | Console calling the real API with a test key |
-| Rate limit | レート制限 | `ApiRateLimit`, 429 `rate_limited` | 60 / minute per merchant × environment |
+| Rate limit | レート制限 | `ApiRateLimit`, 429 `rate_limited` | 60 / minute per merchant × environment, shared by the public API and the merchant API (1.1.0) |
 | IP restriction | IP 制限 | `IpRestriction` | |
-| Block / Allow / Allow list | ブロック / 許可 / 許可リスト | `mode`: `deny` / `allow` | Only block rules enforce |
+| Block / Allow / Allow list | ブロック / 許可 / 許可リスト | `mode`: `deny` / `allow` | Block rules always enforce; allow rules enforce while the allow-list mode is on |
+| Allow-list mode | 許可リストモード | `GlobalSetting.ipAllowlistAdmin` / `ipAllowlistMerchantApi`, `PUT /api/ip-restrictions/allowlist` | Blocks callers matching no enabled allow rule (per target, default off, 1.1.0) |
+| Self-lockout prevention | 自己ロックアウト防止 | 400 `ip_self_block`, `allowlist_no_rules` | Refuses settings that would lock the operator out |
 | Target (IP restriction) | 対象（IP 制限） | `target`: `admin` / `merchant_api` | |
 | Lockout | ロックアウト | `merchant_locked` (423) | 15 minutes after 5 failures |
 | Two-factor (TOTP) | 二段階認証 | `totpEnabled` | PSP admin users only |
@@ -198,8 +212,9 @@ This glossary fixes the terminology used in Specifications A and B (Japanese and
 | Announcement | お知らせ | `Announcement`: `notice` / `maintenance` / `incident` | Notice / Maintenance / Incident |
 | Occurred / Investigating / Resolved | 発生 / 対応中 / 復旧 | `occurred` / `investigating` / `resolved` | Incident timeline |
 | Draft / Published / Ended | 下書き / 公開 / 終了 | `draft` / `published` / `ended` | |
-| E-mail template | メールテンプレート | `EmailTemplate` (`transfer_guide`, `cvs_guide`, `payment_completed`, `refund_completed`, `deposit_short`, `statement`, `admin_invite`, `subscription_failed`, `subscription_suspended`, `notification`) | |
-| E-mail notification setting | メール通知設定 | `emailNotification`: `per_payment` / `daily` / `none` | Merchant setting (stored only at present) |
+| E-mail template | メールテンプレート | `EmailTemplate` (`transfer_guide`, `cvs_guide`, `payment_completed`, `refund_completed`, `deposit_short`, `statement`, `admin_invite`, `subscription_failed`, `subscription_suspended`, `notification`, `merchant_payment_notice`, `merchant_daily_summary`) | 12 keys × 2 languages |
+| E-mail notification setting | メール通知設定 | `emailNotification`: `per_payment` / `daily` / `none` | Merchant-facing payment mail, sent to the contact e-mail (implemented in 1.1.0) |
+| Merchant payment notice / Daily summary | 加盟店宛決済通知 / 日次サマリー | `merchant_payment_notice` / `merchant_daily_summary`, `/api/cron/merchant-daily-summary` | Per completion / previous-day digest (09:00 JST, 1.1.0) |
 | E-mail log | 送信ログ | `EmailLog`: `sent` / `failed` / `demo` | |
 
 ## 8. Subscriptions
@@ -226,6 +241,7 @@ This glossary fixes the terminology used in Specifications A and B (Japanese and
 | Encryption key | 暗号鍵 | `ENCRYPTION_KEY` | AES-256-GCM |
 | Fail-closed | fail-closed | — | Production refuses to run without the key |
 | Global settings | 全体設定 | `GlobalSetting` | |
+| Mode indication (live stripe) | モード表示（本番ストライプ） | `data-testid="current-mode"` / `live-stripe` | The mode badge next to page titles and the red stripe in live mode (1.1.0) |
 | Admin manual | 管理画面マニュアル | `/manual/*` | |
 | API docs | API ドキュメント | `/docs/api/*` | |
 | Business time zone | 業務タイムゾーン | `Asia/Tokyo` | Date boundaries |

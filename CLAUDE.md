@@ -301,6 +301,13 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - seed の Webhook 送信ログ: `whBody` が対象取引の加盟店コード・金額・ステータス・決済種別・ユーザーID・日時を受ける。webhook3 は merchant1 の ORD-DEMO-002（完了・1,280 円）宛ての断念、試行間隔は `retryOffsetsMs`（0 / 1 分 / 6 分 / 36 分 / 156 分 = 1 分 → 5 分 → 30 分 → 2 時間）。通知 `notification1` のタイトルも MER-00001
 - seed にテストモードの過不足入金（payment17 不足・振込待ち・期限は 5 日後 / payment18 超過・完了、いずれも merchant2、作成 40 日前でレポートのサンプル期間外）。期限超過の振込待ち（payment5）と期限後入金の未消込入金（unmatched3）は既存
 
+## 修正フェーズ6: 仕様書・マニュアル再生成
+
+- 外部向け仕様書は `docs/spec/{ja,en}/*.md`（A: 加盟店向け、B: プロバイダ接続、glossary）。**本文は実装から確認できる事実のみ**、未実装は各章末と最終章に分離、推測は「※要確認」+ `docs/spec/ASSUMPTIONS.md`。版数・対象コミットは各文書冒頭と巻末の改訂履歴・`docs/spec/README.md`・`PROGRESS.md` に書き、破壊的変更は `docs/spec/CHANGELOG.md` に理由付きで記録する（1.1.0 = `cf1c153`）
+- 仕様書A 付録 E の権限マトリクスは `npx tsx scripts/gen-permissions.ts` が `lib/role.ts` から生成する（対象: CLAUDE.md / intro.md / 仕様書A ja・en。`npm run check:permissions` で検知）。手で編集しない
+- PDF は `npm install --no-save marked@12 mermaid@10 && CHROMIUM_BIN=<chromium> node docs/spec/build-pdf.mjs --png`。インラインコードは折り返さず（48 文字超のみ折返し可）、幅の足りない表・横長の図は横向きページへ自動配置、Mermaid の構文エラー（`Note` 内の `;` など）は `broken` として報告される。`docs/spec/pdf/png/` の画像（未コミット）で図・表を目視確認してから `docs/spec/pdf/*.pdf` をコミットする
+- Markdown 表内のインラインコードに `|` を書くときは `\|` にエスケープする（セルが分割される）。機能を追加・変更したら仕様書の該当章・用語集・マニュアルを同じコミットで更新する
+
 ## 代理店・決済申請・IP制限・マニュアル
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
@@ -375,7 +382,7 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **修正フェーズ3 運用画面の改善**（完了）: モード可視化（ヘッダーバッジ・本番ストライプ・トースト・テーブル caption・CSV 名）、期限超過タブ、取引詳細の消込導線（関連入金・候補入力・判定プレビュー）、過不足入金の導線、精算詳細の税率別内訳と注文番号リンク、Webhook 詳細の取引状態 / 最終成功送信 / 再送確認 / 断念フィルタ、停止行の停止者・日時、加盟店管理画面からの領収書発行（但し書き、`source = merchant`）
 - [x] **修正フェーズ4 設計判断項目**（完了）: IP 許可リストモード（対象別トグル、許可ルール 0 件 / 自己ロックアウトの拒否、admin と加盟店 API の遮断、ON 中の許可ルール変更ガード）、PSP リンクの `DEMO_LOGIN_HINT` 限定、加盟店ログインの autocomplete 分離
 - [x] **修正フェーズ5 文言・デモデータ・小修正**（完了）: 未翻訳キー検査（check:i18n-keys + smoke）、`merchantTabs.methods` / 決済リンク詳細のキー露出修正、全体設定の説明、通知パラメータ `event` の説明、seed の Webhook 整合とテストモードの過不足入金サンプル
-- [ ] **修正フェーズ6 仕様書・マニュアル再生成**（1.1.0）
+- [x] **修正フェーズ6 仕様書・マニュアル再生成**（完了、1.1.0）: 仕様書 A / B / 用語集（ja / en）を修正フェーズ1〜5 に合わせて更新（改訂履歴・CHANGELOG 確定、権限マトリクス付録の自動生成、FAQ 表、ベンダー通知の対応表、要件一覧、ER 図 3 分割、cron 表の実スケジュール化）、PDF ビルドの可読性改善（`code` 折返し禁止・表 0.85em・横向きページの自動配置・`--png` 目視確認・構文エラー検出）、マニュアルの残り（コンビニ / 領収書 / はじめに）を更新
 - 全フェーズ完了。以降の追加は README の「残課題」から選ぶ
 - 未実装フェーズのメニューは `lib/nav.ts` に定義済み（`implemented: false`）。実装時に `true` にする
 - 既存一覧（取引・加盟店・代理店・IP制限）の `DataTable` 移行はフェーズC以降で順次行う
