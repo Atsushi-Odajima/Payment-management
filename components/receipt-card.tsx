@@ -22,13 +22,13 @@ export function ReceiptCard({ paymentId, status, receipt, customerName }: { paym
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const nameRef = useRef<{ name: string }>({ name: "" });
+  const nameRef = useRef<{ name: string; description: string }>({ name: "", description: "" });
   const eligible = RECEIPT_STATUSES.includes(status);
 
   async function issue() {
     setError(null);
     setNotice(null);
-    nameRef.current = { name: receipt?.recipientName ?? customerName ?? "" };
+    nameRef.current = { name: receipt?.recipientName ?? customerName ?? "", description: receipt?.description ?? "" };
     const ok = await confirm({
       title: receipt ? t("paymentDetail.receiptReissue") : t("paymentDetail.receiptIssue"),
       body: t("paymentDetail.receiptBody"),
@@ -37,7 +37,7 @@ export function ReceiptCard({ paymentId, status, receipt, customerName }: { paym
     });
     if (!ok) return;
     setBusy(true);
-    const res = await apiJson<{ receiptNo: string }>(`/api/payments/${paymentId}/receipt`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ recipientName: nameRef.current.name }) });
+    const res = await apiJson<{ receiptNo: string }>(`/api/payments/${paymentId}/receipt`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ recipientName: nameRef.current.name, description: nameRef.current.description }) });
     setBusy(false);
     if (!res.ok) {
       setError(res.error.message);
@@ -62,7 +62,14 @@ export function ReceiptCard({ paymentId, status, receipt, customerName }: { paym
             {formatDate(receipt.lastIssuedAt)}
             {receipt.reissueCount > 0 && <span className="ml-1 text-amber-700">({t("paymentDetail.receiptReissueCount", { count: receipt.reissueCount })})</span>}
           </dd>
+          {receipt.description && (
+            <>
+              <dt className="text-slate-500">{t("paymentDetail.receiptDescription")}</dt>
+              <dd>{receipt.description}</dd>
+            </>
+          )}
           {receipt.source === "customer" && <dd className="col-span-2 text-slate-500">{t("paymentDetail.receiptSourceCustomer")}</dd>}
+          {receipt.source === "merchant" && <dd className="col-span-2 text-slate-500">{t("paymentDetail.receiptSourceMerchant")}</dd>}
         </dl>
       ) : (
         <p className="mt-1">{t("paymentDetail.receiptBody")}</p>
@@ -94,19 +101,29 @@ export function ReceiptCard({ paymentId, status, receipt, customerName }: { paym
   );
 }
 
-function RecipientField({ valueRef }: { valueRef: MutableRefObject<{ name: string }> }) {
+export function RecipientField({ valueRef }: { valueRef: MutableRefObject<{ name: string; description: string }> }) {
   const t = useT();
   const [name, setName] = useState(valueRef.current.name);
+  const [description, setDescription] = useState(valueRef.current.description);
   useEffect(() => {
-    valueRef.current = { name };
-  }, [name, valueRef]);
+    valueRef.current = { name, description };
+  }, [name, description, valueRef]);
   return (
-    <div>
-      <label htmlFor="receipt-recipient" className="label">
-        {t("paymentDetail.receiptRecipient")}
-      </label>
-      <input id="receipt-recipient" className="input" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
-      <p className="help">{t("paymentDetail.receiptRecipientHelp")}</p>
+    <div className="space-y-3">
+      <div>
+        <label htmlFor="receipt-recipient" className="label">
+          {t("paymentDetail.receiptRecipient")}
+        </label>
+        <input id="receipt-recipient" className="input" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
+        <p className="help">{t("paymentDetail.receiptRecipientHelp")}</p>
+      </div>
+      <div>
+        <label htmlFor="receipt-description" className="label">
+          {t("paymentDetail.receiptDescription")}
+        </label>
+        <input id="receipt-description" className="input" maxLength={120} value={description} onChange={(e) => setDescription(e.target.value)} />
+        <p className="help">{t("paymentDetail.receiptDescriptionHelp")}</p>
+      </div>
     </div>
   );
 }

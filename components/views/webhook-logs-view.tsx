@@ -13,6 +13,7 @@ import type { WebhookFilters, WebhookRow } from "@/lib/webhooks/list";
 import { WEBHOOK_STATUSES } from "@/lib/webhooks/status";
 import { MERCHANT_WEBHOOK_EVENTS } from "@/lib/webhooks/events";
 import { buildHref, type QueryParams, type SortState } from "@/lib/query";
+import { cn } from "@/lib/utils";
 import type { MessageKey } from "@/lib/i18n";
 
 export function WebhookLogsView({
@@ -124,6 +125,14 @@ export function WebhookLogsView({
           <span>{t("webhookLogs.filterTo")}</span>
           <input type="date" className="input w-auto py-1.5 text-xs" value={filters.to} onChange={(e) => go({ to: e.target.value || undefined })} />
         </label>
+        <Link
+          href={buildHref("/webhook-logs", params, { status: filters.status === "abandoned" ? undefined : "abandoned", page: undefined })}
+          aria-current={filters.status === "abandoned" ? "true" : undefined}
+          className={cn("mb-1 rounded-full px-3 py-1 text-xs font-medium ring-1", filters.status === "abandoned" ? "bg-rose-600 text-white ring-rose-700" : "bg-white text-rose-700 ring-rose-200 hover:bg-rose-50")}
+          data-testid="abandoned-only"
+        >
+          {t("webhookLogs.abandonedOnly")}
+        </Link>
         {hasFilter && (
           <Link href="/webhook-logs" className="pb-2 text-xs font-medium text-brand-700 hover:underline">
             {t("webhookLogs.filterClear")}

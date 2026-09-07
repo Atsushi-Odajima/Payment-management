@@ -9,7 +9,7 @@ import { issueReceipt } from "@/lib/receipts/service";
 
 type Ctx = { params: { id: string } };
 
-const Body = z.object({ recipientName: z.string().trim().max(120).optional() });
+const Body = z.object({ recipientName: z.string().trim().max(120).optional(), description: z.string().trim().max(120).optional() });
 
 /**
  * POST /api/payments/:id/receipt — issue (or re-issue) the receipt of a
@@ -19,7 +19,7 @@ const Body = z.object({ recipientName: z.string().trim().max(120).optional() });
 export const POST = withApiHandler<Ctx>(async (req, { params }) => {
   const admin = await requirePermission(req, "receipt", "issue");
   const body = Body.parse(await readJson(req));
-  const row = await issueReceipt(prisma, { paymentId: params.id, recipientName: body.recipientName, source: "dashboard", issuedById: admin.id, audit: await auditContextFromRequest(req) });
+  const row = await issueReceipt(prisma, { paymentId: params.id, recipientName: body.recipientName, description: body.description, source: "dashboard", issuedById: admin.id, audit: await auditContextFromRequest(req) });
   return ok(row);
 });
 

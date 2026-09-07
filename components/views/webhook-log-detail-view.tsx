@@ -9,7 +9,9 @@ import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { DetailRow } from "@/components/ui/detail-row";
 import { HttpStatusBadge, WebhookStatusBadge } from "@/components/webhook-badges";
-import { ModeBadge } from "@/components/payment-status-badge";
+import { ModeBadge, PaymentStatusBadge } from "@/components/payment-status-badge";
+import { useConfirm } from "@/components/confirm-dialog";
+import { isPaymentStatus } from "@/lib/payments/transitions";
 import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
 import { useCan } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
@@ -21,12 +23,26 @@ export function WebhookLogDetailView({ delivery }: { delivery: WebhookDetail }) 
   const router = useRouter();
   const apiJson = useApiJson();
   const toast = useToast();
+  const { confirm } = useConfirm();
   const isMaster = useCan("webhook", "resend");
   const formatDate = useFormatDateTime();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function resend() {
+    // Phase P3-6: show what the merchant will receive again before sending.
+    const ok = await confirm({
+      title: t("webhookLogs.resend"),
+      body: t("webhookLogs.resendConfirmBody", {
+        event: delivery.event,
+        order: delivery.payment?.orderNumber ?? "—",
+        status: delivery.payment && isPaymentStatus(delivery.payment.status) ? t(`status.${delivery.payment.status}`) : "—",
+        lastSuccess: delivery.lastSuccess?.lastSentAt ? formatDate(delivery.lastSuccess.lastSentAt) : t("webhookLogs.resendNoSuccess"),
+      }),
+      confirmLabel: t("webhookLogs.resend"),
+      tone: delivery.lastSuccess ? "danger" : "primary",
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     const res = await apiJson<{ ok: boolean; responseStatus: number | null; error: string | null }>(`/api/webhook-logs/${delivery.id}/resend`, { method: "POST" });
@@ -78,12 +94,27 @@ export function WebhookLogDetailView({ delivery }: { delivery: WebhookDetail }) 
               <span className="font-mono text-xs">{delivery.event}</span>
             </DetailRow>
             <DetailRow label={t("webhookLogs.payment")}>
-              {delivery.paymentId ? (
-                <Link href={`/payments/${delivery.paymentId}`} className="font-mono text-xs text-brand-700 hover:underline">
-                  {delivery.paymentId}
-                </Link>
+              {delivery.payment ? (
+                <span className="flex flex-wrap items-center gap-2" data-testid="webhook-payment">
+                  <Link href={`/payments/${delivery.payment.id}`} className="font-medium text-brand-700 hover:underline">
+                    {delivery.payment.orderNumber}
+                  </Link>
+                  {isPaymentStatus(delivery.payment.status) && <PaymentStatusBadge status={delivery.payment.status} />}
+                  <span className="text-xs text-slate-500">{t("webhookLogs.paymentUpdatedAt", { at: formatDate(delivery.payment.updatedAt) })}</span>
+                </span>
+              ) : delivery.paymentId ? (
+                <span className="font-mono text-xs text-slate-500">{delivery.paymentId}</span>
               ) : (
                 "—"
+              )}
+            </DetailRow>
+            <DetailRow label={t("webhookLogs.lastSuccess")}>
+              {delivery.lastSuccess ? (
+                <Link href={`/webhook-logs/${delivery.lastSuccess.id}`} className="text-brand-700 hover:underline">
+                  {delivery.lastSuccess.lastSentAt ? formatDate(delivery.lastSuccess.lastSentAt) : delivery.lastSuccess.id}
+                </Link>
+              ) : (
+                <span className="text-slate-500">{t("webhookLogs.resendNoSuccess")}</span>
               )}
             </DetailRow>
             <DetailRow label={t("webhookLogs.thUrl")}>

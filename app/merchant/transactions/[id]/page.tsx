@@ -38,6 +38,7 @@ export default async function MerchantTransactionDetailPage({ params }: { params
         overdue: p.overdue,
         events: p.events.map((e) => ({ id: e.id, type: e.type, toStatus: e.toStatus, amount: e.amount, createdAt: e.createdAt })),
         refunds: p.refunds,
+        receipt: p.receipt ? { receiptNo: p.receipt.receiptNo, recipientName: p.receipt.recipientName, description: p.receipt.description, reissueCount: p.receipt.reissueCount, lastIssuedAt: p.receipt.lastIssuedAt, source: p.receipt.source } : null,
       }}
     />
   );

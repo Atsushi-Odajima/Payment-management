@@ -17,8 +17,16 @@ import { CONTROLLED_METHODS, isControlledMethod, type MethodControlInput, type M
 
 const SELECT = { id: true, scope: true, merchantId: true, method: true, suspended: true, reason: true, suspendedById: true, suspendedAt: true, resumeAt: true, resumedAt: true, updatedAt: true } as const;
 
-function toRow(r: { scope: string; method: string } & Omit<MethodControlRow, "scope" | "method">): MethodControlRow {
-  return { ...r, scope: r.scope === "global" ? "global" : "merchant", method: isControlledMethod(r.method) ? r.method : "credit" };
+function toRow(r: { scope: string; method: string } & Omit<MethodControlRow, "scope" | "method" | "suspendedByName">, names: Map<string, string> = new Map()): MethodControlRow {
+  return { ...r, scope: r.scope === "global" ? "global" : "merchant", method: isControlledMethod(r.method) ? r.method : "credit", suspendedByName: r.suspendedById ? (names.get(r.suspendedById) ?? null) : null };
+}
+
+/** Operator names for the suspendedById values (plain string column, no relation). */
+async function actorNames(db: Db, rows: ReadonlyArray<{ suspendedById: string | null }>): Promise<Map<string, string>> {
+  const ids = [...new Set(rows.map((r) => r.suspendedById).filter((x): x is string => x !== null))];
+  if (ids.length === 0) return new Map();
+  const admins = await db.adminUser.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+  return new Map(admins.map((a) => [a.id, a.name]));
 }
 
 /** Methods currently suspended for a merchant (global ∪ merchant rows). */
@@ -43,17 +51,19 @@ export async function assertMethodAvailable(db: Db, opts: { merchantId: string |
 /** All four global switches (missing rows = not suspended). */
 export async function loadGlobalControls(db: Db): Promise<MethodControlRow[]> {
   const rows = await db.paymentMethodControl.findMany({ where: { scope: "global" }, select: SELECT });
+  const names = await actorNames(db, rows);
   return CONTROLLED_METHODS.map((method) => {
     const r = rows.find((x) => x.method === method);
-    return r ? toRow(r) : { id: `global:${method}`, scope: "global", merchantId: null, method, suspended: false, reason: null, suspendedById: null, suspendedAt: null, resumeAt: null, resumedAt: null, updatedAt: new Date(0) };
+    return r ? toRow(r, names) : { id: `global:${method}`, scope: "global", merchantId: null, method, suspended: false, reason: null, suspendedById: null, suspendedByName: null, suspendedAt: null, resumeAt: null, resumedAt: null, updatedAt: new Date(0) };
   });
 }
 
 export async function loadMerchantControls(db: Db, merchantId: string): Promise<{ global: MethodControlRow[]; merchant: MethodControlRow[] }> {
   const [global, rows] = await Promise.all([loadGlobalControls(db), db.paymentMethodControl.findMany({ where: { scope: "merchant", merchantId }, select: SELECT })]);
+  const names = await actorNames(db, rows);
   const merchant = CONTROLLED_METHODS.map((method) => {
     const r = rows.find((x) => x.method === method);
-    return r ? toRow(r) : { id: `merchant:${merchantId}:${method}`, scope: "merchant" as const, merchantId, method, suspended: false, reason: null, suspendedById: null, suspendedAt: null, resumeAt: null, resumedAt: null, updatedAt: new Date(0) };
+    return r ? toRow(r, names) : { id: `merchant:${merchantId}:${method}`, scope: "merchant" as const, merchantId, method, suspended: false, reason: null, suspendedById: null, suspendedByName: null, suspendedAt: null, resumeAt: null, resumedAt: null, updatedAt: new Date(0) };
   });
   return { global, merchant };
 }
