@@ -193,7 +193,8 @@ describe("transaction lists", () => {
       now: NOW,
     });
     // The konbini slip (payment14, due in 2 days) shares the deadline lane with the awaiting transfers.
-    expect(apps.items.map((i) => i.id)).toEqual([SEED_IDS.payment5, SEED_IDS.payment14, SEED_IDS.payment4, SEED_IDS.payment3, SEED_IDS.payment6, SEED_IDS.payment16]);
+    // Waiting lane by deadline (payment17 is due in 12 days), then the rest newest first.
+    expect(apps.items.map((i) => i.id)).toEqual([SEED_IDS.payment5, SEED_IDS.payment14, SEED_IDS.payment4, SEED_IDS.payment17, SEED_IDS.payment3, SEED_IDS.payment6, SEED_IDS.payment16]);
     expect(apps.items[0].overdue).toBe(true);
     expect(apps.items[1].overdue).toBe(false);
     // ?overdue=1 (Phase P3-2): only awaited transfers / slips past their deadline, status unchanged — not the expired payment16.
@@ -210,7 +211,7 @@ describe("transaction lists", () => {
       order: "sales",
       now: NOW,
     });
-    expect(sales.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment1, SEED_IDS.payment2, SEED_IDS.payment7, SEED_IDS.payment12, SEED_IDS.payment13, SEED_IDS.payment15].sort());
+    expect(sales.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment1, SEED_IDS.payment2, SEED_IDS.payment7, SEED_IDS.payment12, SEED_IDS.payment13, SEED_IDS.payment15, SEED_IDS.payment18].sort());
   });
 
   it("filters by method, merchant and period", async () => {
@@ -223,7 +224,7 @@ describe("transaction lists", () => {
       now: NOW,
     });
     expect(bank.items.every((i) => i.method === "bank")).toBe(true);
-    expect(bank.total).toBe(3); // payment4, payment5 and the expired payment16
+    expect(bank.total).toBe(4); // payment4, payment5, the short payment17 and the expired payment16
 
     const merchant2 = await loadTransactions({
       allowedStatuses: APPLICATION_STATUSES,
@@ -233,7 +234,7 @@ describe("transaction lists", () => {
       order: "applications",
       now: NOW,
     });
-    expect(merchant2.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment3, SEED_IDS.payment4, SEED_IDS.payment6].sort());
+    expect(merchant2.items.map((i) => i.id).sort()).toEqual([SEED_IDS.payment3, SEED_IDS.payment4, SEED_IDS.payment6, SEED_IDS.payment17].sort());
 
     // payment5 was applied 9 days before NOW (2026-08-23 JST); a window starting 2026-08-25 excludes it.
     const recent = await loadTransactions({

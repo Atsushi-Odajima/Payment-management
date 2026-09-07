@@ -31,6 +31,7 @@ Changes to the specifications (docs/spec) and to public interfaces. **Breaking c
 | A-7 | `SettlementBatch.invoiceNo`（@unique）。横断検索が請求書番号で精算バッチを返す |
 | A-9 | `Receipt.description`（但し書き）と `source = merchant`。`POST/GET /api/merchant-portal/receipts/{paymentId}`（加盟店管理画面からの領収書発行、修正フェーズ3-8）。`POST /api/payments/{id}/receipt` に `description` を追加 |
 | A-10 | 決済申請一覧の `?overdue=1`、精算バッチ明細の `orderNumber`、Webhook 送信ログ詳細の `payment` / `lastSuccess`、決済手段停止行の `suspendedByName`、過不足入金一覧の `refund` / `emailLog`、取引詳細の `depositNotifications` / `unmatchedCandidates`（修正フェーズ3、画面用の読み取り項目。公開 API には影響なし） |
+| A-11 | seed（デモデータ）: テストモードの過不足入金 2 件（ORD-DEMO-017 不足 / ORD-DEMO-018 超過）、Webhook 送信ログを対象取引と再送間隔に整合（修正フェーズ5）。仕様への影響なし |
 | A-8 | 加盟店設定「メール通知設定」を実装（修正フェーズ2-2）: テンプレート `merchant_payment_notice`（決済ごと、完了のたびに担当者メールへ）と `merchant_daily_summary`（1 日まとめて、`GET/POST /api/cron/merchant-daily-summary` が 09:00 JST に前日分を環境ごとに 1 通。0 件の日は送らない、再実行しても重複しない）。プレースホルダー 9 種を追加。加盟店管理画面ホームに現在の設定を表示 |
 
 ### 動作変更 / Behaviour changes

@@ -80,7 +80,7 @@ v1 = hex( HMAC_SHA256( key = signing key, message = signed_payload ) )
 The **signing key** is chosen in this order:
 
 1. The merchant's **signing secret** (issued on the merchant detail → API keys tab, `wp_<test|live>_ss_…`): the newest one in the same mode (test / live) that is neither revoked nor expired
-2. The **merchant password** when the merchant has no signing secret
+2. Without a usable signing secret for that environment the notification is **not sent** (logged as `failed` / `signing_secret_missing`; the merchant password is never used instead)
 
 Receiver steps:
 

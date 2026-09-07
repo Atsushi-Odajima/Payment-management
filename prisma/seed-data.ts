@@ -74,6 +74,8 @@ export const SEED_IDS = {
   payment10: "pay_demo_010",
   payment11: "pay_demo_011",
   payment16: "pay_demo_016",
+  payment17: "pay_demo_017",
+  payment18: "pay_demo_018",
   chargeback1: "cb_demo_001",
   blacklist1: "bl_demo_001",
   blacklist2: "bl_demo_002",
@@ -152,6 +154,8 @@ export const SEED_TRANSFER_IDS = {
   [SEED_IDS.payment10]: "7788120",
   [SEED_IDS.payment11]: "7788121",
   [SEED_IDS.payment16]: "7455102", // expired transfer whose deposit arrived late (Phase P1-3)
+  [SEED_IDS.payment17]: "48219034", // merchant2 (8 digits), short deposit in test mode (Phase P5)
+  [SEED_IDS.payment18]: "48219035", // merchant2 (8 digits), excess deposit in test mode (Phase P5)
 } as const;
 
 export interface SeedOptions {
@@ -770,8 +774,11 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
   // five timeouts, each with its attempt history.
   const whHeaders = (ts: number) =>
     JSON.stringify({ "Content-Type": "application/json", "X-Signature": "v1=3f0c9c5d8f2b1a7e6d4c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e", "X-Timestamp": String(ts), "User-Agent": "WirePay-Notify/1.0" });
-  const whBody = (paymentId: string, event: string, amount: number, status: string) =>
-    JSON.stringify({ payment_id: paymentId, event, merchant_id: "MER-00001", amount, currency: "JPY", paid_at: hoursAgo(6).toISOString(), status, payment_method: "credit", user_id: "u_10021", product_id: "SKU-DEMO" });
+  // Body fields mirror the seeded transaction each delivery is about (Phase P5: merchant, amount, status, method, user, time).
+  const whBody = (p: { paymentId: string; event: string; merchantCode: string; amount: number; status: string; method: string; userId: string; productId: string; paidAt: Date }) =>
+    JSON.stringify({ payment_id: p.paymentId, event: p.event, merchant_id: p.merchantCode, amount: p.amount, currency: "JPY", paid_at: p.paidAt.toISOString(), status: p.status, payment_method: p.method, user_id: p.userId, product_id: p.productId });
+  // Attempt times follow RETRY_DELAYS_MS (1 min → 5 min → 30 min → 2 h → 24 h) from the first try.
+  const retryOffsetsMs = [0, 60_000, 6 * 60_000, 36 * 60_000, 156 * 60_000];
   const deliveries = [
     {
       id: SEED_IDS.webhook1,
@@ -782,7 +789,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       url: "/api/demo/webhook-receiver?result=ok",
       method: "POST",
       requestHeaders: whHeaders(Math.floor(hoursAgo(6).getTime() / 1000)),
-      requestBody: whBody(SEED_IDS.payment1, "payment.completed", 4980, "captured"),
+      requestBody: whBody({ paymentId: SEED_IDS.payment1, event: "payment.completed", merchantCode: "MER-00001", amount: 4980, status: "captured", method: "credit", userId: "u_10021", productId: "春物ジャケット", paidAt: hoursAgo(6) }),
       responseStatus: 200,
       responseBody: JSON.stringify({ ok: true, data: { received: true } }),
       attempts: 1,
@@ -800,36 +807,38 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       url: "/api/demo/webhook-receiver?result=error",
       method: "POST",
       requestHeaders: whHeaders(Math.floor(daysAgo(2).getTime() / 1000)),
-      requestBody: whBody(SEED_IDS.payment6, "payment.failed", 15800, "failed"),
+      requestBody: whBody({ paymentId: SEED_IDS.payment6, event: "payment.failed", merchantCode: "MER-00002", amount: 15800, status: "failed", method: "credit", userId: "u_20690", productId: "茶器セット", paidAt: daysAgo(2) }),
       responseStatus: 500,
       responseBody: JSON.stringify({ ok: false, error: { code: "demo_receiver_error", message: "simulated failure" } }),
       attempts: 2,
       status: "retrying",
+      // Two failures so far (t0, t0 + 1 min); the third try is due 5 minutes after the second — kept in the future for the demo.
       nextRetryAt: new Date(now.getTime() + 30 * 60_000),
-      lastSentAt: hoursAgo(1),
+      lastSentAt: new Date(daysAgo(2).getTime() + retryOffsetsMs[1]),
       createdAt: daysAgo(2),
       attemptLog: [
         { attemptNo: 1, sentAt: daysAgo(2), responseStatus: 500, responseBody: "simulated failure", durationMs: 210, trigger: "system" },
-        { attemptNo: 2, sentAt: hoursAgo(1), responseStatus: 500, responseBody: "simulated failure", durationMs: 188, trigger: "cron" },
+        { attemptNo: 2, sentAt: new Date(daysAgo(2).getTime() + retryOffsetsMs[1]), responseStatus: 500, responseBody: "simulated failure", durationMs: 188, trigger: "cron" },
       ],
     },
+    // Abandoned after five timeouts: the completion of merchant1's ORD-DEMO-002 (captured, ¥1,280) to a receiver that never answered.
     {
       id: SEED_IDS.webhook3,
-      merchantId: SEED_IDS.merchant2,
-      paymentId: SEED_IDS.payment3,
+      merchantId: SEED_IDS.merchant1,
+      paymentId: SEED_IDS.payment2,
       livemode: false,
       event: "payment.completed",
-      url: "https://sakura-cha.example.jp/api/wirepay",
+      url: "/api/demo/webhook-receiver?result=timeout",
       method: "POST",
       requestHeaders: whHeaders(Math.floor(daysAgo(4).getTime() / 1000)),
-      requestBody: whBody(SEED_IDS.payment3, "payment.completed", 3200, "captured"),
+      requestBody: whBody({ paymentId: SEED_IDS.payment2, event: "payment.completed", merchantCode: "MER-00001", amount: 1280, status: "captured", method: "credit", userId: "u_10388", productId: "ロゴTシャツ", paidAt: daysAgo(4) }),
       responseStatus: null,
       responseBody: "error: timeout",
       attempts: 5,
       status: "abandoned",
-      lastSentAt: daysAgo(3),
+      lastSentAt: new Date(daysAgo(4).getTime() + retryOffsetsMs[4]),
       createdAt: daysAgo(4),
-      attemptLog: [1, 2, 3, 4, 5].map((n) => ({ attemptNo: n, sentAt: new Date(daysAgo(4).getTime() + n * 3_600_000), responseStatus: null, responseBody: null, error: "timeout", durationMs: 10_000, trigger: n === 1 ? "system" : "cron" })),
+      attemptLog: retryOffsetsMs.map((offset, i) => ({ attemptNo: i + 1, sentAt: new Date(daysAgo(4).getTime() + offset), responseStatus: null, responseBody: null, error: "timeout", durationMs: 10_000, trigger: i === 0 ? "system" : "cron" })),
     },
   ];
   for (const { attemptLog, ...d } of deliveries) {
@@ -1144,6 +1153,63 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
       events: { create: [ev("created", null, "awaiting_transfer", 12_000, "seed", daysAgo(12)), ev("expire", "awaiting_transfer", "expired", 12_000, "system", daysAgo(4))] },
     },
   });
+  // Test-mode deposit differences (Phase P5) so the screen has rows without
+  // switching to live mode: a short deposit still awaiting the balance and an
+  // excess deposit that completed the transaction. Dated outside the reports'
+  // sample window (created 40 days ago) to keep the seeded KPIs unchanged.
+  const diffSamples = [
+    {
+      id: SEED_IDS.payment17,
+      providerId: bank.id,
+      merchantId: SEED_IDS.merchant2,
+      method: "bank",
+      orderNumber: "ORD-DEMO-017",
+      productName: "煎茶ギフトセット",
+      amount: 9_000,
+      status: "awaiting_transfer",
+      livemode: false,
+      externalId: "bank_demo_017",
+      customerName: "中村 咲",
+      customerId: "u_20734",
+      customerEmail: "saki@example.com",
+      description: "煎茶ギフトセット x 1",
+      transferId: SEED_TRANSFER_IDS[SEED_IDS.payment17],
+      transferDueAt: transferDueDate(daysAgo(-5)),
+      depositAmount: 7_000,
+      depositDiff: "short",
+      depositDiffStatus: "open",
+      createdAt: daysAgo(40),
+      events: { create: [ev("created", null, "awaiting_transfer", 9_000, "seed", daysAgo(40)), ev("deposit", "awaiting_transfer", "awaiting_transfer", 7_000, "bank", daysAgo(39))] },
+    },
+    {
+      id: SEED_IDS.payment18,
+      providerId: bank.id,
+      merchantId: SEED_IDS.merchant2,
+      method: "bank",
+      orderNumber: "ORD-DEMO-018",
+      productName: "抹茶セット",
+      amount: 6_500,
+      status: "captured",
+      livemode: false,
+      externalId: "bank_demo_018",
+      customerName: "小野 健",
+      customerId: "u_20801",
+      customerEmail: "ken@example.com",
+      description: "抹茶セット x 1",
+      transferId: SEED_TRANSFER_IDS[SEED_IDS.payment18],
+      transferDueAt: transferDueDate(daysAgo(40)),
+      depositAmount: 7_000,
+      depositDiff: "excess",
+      depositDiffStatus: "open",
+      createdAt: daysAgo(40),
+      capturedAt: daysAgo(39),
+      events: { create: [ev("created", null, "awaiting_transfer", 6_500, "seed", daysAgo(40)), ev("deposit", "awaiting_transfer", "captured", 7_000, "bank", daysAgo(39))] },
+    },
+  ];
+  for (const p of diffSamples) {
+    await prisma.payment.upsert({ where: { id: p.id }, update: {}, create: p });
+  }
+
   const receiptMonth = partsInTz(daysAgo(3));
   await prisma.receipt.upsert({
     where: { id: SEED_IDS.receipt1 },
@@ -1214,7 +1280,7 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
 
   // ── Phase J: notification centre samples ──────────────────────────────
   const notifications = [
-    { id: SEED_IDS.notification1, kind: "webhook.abandoned", severity: "critical", title: "Webhook abandoned: payment.completed → MER-00002", body: "5 attempts failed for /api/demo/webhook-receiver?result=timeout. Resend it from the delivery log once the merchant endpoint is back.", href: `/webhook-logs/${SEED_IDS.webhook3}`, roles: JSON.stringify(["admin", "developer"]), targetType: "webhook_delivery", targetId: SEED_IDS.webhook3, createdAt: hoursAgo(26), dispatchedAt: hoursAgo(26) },
+    { id: SEED_IDS.notification1, kind: "webhook.abandoned", severity: "critical", title: "Webhook abandoned: payment.completed → MER-00001", body: "5 attempts failed for /api/demo/webhook-receiver?result=timeout. Resend it from the delivery log once the merchant endpoint is back.", href: `/webhook-logs/${SEED_IDS.webhook3}`, roles: JSON.stringify(["admin", "developer"]), targetType: "webhook_delivery", targetId: SEED_IDS.webhook3, createdAt: hoursAgo(26), dispatchedAt: hoursAgo(26) },
     { id: SEED_IDS.notification2, kind: "refund.requested", severity: "info", title: "Refund requested: ¥500", body: "partial refund (defect) awaiting a decision.", href: `/refunds/${SEED_IDS.refund1}`, roles: JSON.stringify(["admin", "accounting"]), targetType: "refund", targetId: SEED_IDS.refund1, createdAt: hoursAgo(2), dispatchedAt: hoursAgo(2) },
     { id: SEED_IDS.notification3, kind: "payment_method.suspended", severity: "warning", title: "Merchant payment method suspended: qr", body: "QR 決済事業者側の障害対応中（加盟店からの依頼）", href: `/merchants/${SEED_IDS.merchant2}?tab=methods`, roles: JSON.stringify(["admin", "cs"]), targetType: "payment_method_control", targetId: SEED_IDS.methodControl1, createdAt: hoursAgo(5), dispatchedAt: hoursAgo(5) },
   ];
