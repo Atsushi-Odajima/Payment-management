@@ -3,6 +3,7 @@
 // instance shares the window. Old windows are swept opportunistically.
 
 import type { PrismaClient } from "@prisma/client";
+import { ApiError } from "@/lib/api/handler";
 
 export const PUBLIC_API_RATE_LIMIT = 60;
 export const PUBLIC_API_WINDOW_MS = 60_000;
@@ -19,6 +20,28 @@ export interface RateLimitOutcome {
 export function rateLimitKey(merchantId: string, mode: string, now: Date): { id: string; windowStart: Date } {
   const bucket = Math.floor(now.getTime() / PUBLIC_API_WINDOW_MS);
   return { id: `${merchantId}:${mode}:${bucket}`, windowStart: new Date(bucket * PUBLIC_API_WINDOW_MS) };
+}
+
+/**
+ * Consume one request and throw 429 (Retry-After / X-RateLimit-*) when the
+ * merchant × mode budget for the current minute is spent. Shared by /api/v1
+ * and /api/merchant-api (Phase P2-3: same bucket, same 60 / minute).
+ */
+export async function enforceApiRateLimit(db: PrismaClient, opts: { merchantId: string; mode: string; now?: Date }): Promise<RateLimitOutcome> {
+  const r = await consumePublicApiRateLimit(db, opts);
+  if (!r.ok) {
+    throw new ApiError(429, "rate_limited", "errors.rateLimited", undefined, { limit: r.limit, retryAfterSec: r.retryAfterSec }, {
+      "retry-after": String(r.retryAfterSec),
+      "x-ratelimit-limit": String(r.limit),
+      "x-ratelimit-remaining": "0",
+    });
+  }
+  return r;
+}
+
+/** Rate-limit headers for successful responses. */
+export function rateLimitHeaders(r: RateLimitOutcome): Record<string, string> {
+  return { "x-ratelimit-limit": String(r.limit), "x-ratelimit-remaining": String(r.remaining) };
 }
 
 export async function consumePublicApiRateLimit(db: PrismaClient, opts: { merchantId: string; mode: string; now?: Date; limit?: number }): Promise<RateLimitOutcome> {

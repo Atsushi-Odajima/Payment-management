@@ -205,6 +205,65 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
             </section>
           )}
 
+          {(isBank || isCvs) && (
+            <section className="card divide-y divide-slate-100" aria-labelledby="related-deposits-heading" data-testid="related-deposits">
+              <h2 id="related-deposits-heading" className="px-5 py-3 text-sm font-semibold text-slate-800">
+                {t("paymentDetail.sectionRelatedDeposits")}
+              </h2>
+              <div className="px-5 py-3">
+                <p className="text-xs font-semibold text-slate-600">{t("paymentDetail.relatedNotifications")}</p>
+                {payment.depositNotifications.length === 0 ? (
+                  <p className="mt-1 text-xs text-slate-400">{t("paymentDetail.relatedNone")}</p>
+                ) : (
+                  <ul className="mt-1 divide-y divide-slate-100 text-xs">
+                    {payment.depositNotifications.map((n) => (
+                      <li key={n.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <Link href={`/deposit-notifications?source=${n.source}`} className="font-mono text-brand-700 hover:underline">
+                            {n.notificationNo}
+                          </Link>
+                          <span className="text-slate-600">{formatDate(n.receivedAt)}</span>
+                          <span className="text-slate-500">{n.payerName ?? ""}</span>
+                          <span className={cn("badge", n.result === "applied" ? "bg-emerald-100 text-emerald-800 ring-emerald-200" : n.result === "duplicate" ? "bg-slate-100 text-slate-700 ring-slate-200" : n.result === "unmatched" ? "bg-amber-100 text-amber-800 ring-amber-200" : "bg-rose-100 text-rose-800 ring-rose-200")}>
+                            {t(`depositNotificationEnums.result.${n.result}` as MessageKey)}
+                          </span>
+                          {n.unmatchedDepositId && (
+                            <Link href={`/unmatched-deposits?highlight=${n.unmatchedDepositId}`} className="text-brand-700 hover:underline">
+                              {t("depositNotifications.openUnmatched")}
+                            </Link>
+                          )}
+                        </span>
+                        <span className="tabular-nums font-medium">{formatYen(n.amount)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="px-5 py-3">
+                <p className="text-xs font-semibold text-slate-600">{t("paymentDetail.relatedUnmatched")}</p>
+                {payment.unmatchedCandidates.length === 0 ? (
+                  <p className="mt-1 text-xs text-slate-400">{t("paymentDetail.relatedNone")}</p>
+                ) : (
+                  <ul className="mt-1 divide-y divide-slate-100 text-xs">
+                    {payment.unmatchedCandidates.map((u) => (
+                      <li key={u.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <Link href={`/unmatched-deposits?highlight=${u.id}`} className="text-brand-700 hover:underline">
+                            {formatDate(u.receivedAt)}
+                          </Link>
+                          <span className="text-slate-600">{u.payerName}</span>
+                          {u.bankReference && <span className="font-mono text-slate-400">{u.bankReference}</span>}
+                          <span className="badge bg-slate-100 text-slate-700 ring-slate-200">{t(`paymentDetail.relatedMatch.${u.match}` as MessageKey)}</span>
+                        </span>
+                        <span className="tabular-nums font-medium">{formatYen(u.amount)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </section>
+          )}
+
           <PaymentTimeline paymentId={payment.id} events={payment.events} notes={payment.notes} eventLabel={(type) => t(eventLabelKey(type))} statusLabel={(st) => statusLabel(t, st)} actorLabel={(actor) => t(actorLabelKey(actor))} />
 
           {payment.refunds.length > 0 && (

@@ -61,6 +61,7 @@ export function TransactionsView(props: TransactionsViewProps) {
     merchant: filters.merchant || undefined,
     from: filters.from || undefined,
     to: filters.to || undefined,
+    overdue: filters.overdue ? "1" : undefined,
   };
   const href = (next: Record<string, string | undefined>) => {
     const q = new URLSearchParams();
@@ -69,7 +70,7 @@ export function TransactionsView(props: TransactionsViewProps) {
     return qs ? `${basePath}?${qs}` : basePath;
   };
   const go = (next: Record<string, string | undefined>) => router.push(href(next));
-  const hasFilter = Boolean(filters.status || filters.method || filters.merchant || filters.from || filters.to);
+  const hasFilter = Boolean(filters.status || filters.method || filters.merchant || filters.from || filters.to || filters.overdue);
 
   return (
     <div>
@@ -115,12 +116,16 @@ export function TransactionsView(props: TransactionsViewProps) {
       <div className="mb-4 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <div role="group" aria-label={t("transactions.filterStatus")} className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
-            <FilterLink href={href({ status: undefined })} active={!filters.status} label={t("common.modeAll")} />
+            <FilterLink href={href({ status: undefined, overdue: undefined })} active={!filters.status && !filters.overdue} label={t("common.modeAll")} />
             {statuses.map((s) => (
-              <FilterLink key={s} href={href({ status: s })} active={filters.status === s} label={t(`status.${s}`)} />
+              <FilterLink key={s} href={href({ status: s, overdue: undefined })} active={filters.status === s && !filters.overdue} label={t(`status.${s}`)} />
             ))}
+            {kind === "applications" && (
+              <FilterLink href={href({ status: undefined, overdue: "1" })} active={filters.overdue} label={t("transactions.overdueTab")} tone="danger" />
+            )}
           </div>
         </div>
+        {filters.overdue && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{t("transactions.overdueTabHelp")}</p>}
         <div className="flex flex-wrap items-end gap-3 text-xs text-slate-600">
           <label className="flex flex-col gap-1">
             <span>{t("transactions.filterMethod")}</span>
@@ -279,12 +284,12 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-function FilterLink({ href, active, label }: { href: string; active: boolean; label: string }) {
+function FilterLink({ href, active, label, tone }: { href: string; active: boolean; label: string; tone?: "danger" }) {
   return (
     <Link
       href={href}
       aria-current={active ? "true" : undefined}
-      className={cn("rounded-md px-3 py-1.5 text-xs font-medium transition", active ? "bg-brand-600 text-white" : "text-slate-600 hover:bg-slate-100")}
+      className={cn("rounded-md px-3 py-1.5 text-xs font-medium transition", active ? (tone === "danger" ? "bg-rose-600 text-white" : "bg-brand-600 text-white") : tone === "danger" ? "text-rose-700 hover:bg-rose-50" : "text-slate-600 hover:bg-slate-100")}
     >
       {label}
     </Link>

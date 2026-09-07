@@ -39,7 +39,8 @@ export const GET = withApiHandler(async (req) => {
         { header: "orderNumber", value: (r) => r.payment?.orderNumber ?? "" },
         { header: "unmatchedDepositId", value: (r) => r.unmatchedDepositId ?? "" },
       ]),
-      `deposit-notifications-${filters.mode}.csv`,
+      "deposit-notifications.csv",
+      filters.mode,
     );
   }
   const page = parsePage(q.page);

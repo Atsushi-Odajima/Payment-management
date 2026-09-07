@@ -71,7 +71,7 @@ describe("transaction notes", () => {
     expect((await patch({ pinned: true }, ACCOUNTING)).status).toBe(403);
     expect((await patch({ pinned: true }, CS)).body.data.pinned).toBe(true);
     // Pinned notes show up as a count on the list rows.
-    const list = await loadTransactions({ allowedStatuses: SALES_STATUSES, filters: { method: "", status: "", merchant: "", from: "", to: "", mode: "test" }, page: 1, pageSize: 50, order: "sales" });
+    const list = await loadTransactions({ allowedStatuses: SALES_STATUSES, filters: { method: "", status: "", merchant: "", from: "", to: "", mode: "test", overdue: false }, page: 1, pageSize: 50, order: "sales" });
     expect(list.items.find((i) => i.id === id)?.pinnedNotes).toBe(1);
 
     const del = async (h: Record<string, string>) => read(await deleteNoteRoute(json(`/api/payments/${id}/notes/${noteId}`, "DELETE", undefined, h), { params: { id, noteId } }));

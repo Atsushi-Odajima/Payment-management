@@ -12,7 +12,7 @@ import type { PrismaClient } from "@prisma/client";
 import { ApiError } from "@/lib/api/handler";
 import { recordAudit, type AuditContext } from "@/lib/audit";
 import { DEMO_LIMITS } from "@/lib/demo";
-import { notifyCvsIssued, notifyTransferIssued } from "@/lib/email/hooks";
+import { notifyCvsIssued, notifyMerchantPaymentCompleted, notifyPaymentCompleted, notifyTransferIssued } from "@/lib/email/hooks";
 import { isUniqueViolation } from "@/lib/ids";
 import { emitNotification } from "@/lib/notifications/emit";
 import { checkLimit, limitFailureReason } from "@/lib/merchants/limits";
@@ -198,10 +198,15 @@ export async function createTransaction(prisma: PrismaClient, body: CreateTransa
         await emitPaymentWebhook(prisma, payment.id, "limit.exceeded", { status: `failed:${failureReason}` });
         await emitNotification(prisma, { kind: "limit.exceeded", title: `Limit exceeded: ${body.orderNumber}`, body: `A ${method} checkout of ¥${body.amount.toLocaleString("en-US")} was blocked by the merchant's limit (${failureReason}).`, href: `/payments/${payment.id}`, roles: ["admin", "accounting", "cs"], targetType: "payment", targetId: payment.id, now });
       }
-      // Completed at creation (auto-capture) → the merchant is notified like any completion.
+      // Completed at creation (auto-capture) → the merchant is notified like any
+      // completion, and the customer gets the completion e-mail (Phase P2-1;
+      // subscription charges keep their own e-mails). The merchant's per-payment
+      // notice (Phase P2-2) covers every completion including subscriptions.
       if (status === "captured" && body.merchantId && opts.source !== "subscription") {
         await emitPaymentWebhook(prisma, payment.id, "payment.completed");
+        await notifyPaymentCompleted(prisma, payment.id);
       }
+      if (status === "captured" && body.merchantId) await notifyMerchantPaymentCompleted(prisma, payment.id);
       // Bank transfer / konbini payment instructions to the customer (Phase G-2 / K-1).
       if (isBank) await notifyTransferIssued(prisma, payment.id);
       if (isCvs) await notifyCvsIssued(prisma, payment.id);

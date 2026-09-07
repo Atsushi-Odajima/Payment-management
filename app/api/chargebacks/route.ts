@@ -30,6 +30,7 @@ export const GET = withApiHandler(async (req) => {
         { header: "resolvedAt", value: (r) => r.resolvedAt },
       ]),
       "chargebacks.csv",
+      filters.mode,
     );
   }
   const page = parsePage(q.page);

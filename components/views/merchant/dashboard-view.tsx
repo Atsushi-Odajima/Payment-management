@@ -17,7 +17,7 @@ export interface MerchantStats {
   nextPayout: { id: string; scheduledAt: Date | null; netAmount: number } | null;
 }
 
-export function MerchantDashboardView({ merchant, stats, recent, announcements }: { merchant: { merchantCode: string; siteName: string }; stats: MerchantStats; recent: TransactionListItem[]; announcements: Array<{ id: string; kind: string; title: string; publishFrom: Date }> }) {
+export function MerchantDashboardView({ merchant, stats, recent, announcements }: { merchant: { merchantCode: string; siteName: string; emailNotification: string; email: string }; stats: MerchantStats; recent: TransactionListItem[]; announcements: Array<{ id: string; kind: string; title: string; publishFrom: Date }> }) {
   const t = useT();
   const { lang } = useLang();
   const formatDate = useFormatDateTime();
@@ -32,6 +32,10 @@ export function MerchantDashboardView({ merchant, stats, recent, announcements }
     <div>
       <h1 className="text-xl font-bold text-slate-900">{t("merchantPortal.dashboard.title", { name: merchant.siteName })}</h1>
       <p className="mt-1 text-sm text-slate-600">{t("merchantPortal.dashboard.description", { code: merchant.merchantCode })}</p>
+      <p className="mt-2 text-xs text-slate-500" data-testid="email-notification-setting">
+        {t("merchantPortal.dashboard.emailNotification", { setting: t(`merchantEnums.emailNotification.${merchant.emailNotification}` as MessageKey), email: merchant.email })}
+        <span className="ml-1">{t("merchantPortal.dashboard.emailNotificationHelp")}</span>
+      </p>
       <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {cards.map((c) => (
           <Link key={c.label} href={c.href} className="card px-5 py-4 hover:border-brand-300">

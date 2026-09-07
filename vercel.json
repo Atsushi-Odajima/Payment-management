@@ -10,6 +10,7 @@
     { "path": "/api/cron/subscriptions", "schedule": "15 2 * * *" },
     { "path": "/api/cron/payment-method-controls", "schedule": "45 2 * * *" },
     { "path": "/api/cron/notifications", "schedule": "50 3 * * *" },
-    { "path": "/api/cron/anonymize", "schedule": "0 19 * * *" }
+    { "path": "/api/cron/anonymize", "schedule": "0 19 * * *" },
+    { "path": "/api/cron/merchant-daily-summary", "schedule": "0 0 * * *" }
   ]
 }

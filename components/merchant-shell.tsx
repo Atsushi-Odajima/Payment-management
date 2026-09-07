@@ -11,7 +11,8 @@ import { useState } from "react";
 import { NavLink } from "./nav-link";
 import { WirePayIcon } from "./wire-pay-icon";
 import { LanguageToggle } from "./language-toggle";
-import { ModeToggle } from "./mode-provider";
+import { ModeToggle, useMode } from "./mode-provider";
+import { cn } from "@/lib/utils";
 import { Icon } from "./icons";
 import { useApiJson, useT } from "./language-provider";
 import { MERCHANT_NAV } from "@/lib/merchant-portal/nav";
@@ -24,13 +25,21 @@ export interface MerchantShellUser {
 
 export function MerchantShell({ merchant, children }: { merchant: MerchantShellUser | null; children: React.ReactNode }) {
   const t = useT();
+  const { mode } = useMode();
+  const live = mode === "live";
   const router = useRouter();
   const apiJson = useApiJson();
   const [busy, setBusy] = useState(false);
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
+      {live && (
+        <div className="flex items-center gap-2 bg-rose-600 px-4 py-1 text-xs font-semibold text-white md:px-6" role="status" data-testid="live-stripe">
+          <span className="rounded bg-white/20 px-1.5 py-0.5">{t("mode.liveLabel")}</span>
+          <span>{t("mode.liveStripe")}</span>
+        </div>
+      )}
+      <header className={cn("border-b border-slate-200 bg-white", live && "border-l-4 border-l-rose-600")}>
         <div className="flex items-center justify-between gap-3 px-4 py-2.5 md:px-6 md:py-3">
           <Link href="/merchant" className="flex items-center gap-2" aria-label="Wire Pay">
             <WirePayIcon className="h-7 w-7 shrink-0 rounded-md shadow-sm" />

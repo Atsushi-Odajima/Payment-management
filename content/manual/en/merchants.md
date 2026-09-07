@@ -20,7 +20,7 @@ Use **+ Add Merchant** in the header.
 | Email / statement email | Format-validated; “Same as email address” copies the value |
 | Notification URL | The merchant endpoint that receives payment results. **https only** |
 | Notification settings | Format / parameter set / payment identifier (see “Notification spec”) |
-| Email notifications | Every payment / daily digest / none |
+| Email notifications | **Every payment** (a “payment notice” to the contact e-mail each time a transaction completes) / **Daily digest** (at 09:00 JST, the previous day's counts, amounts, per-method breakdown, failed and expired counts; nothing is sent for a day without transactions) / **None**. Recipient is the contact e-mail; the statement e-mail address is used for settlement mail only |
 
 “Create merchant” stays disabled until every required field is filled. Validation errors appear under the field and the first one is scrolled into view.
 
@@ -98,7 +98,7 @@ Common rules of the **merchant API** (`/api/merchant-api/*`) that a merchant's s
 | Mode | The key's mode (test / live) is the mode of the returned data |
 | IP restrictions | Requests matching the merchant's own [IP restriction](/manual/ip-restrictions) rules (target = merchant API, block) are refused |
 | Response shape | Success `{ "ok": true, "data": … }` / failure `{ "ok": false, "error": { "code", "message" } }`. `message` follows the `Accept-Language` or `x-lang` header |
-| Rate limit | None on `/api/merchant-api/*` (the public API `/api/v1` allows 60 requests / minute per merchant and environment; 429 `rate_limited` beyond that) |
+| Rate limit | 60 requests / minute per merchant and environment, shared with the public API `/api/v1` (same bucket). 429 `rate_limited` with `Retry-After` beyond that; successful responses carry `X-RateLimit-Limit` / `X-RateLimit-Remaining` |
 
 | Error | HTTP | Meaning |
 |---|---|---|

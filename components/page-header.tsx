@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useT } from "./language-provider";
+import { useMode } from "./mode-provider";
 import { Icon } from "./icons";
+import { cn } from "@/lib/utils";
 
 export function PageHeader({
   title,
@@ -19,6 +21,7 @@ export function PageHeader({
   helpHref?: string;
 }) {
   const t = useT();
+  const { mode } = useMode();
   return (
     <div className="mb-8">
       {breadcrumbs && breadcrumbs.length > 0 && (
@@ -48,6 +51,13 @@ export function PageHeader({
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-slate-900">
             {title}
+            <span
+              className={cn("badge text-[11px] font-semibold", mode === "live" ? "bg-rose-600 text-white ring-rose-700" : "bg-amber-100 text-amber-800 ring-amber-200")}
+              title={t("mode.currentHint")}
+              data-testid="current-mode"
+            >
+              {mode === "live" ? t("mode.currentLive") : t("mode.currentTest")}
+            </span>
             {helpHref && (
               <Link
                 href={helpHref}

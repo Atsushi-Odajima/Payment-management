@@ -26,6 +26,7 @@ export const GET = withApiHandler(async (req) => {
         { header: "updatedAt", value: (r) => r.updatedAt },
       ]),
       "deposit-diffs.csv",
+      filters.mode,
     );
   }
   const page = parsePage(q.page);

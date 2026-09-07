@@ -3,6 +3,7 @@
 // to the client — only whether a webhook secret exists.
 
 import { prisma } from "@/lib/db";
+import { loadDepositNotificationsForPayment } from "@/lib/deposits/notification-list";
 import { NOTE_SELECT, type NoteRow } from "./notes";
 import { storedFieldKeys } from "@/lib/providers/credentials";
 import { toPaymentMethod, type PaymentMethod } from "@/lib/payments/methods";
@@ -81,6 +82,34 @@ export interface TransactionDetail {
   refunds: RefundItem[];
   /** Internal notes (Phase I-2), oldest first. */
   notes: NoteRow[];
+  /** Bank / konbini only (Phase P3-3): deposit notifications naming this transaction, newest first. */
+  depositNotifications: RelatedDepositNotification[];
+  /** Bank / konbini only (Phase P3-3): open unmatched deposits that could belong to it (linked, same id written, or same payer name). */
+  unmatchedCandidates: RelatedUnmatchedDeposit[];
+}
+
+export interface RelatedDepositNotification {
+  id: string;
+  notificationNo: string;
+  source: string;
+  amount: number;
+  receivedAt: Date;
+  result: string;
+  resultReason: string | null;
+  payerName: string | null;
+  unmatchedDepositId: string | null;
+  createdAt: Date;
+}
+
+export interface RelatedUnmatchedDeposit {
+  id: string;
+  amount: number;
+  receivedAt: Date;
+  payerName: string;
+  bankReference: string | null;
+  reason: string | null;
+  /** Why it is listed: linked (candidatePaymentId) | given_id | payer_name. */
+  match: "linked" | "given_id" | "payer_name";
 }
 
 export async function loadTransactionDetail(id: string, now: Date = new Date()): Promise<TransactionDetail | null> {
@@ -133,6 +162,36 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
     },
   });
   if (!payment) return null;
+  const awaited = payment.transferId !== null || payment.cvsReceiptNo !== null;
+  const [depositNotifications, unmatchedRows] = awaited
+    ? await Promise.all([
+        loadDepositNotificationsForPayment({ id: payment.id, transferId: payment.transferId, cvsReceiptNo: payment.cvsReceiptNo }),
+        prisma.unmatchedDeposit.findMany({
+          where: {
+            status: "unmatched",
+            livemode: payment.livemode,
+            OR: [
+              { candidatePaymentId: payment.id },
+              ...(payment.transferId ? [{ givenTransferId: payment.transferId }] : []),
+              ...(payment.cvsReceiptNo ? [{ givenTransferId: payment.cvsReceiptNo }] : []),
+              ...(payment.customerName ? [{ payerName: payment.customerName }] : []),
+            ],
+          },
+          orderBy: { receivedAt: "desc" },
+          take: 10,
+          select: { id: true, amount: true, receivedAt: true, payerName: true, bankReference: true, reason: true, candidatePaymentId: true, givenTransferId: true },
+        }),
+      ])
+    : [[], []];
+  const unmatchedCandidates: RelatedUnmatchedDeposit[] = unmatchedRows.map((u) => ({
+    id: u.id,
+    amount: u.amount,
+    receivedAt: u.receivedAt,
+    payerName: u.payerName,
+    bankReference: u.bankReference,
+    reason: u.reason,
+    match: u.candidatePaymentId === payment.id ? "linked" : u.givenTransferId && (u.givenTransferId === payment.transferId || u.givenTransferId === payment.cvsReceiptNo) ? "given_id" : "payer_name",
+  }));
   const pendingRefundAmount = payment.refunds
     .filter((r) => r.status === "requested" || r.status === "approved" || r.status === "processing")
     .reduce((sum, r) => sum + r.amount, 0);
@@ -173,6 +232,8 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
     receipt: payment.receipt,
     refundDeadlineAt:
       payment.capturedAt && payment.merchant ? new Date(payment.capturedAt.getTime() + payment.merchant.refundWindowDays * 86_400_000) : null,
+    depositNotifications: depositNotifications.map((n) => ({ id: n.id, notificationNo: n.notificationNo, source: n.source, amount: n.amount, receivedAt: n.receivedAt, result: n.result, resultReason: n.resultReason, payerName: n.payerName, unmatchedDepositId: n.unmatchedDepositId, createdAt: n.createdAt })),
+    unmatchedCandidates,
     pendingRefundAmount,
     notes: payment.notes,
     overdue: isTransferOverdue(payment, now),
