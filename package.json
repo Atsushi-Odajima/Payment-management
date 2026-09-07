@@ -27,7 +27,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check:i18n": "node scripts/check-i18n.mjs",
+    "check:i18n": "node scripts/check-i18n.mjs && tsx scripts/check-i18n-keys.ts",
     "check:permissions": "tsx scripts/gen-permissions.ts --check",
     "gen:permissions": "tsx scripts/gen-permissions.ts",
     "icons:build": "tsx scripts/build-icons.mts",

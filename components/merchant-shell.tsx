@@ -23,7 +23,7 @@ export interface MerchantShellUser {
   siteName: string;
 }
 
-export function MerchantShell({ merchant, children }: { merchant: MerchantShellUser | null; children: React.ReactNode }) {
+export function MerchantShell({ merchant, children, showAdminLink = false }: { merchant: MerchantShellUser | null; children: React.ReactNode; showAdminLink?: boolean }) {
   const t = useT();
   const { mode } = useMode();
   const live = mode === "live";
@@ -101,9 +101,11 @@ export function MerchantShell({ merchant, children }: { merchant: MerchantShellU
             </nav>
             <div className="border-t border-slate-200 px-5 py-4 text-xs text-slate-500">
               <p>{t("merchantPortal.modeHelp")}</p>
-              <Link href="/" className="mt-2 inline-block text-brand-700 hover:underline">
-                {t("merchantPortal.adminLink")} →
-              </Link>
+              {showAdminLink && (
+                <Link href="/" className="mt-2 inline-block text-brand-700 hover:underline">
+                  {t("merchantPortal.adminLink")} →
+                </Link>
+              )}
             </div>
           </aside>
           <main className="min-w-0 flex-1">

@@ -334,6 +334,14 @@ async function login(loginId, password) {
   check("applications: overdue tab lists only the overdue transfer with its explanation", overdueBody.includes("ORD-DEMO-005") && !overdueBody.includes("ORD-DEMO-004") && overdueBody.includes("Different from the"));
   await page.goto(BASE + "/", { waitUntil: "networkidle" });
   check("dashboard: overdue badge links to the overdue tab", (await page.locator('a[href="/applications?overdue=1"]').count()) >= 1);
+  // Phase P4-1: allow-list mode panel, off by default; turning it on from a non-listed address is refused with ip_self_block.
+  await page.goto(BASE + "/ip-restrictions", { waitUntil: "networkidle" });
+  check("ip restrictions: allow-list mode panel with both targets off", (await page.locator("[data-testid=allowlist-admin]").getAttribute("aria-checked")) === "false" && (await page.locator("[data-testid=allowlist-merchant_api]").getAttribute("aria-checked")) === "false");
+  await page.locator("[data-testid=allowlist-admin]").click();
+  await page.locator("dialog[open]").getByRole("button", { name: /ON/ }).click();
+  await page.getByText(/Allow-list mode requires your current IP|allow rule/).first().waitFor({ timeout: 8000 });
+  check("ip restrictions: enabling admin allow-list from a non-listed address is refused", true);
+  await page.screenshot({ path: `${OUT}/ip-restrictions-allowlist-en.png`, fullPage: true });
   await page.goto(BASE + "/applications", { waitUntil: "networkidle" });
   await page.getByText("ORD-DEMO-016").first().click();
   await page.waitForURL(/\/applications\/[a-z0-9_]+$/);
@@ -625,6 +633,9 @@ async function login(loginId, password) {
 
   // Merchant login: wrong password, then the seeded credentials.
   await page.goto(BASE + "/merchant/login", { waitUntil: "networkidle" });
+  // Phase P4-2 / P4-3: the PSP shortcut is shown because the smoke server runs with DEMO_LOGIN_HINT; the merchant-id field must not autofill an operator id.
+  check("merchant login: PSP link shown only in demo (DEMO_LOGIN_HINT set)", (await page.getByRole("link", { name: "PSP dashboard" }).count()) === 1);
+  check("merchant login: merchant id field opts out of username autofill", (await page.locator("#merchantCode").getAttribute("autocomplete")) === "off" && (await page.locator("#merchantCode").getAttribute("name")) === "merchant-code");
   await page.fill("#merchantCode", "MER-00001");
   await page.fill("#merchantPassword", "wrong-password");
   await page.getByRole("button", { name: "Log in" }).click();
@@ -788,6 +799,28 @@ async function login(loginId, password) {
   const md = await page.locator("body").innerText();
   check("merchant portal customer detail renders", md.includes("Stored cards (") && md.includes("Transactions ("));
   await page.screenshot({ path: `${OUT}/merchant-customers-en.png`, fullPage: true });
+  await ctx.close();
+}
+
+// ── Phase P5: no translation key leaks on the main screens ─────────────
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  // Dictionary roots that could leak as "root.key" text (t() returns the key when it is missing).
+  const KEY_ROOTS = ["nav", "common", "dashboard", "status", "paymentDetail", "paymentActions", "transactions", "applications", "payments", "merchants", "merchantForm", "merchantTabs", "merchantEnums", "notifyParams", "agents", "refunds", "refundEnums", "settlements", "settlementEnums", "webhookLogs", "webhookEnums", "chargebacks", "blacklist", "depositDiffs", "depositDiffEnums", "unmatchedDeposits", "unmatchedDepositEnums", "depositNotifications", "depositNotificationEnums", "reports", "emailTemplates", "emailLogs", "emailEnums", "announcements", "announcementEnums", "subscriptions", "subscriptionEnums", "paymentLinks", "agentFees", "notifications", "notificationEnums", "methodControls", "globalSettings", "ipRestrictions", "ipEnums", "auditLogs", "auditEnums", "admins", "adminForm", "customers", "manual", "merchantPortal", "permissions", "search", "mode", "errors", "pages", "cvsEnums", "apiKeys", "contract", "limits", "receipts"];
+  const leak = new RegExp(`\\b(?:${KEY_ROOTS.join("|")})\\.[a-zA-Z_]+(?:\\.[a-zA-Z_]+)*\\b`);
+  const SCREENS = ["/", "/applications", "/payments", "/merchants", "/merchants/mer_demo_001?tab=methods", "/merchants/mer_demo_001?tab=notify", "/agents", "/refunds", "/deposit-diffs", "/unmatched-deposits", "/deposit-notifications", "/settlements", "/agent-fees", "/chargebacks", "/blacklist", "/reports", "/webhook-logs", "/email-logs", "/email-templates", "/notifications", "/notifications/settings", "/announcements", "/subscriptions", "/payment-links", "/customers", "/admins", "/payment-method-controls", "/global-settings", "/ip-restrictions", "/audit-logs", "/providers", "/manual", "/search?q=ORD"];
+  const leaks = [];
+  for (const path of SCREENS) {
+    await page.goto(BASE + path, { waitUntil: "networkidle" });
+    const text = await page.innerText("body");
+    const m = leak.exec(text);
+    if (m) leaks.push(`${path}: ${m[0]}`);
+  }
+  check("no translation keys leaked on the main screens", leaks.length === 0, leaks.join(" | ").slice(0, 300));
+  // Phase P5: deposit differences also have test-mode samples now.
+  await page.goto(BASE + "/deposit-diffs", { waitUntil: "networkidle" });
+  const ddTest = await page.innerText("body");
+  check("deposit diffs: test-mode short and excess samples", ddTest.includes("ORD-DEMO-017") && ddTest.includes("ORD-DEMO-018"));
   await ctx.close();
 }
 

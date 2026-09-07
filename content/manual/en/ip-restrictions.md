@@ -5,7 +5,7 @@ Manage **IP address rules** for callers of the admin UI and the merchant API. A 
 | Type | Behavior |
 |---|---|
 | Block | While enabled, matching callers are **actually refused by the admin UI and the API** (pages show “Access blocked”, the API answers 403 `ip_blocked`) |
-| Allow | Informational allow-list entry; callers that do not match are not blocked |
+| Allow | Allow-list entry. While the target's **allow-list mode** is OFF it is informational; while it is ON, callers matching none of the allow rules are refused (403 `ip_blocked`, reason `not_in_allowlist`). Block rules always take precedence |
 
 To shut out an address, add a rule of type **Block** (the default in the form).
 
@@ -23,9 +23,22 @@ To shut out an address, add a rule of type **Block** (the default in the form).
 
 Host bits are normalized on save (`198.51.100.77/24` → `198.51.100.0/24`). IPv6 is not supported yet (not evaluated, therefore never blocked).
 
+## Allow-list mode
+
+The “Allow-list mode” panel at the top switches the mode per target (Admin UI / Merchant API; default OFF, permission `ip_restriction.update`, stored in global settings and audited as `global_setting.update`).
+
+| Mode | Behavior |
+|---|---|
+| OFF | Only block rules refuse callers; allow rules are shown for information |
+| ON | With at least one enabled allow rule, callers matching none of them are refused. With zero allow rules nothing is refused (and the mode cannot be turned on) |
+
+- Turning the Admin UI mode on requires your current IP to be covered by an enabled allow rule (`ip_self_block`). While on, allow-rule changes, disabling or deletions that would drop your own IP from the list are refused as well.
+- The Merchant API mode applies to each merchant's own “Merchant API” allow rules; merchants without allow rules are unaffected. Both `/api/merchant-api/*` and the public API `/api/v1/*` are covered.
+- API: `GET/PUT /api/ip-restrictions/allowlist` `{ target, enabled }` (`allowlist_no_rules` / `ip_self_block`).
+
 ## Lock-out protection
 
-An enabled “Admin UI / Block” rule that covers your own current IP cannot be saved (`ip_self_block`). You may save it disabled and enable it from another address.
+An enabled “Admin UI / Block” rule that covers your own current IP cannot be saved (`ip_self_block`). You may save it disabled and enable it from another address. See above for allow-rule changes while allow-list mode is on.
 
 ## Your current IP and the verdict
 
@@ -35,7 +48,7 @@ The top of the list shows **your current IP** and how it evaluates against enabl
 |---|---|
 | Blocked | Matches an enabled block rule (cannot happen while you can see this page) |
 | On the allow-list | Matches an allow rule (the matched rule is shown) |
-| Not on the allow-list | Allow rules exist but none matches; not blocked |
+| Not on the allow-list | Allow rules exist but none matches; not refused while allow-list mode is OFF, refused while ON (OFF whenever you can see this page) |
 | No allow-list configured | No allow rules |
 | IPv6 — not evaluated | The caller uses IPv6 |
 
