@@ -27,7 +27,7 @@ The request follows the merchant's notification settings (format / parameter set
 | `X-Signature` | `v1=<hex of HMAC-SHA256(key, "<X-Timestamp>.<payload>")>` |
 | `Wirepay-Signature` | Compatibility: `t=<X-Timestamp>,v1=<same value>` |
 
-- The **key** is the merchant's **signing secret** (issued on the API keys tab of the merchant detail; the newest usable one of the same test / live mode). Without a signing secret the merchant password is used. The request headers on the detail screen show which key was used (`key`: `signing_secret:<prefix>` or `merchant_password`).
+- The **key** is the merchant's **signing secret** (issued on the API keys tab of the merchant detail; the newest usable one of the same test / live mode). **Without a usable signing secret for that mode the webhook is not sent** (the password is never used as a fallback): the delivery is recorded as `failed` with `error: signing_secret_missing` and the notification centre gets “Webhook signing secret missing” (warning, once per merchant × mode per 24 h). Issue a secret, then **Resend now** signs and sends it. A test signing secret is issued automatically when a merchant is created and shown once on the completion screen.
 - The **payload** is the raw request body for POST (JSON / form) and the query string (after `?`) for GET.
 - Receivers recompute `v1` the same way, compare in constant time and reject an `X-Timestamp` older than 5 minutes (code sample in the specification chapter).
 

@@ -51,7 +51,7 @@ export function PaymentDetailView({ payment, origin }: { payment: TransactionDet
           <>
             <ModeBadge live={payment.livemode} />
             <PaymentStatusBadge status={payment.status} />
-            {isCvs && payment.status === "pending" && <span className="badge bg-sky-100 text-sky-800 ring-sky-200">{t("paymentDetail.cvsWaiting")}</span>}
+            {isCvs && payment.status === "awaiting_payment" && <span className="badge bg-sky-100 text-sky-800 ring-sky-200">{t("paymentDetail.cvsWaiting")}</span>}
             {payment.overdue && <span className="badge bg-rose-600 text-white ring-rose-700">{t("transactions.overdue")}</span>}
           </>
         }
@@ -281,6 +281,8 @@ function eventLabelKey(type: string): MessageKey {
       return "paymentDetail.eventExpire";
     case "deposit":
       return "paymentDetail.eventDeposit";
+    case "late_deposit":
+      return "paymentDetail.eventLateDeposit";
     default:
       return "paymentDetail.eventOther";
   }

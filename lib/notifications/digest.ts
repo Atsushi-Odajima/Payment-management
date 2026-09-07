@@ -9,7 +9,7 @@ import { emitNotification } from "./emit";
 
 export const CHARGEBACK_REMINDER_DAYS = 3;
 
-export async function runDailyDigests(db: PrismaClient, now: Date = new Date()): Promise<{ transferOverdue: number; cvsOverdue: number; chargebackReminders: number }> {
+export async function runDailyDigests(db: PrismaClient, now: Date = new Date()): Promise<{ transferOverdue: number; cvsOverdue: number; lateDeposits: number; chargebackReminders: number }> {
   const day = ymd(partsInTz(now));
   const todayStart = startOfDayInTz(now);
 
@@ -28,17 +28,32 @@ export async function runDailyDigests(db: PrismaClient, now: Date = new Date()):
     });
   }
 
-  // Konbini payments (Phase K adds the status; until then the count is zero).
-  const cvsOverdue = await db.payment.count({ where: { method: "convenience", status: "pending", transferDueAt: { lt: now } } });
+  // Konbini slips past their counter deadline and still awaiting payment.
+  const cvsOverdue = await db.payment.count({ where: { method: "convenience", status: "awaiting_payment", transferDueAt: { lt: now } } });
   if (cvsOverdue > 0) {
     await emitNotification(db, {
       kind: "cvs.overdue",
       title: `Overdue konbini payments: ${cvsOverdue}`,
       body: `${cvsOverdue} konbini payment(s) passed their deadline (${day}).`,
-      href: "/applications?status=pending",
+      href: "/applications?status=awaiting_payment",
       roles: ["admin", "accounting", "cs"],
       targetType: "digest",
       targetId: `cvs.overdue:${day}`,
+      now,
+    });
+  }
+
+  // Deposits that arrived after the transfer / slip expired and still wait for a decision (Phase P1-3).
+  const lateDeposits = await db.unmatchedDeposit.count({ where: { status: "unmatched", reason: { in: ["late_deposit", "cancelled_deposit"] } } });
+  if (lateDeposits > 0) {
+    await emitNotification(db, {
+      kind: "deposit.late",
+      title: `Late deposits awaiting a decision: ${lateDeposits}`,
+      body: `${lateDeposits} deposit(s) arrived after the transaction expired or was cancelled (${day}). Apply them as late deposits or arrange a return from the unmatched deposits screen.`,
+      href: "/unmatched-deposits?status=unmatched",
+      roles: ["admin", "accounting", "cs"],
+      targetType: "digest",
+      targetId: `deposit.late:${day}`,
       now,
     });
   }
@@ -63,5 +78,5 @@ export async function runDailyDigests(db: PrismaClient, now: Date = new Date()):
     });
     if (id) chargebackReminders++;
   }
-  return { transferOverdue, cvsOverdue, chargebackReminders };
+  return { transferOverdue, cvsOverdue, lateDeposits, chargebackReminders };
 }

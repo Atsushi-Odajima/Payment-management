@@ -76,6 +76,12 @@ export interface EndpointDoc {
   status: number;
 }
 
+/** Transaction `status` values, appended to the endpoint descriptions (kept in sync with lib/payments/transitions.ts). */
+export const TRANSACTION_STATUS_DOC = {
+  ja: "status の値: pending（申請中）/ awaiting_transfer（振込待ち）/ awaiting_payment（コンビニ支払待ち）/ authorized（与信済）/ captured（完了）/ partially_refunded / refunded / cancelled / failed / expired / chargeback。",
+  en: "status values: pending / awaiting_transfer (bank transfer) / awaiting_payment (konbini) / authorized / captured / partially_refunded / refunded / cancelled / failed / expired / chargeback.",
+} as const;
+
 export const PUBLIC_API_ENDPOINTS: readonly EndpointDoc[] = [
   {
     operationId: "createTransaction",
@@ -108,7 +114,7 @@ export const PUBLIC_API_ENDPOINTS: readonly EndpointDoc[] = [
     method: "get",
     path: "/transactions/{id}",
     summary: { ja: "取引を取得", en: "Retrieve a transaction" },
-    description: { ja: "取引 1 件を返します。他の加盟店・他の環境の取引は 404 です。", en: "Returns one transaction; another merchant's or environment's transaction answers 404." },
+    description: { ja: `取引 1 件を返します。他の加盟店・他の環境の取引は 404 です。${TRANSACTION_STATUS_DOC.ja}`, en: `Returns one transaction; another merchant's or environment's transaction answers 404. ${TRANSACTION_STATUS_DOC.en}` },
     pathParams: [{ name: "id", description: { ja: "取引ID", en: "Transaction id" } }],
     responseExample: EXAMPLE_TRANSACTION,
     routeFile: "api/v1/transactions/[id]/route.ts",

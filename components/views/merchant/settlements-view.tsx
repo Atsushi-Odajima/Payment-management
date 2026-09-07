@@ -140,6 +140,11 @@ export function MerchantSettlementDetailView({ batch, lines }: { batch: Settleme
           <div className="card p-4 text-xs text-slate-600">
             <p className="font-semibold text-slate-800">{t("merchantPortal.settlements.invoicePdf")}</p>
             <p className="mt-1">{batch.status === "collecting" ? t("merchantPortal.settlements.invoiceCollecting") : t("merchantPortal.settlements.invoiceHelp")}</p>
+            {batch.invoiceNo && (
+              <p className="mt-1 text-xs text-slate-600">
+                {t("merchantPortal.settlements.invoiceNo")}: <span className="font-mono">{batch.invoiceNo}</span>
+              </p>
+            )}
             {batch.status !== "collecting" && (
               <a href={`/api/merchant-portal/settlements/${batch.id}/invoice`} target="_blank" rel="noopener" className="btn-secondary mt-3 inline-flex w-full justify-center">
                 {t("merchantPortal.settlements.invoicePdf")}

@@ -10,6 +10,7 @@ import { useApiJson, useT } from "./language-provider";
 import { Icon } from "./icons";
 import type { SearchResult } from "@/lib/search";
 import { SEARCH_MIN_LENGTH } from "@/lib/search";
+import type { MessageKey } from "@/lib/i18n";
 import { formatYen } from "@/lib/utils";
 
 type Serialized = Omit<SearchResult, "payments"> & { payments: Array<Omit<SearchResult["payments"][number], "createdAt"> & { createdAt: string }> };
@@ -130,6 +131,16 @@ export function SearchBox({ id = "global-search" }: { id?: string }) {
                   <Row key={a.id} href={`/agents/${a.id}`} onPick={() => setOpen(false)}>
                     <span className="font-medium text-slate-900">{a.name}</span>
                     <span className="text-xs text-slate-500">{a.agentCode} · {a.companyName}</span>
+                  </Row>
+                ))}
+              </Group>
+              <Group title={t("search.groups.settlements")} count={result.settlements.length}>
+                {result.settlements.map((s) => (
+                  <Row key={s.id} href={`/settlements/${s.id}`} onPick={() => setOpen(false)}>
+                    <span className="font-mono font-medium text-slate-900">{s.invoiceNo}</span>
+                    <span className="text-xs text-slate-500">
+                      {s.merchantCode} {s.merchantName} · {formatYen(s.netAmount)} · {t(`settlementEnums.status.${s.status}` as MessageKey)}
+                    </span>
                   </Row>
                 ))}
               </Group>

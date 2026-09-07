@@ -35,6 +35,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { key: "refunds", href: "/refunds", icon: "refund", implemented: true },
       { key: "depositDiffs", href: "/deposit-diffs", icon: "bank", implemented: true },
       { key: "unmatchedDeposits", href: "/unmatched-deposits", icon: "bank", implemented: true },
+      { key: "depositNotifications", href: "/deposit-notifications", icon: "inbox", implemented: true, permission: ["deposit_notification", "view"] },
     ],
   },
   {

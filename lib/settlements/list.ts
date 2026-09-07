@@ -30,6 +30,8 @@ export interface SettlementRow {
   settlementFee: number;
   netAmount: number;
   status: SettlementStatus;
+  /** Qualified invoice number, assigned on confirmation (null while collecting). */
+  invoiceNo: string | null;
   scheduledAt: Date | null;
   paidAt: Date | null;
   holdReason: string | null;
@@ -92,6 +94,7 @@ type Raw = {
   settlementFee: number;
   netAmount: number;
   status: string;
+  invoiceNo: string | null;
   scheduledAt: Date | null;
   paidAt: Date | null;
   holdReason: string | null;
@@ -114,6 +117,7 @@ export function toSettlementRow(r: Raw): SettlementRow {
     settlementFee: r.settlementFee,
     netAmount: r.netAmount,
     status: isSettlementStatus(r.status) ? r.status : "collecting",
+    invoiceNo: r.invoiceNo,
     scheduledAt: r.scheduledAt,
     paidAt: r.paidAt,
     holdReason: r.holdReason,
