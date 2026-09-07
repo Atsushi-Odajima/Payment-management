@@ -287,6 +287,13 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - **決済手段の停止（3-7）**: 理由必須 + 再開予定任意のモーダルは既存の `SuspendFields`。`MethodControlRow.suspendedByName`（`suspendedById` → `AdminUser.name` を `actorNames` で別引き）を追加し、停止中の行に理由・停止者・停止日時・再開予定（`data-testid="suspension-details"`）。加盟店側「決済手段の状態」にも停止日時を表示
 - **加盟店側の領収書発行（3-8）**: `Receipt.description`（但し書き、nullable）と `source = merchant` を追加。`issueReceipt` の `source` は `RECEIPT_SOURCES`（dashboard | customer | merchant）、`description` は空なら前回値 / 既定文言。`POST/GET /api/merchant-portal/receipts/[paymentId]`（`requireMerchant`、自加盟店の完了 / 一部返金の取引のみ、監査 actor merchant）。加盟店側取引詳細の `MerchantReceiptCard`（`data-testid="merchant-receipt"`）と管理側 `ReceiptCard` は同じ `RecipientField`（宛名 + 但し書き）を使い、管理側は「加盟店管理画面から発行」を表示。PDF の「但し」は `description` → 商品名 → 「商品代金」の順
 
+## 修正フェーズ4: 設計判断項目（IP 許可リストモード / PSP リンクのデモ限定 / 加盟店ログインの autocomplete）
+
+- **IP 許可リストモード**: `GlobalSetting.ipAllowlistAdmin` / `ipAllowlistMerchantApi`（既定 false、`lib/settings/global.ts`）。`checkAdminAccess`（`lib/ip-restrictions/enforce.ts`）は有効な admin ルール（両モード）を `evaluateRules` で判定し、deny 一致 → `blocked, reason "deny"`、allow 不一致（`denied`）かつ admin モード ON → `blocked, reason "not_in_allowlist"`（許可ルール 0 件 = `no_rules` は遮断しない）。`withApiHandler` は 403 `ip_blocked` の `details.reason` とメッセージ `errors.ipNotInAllowlist`、`BlockedScreen` は `reason` で文言を切替。加盟店 API は `authenticateMerchantApiKey` が同じ判定（`/api/merchant-api/*` と `/api/v1/*` の両方）
+- 切替 API `GET/PUT /api/ip-restrictions/allowlist { target, enabled }`（`ip_restriction.update`、`saveGlobalSettings` 経由で監査 `global_setting.update`）。ON にする条件: 対象の有効な許可ルールが 1 件以上（400 `allowlist_no_rules`）、admin は現在 IP が許可ルールに一致（400 `ip_self_block`）。ON 中は `assertAllowlistKeepsSelf`（`self-block.ts`）が admin 許可ルールの PATCH / DELETE で自分の IP が外れる変更を 400 `ip_self_block` で拒否（残り 0 件なら可）。画面 `/ip-restrictions` 上部の「許可リストモード」パネル（`data-testid="allowlist-<target>"`）、判定バッジは ON のとき `verdict_deniedEnforced`
+- **PSP リンクのデモ限定**: `app/merchant/layout.tsx` / `app/merchant/login/page.tsx` が `DEMO_LOGIN_HINT` の有無を `showAdminLink` で渡し、`MerchantShell` のサイドバーと加盟店ログイン画面フッターの「管理画面（PSP）へ」は本番では出さない。PSP ログイン画面には加盟店ログインへのリンクは元々無い
+- **加盟店ログインの autocomplete**: 加盟店ID は `name="merchant-code"` + `autoComplete="off"`、パスワードは `name="merchant-password"` + `current-password`（PSP の `loginId` / `password` と区別）
+
 ## 代理店・決済申請・IP制限・マニュアル
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
@@ -359,7 +366,7 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **修正フェーズ1 資金・整合性**（完了）: 入金通知の冪等化（`DepositNotification` + 入金通知ログ画面）、`mode` 必須と環境照合、期限後・キャンセル後入金の保留と `late_deposit` 遷移、Webhook 署名鍵の fail-closed と加盟店登録時の署名シークレット自動発行、精算バッチの請求書番号（確定時採番・一意）、コンビニ支払待ちの独立ステータス `awaiting_payment`、`docs/spec/CHANGELOG.md`
 - [x] **修正フェーズ2 通知まわり**（完了）: 即時完了取引の決済完了メール、加盟店宛メール通知設定の実装（`merchant_payment_notice` / `merchant_daily_summary` + 09:00 JST の cron）、`/api/merchant-api/*` のレート制限（公開 API と同じバケット）
 - [x] **修正フェーズ3 運用画面の改善**（完了）: モード可視化（ヘッダーバッジ・本番ストライプ・トースト・テーブル caption・CSV 名）、期限超過タブ、取引詳細の消込導線（関連入金・候補入力・判定プレビュー）、過不足入金の導線、精算詳細の税率別内訳と注文番号リンク、Webhook 詳細の取引状態 / 最終成功送信 / 再送確認 / 断念フィルタ、停止行の停止者・日時、加盟店管理画面からの領収書発行（但し書き、`source = merchant`）
-- [ ] **修正フェーズ4 設計判断項目**（IP 許可リストモード / PSP リンクのデモ限定 / 加盟店ログイン autocomplete）
+- [x] **修正フェーズ4 設計判断項目**（完了）: IP 許可リストモード（対象別トグル、許可ルール 0 件 / 自己ロックアウトの拒否、admin と加盟店 API の遮断、ON 中の許可ルール変更ガード）、PSP リンクの `DEMO_LOGIN_HINT` 限定、加盟店ログインの autocomplete 分離
 - [ ] **修正フェーズ5 文言・デモデータ・小修正**
 - [ ] **修正フェーズ6 仕様書・マニュアル再生成**（1.1.0）
 - 全フェーズ完了。以降の追加は README の「残課題」から選ぶ

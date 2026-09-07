@@ -40,6 +40,8 @@ Changes to the specifications (docs/spec) and to public interfaces. **Breaking c
 | C-1 | Webhook の署名で **加盟店パスワードへのフォールバックを廃止**（fail closed）。使用可能な署名シークレットが無い環境への通知は送信せず、`WebhookDelivery.status = failed`、`error: signing_secret_missing` で記録し、通知センターに警告を出す。シークレット発行後の再送で署名して送る | パスワードを署名鍵に流用すると、鍵の失効・ローテーションが管理できず、加盟店側の検証実装も二重になる |
 | C-2 | 英語 UI のステータス `pending` の表示を "Applied" から "Pending" に変更 | `awaiting_payment` の追加に合わせて意味を正確にするため |
 | C-3 | **`/api/merchant-api/*`（ping / announcements / settlements）にレート制限を適用**: 公開 API `/api/v1` と同じ加盟店 × 環境 × 分のバケットで 60 回 / 分。超過は 429 `rate_limited` + `Retry-After`、成功応答に `X-RateLimit-Limit` / `X-RateLimit-Remaining` | 旧 API だけ無制限で、同じキーからの過負荷を防げなかった。同じバケットにすることで合計の上限を 1 つにする（修正フェーズ2-3） |
+| C-5 | **IP 制限の許可リストモード**（修正フェーズ4-1）: `GlobalSetting.ipAllowlistAdmin` / `ipAllowlistMerchantApi`（既定 OFF）。ON のとき、対象の有効な許可ルールに一致しない接続元を 403 `ip_blocked`（`details.reason = "not_in_allowlist"`）で遮断する。加盟店 API では `/api/merchant-api/*` と `/api/v1/*` の両方に適用（加盟店ごとの許可ルール、ルールの無い加盟店は影響なし）。ブロックルールは常に優先。`GET/PUT /api/ip-restrictions/allowlist` | 許可ルールが表示専用で実効性が無かった。既定 OFF で互換を保ちつつ、ON 時の自己ロックアウトを API 側で防ぐ |
+| C-6 | 加盟店管理画面のサイドバーと加盟店ログイン画面の「管理画面（PSP）へ」リンクは `DEMO_LOGIN_HINT` 設定時のみ表示（修正フェーズ4-2）。加盟店ログインの入力欄は `name="merchant-code"` / `autoComplete="off"`（修正フェーズ4-3） | デモ専用の導線を本番に出さない。ブラウザが PSP 管理者 ID を加盟店IDに自動入力しないようにする |
 | C-4 | クレジット / QR の即時完了取引でも決済完了メール `payment_completed` を顧客へ送信する（定期課金の課金は除外） | 手動完了・入金消込では送っていたのに即時完了だけ送られていなかった（修正フェーズ2-1） |
 
 ### 移行 / Migration

@@ -9,7 +9,8 @@ import { ProviderStatusBadge } from "@/components/payment-status-badge";
 import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useToast } from "@/components/toast";
-import type { IpMode, IpRestrictionView } from "@/lib/ip-restrictions/types";
+import { useCan } from "@/components/session-provider";
+import type { IpMode, IpRestrictionView, IpTarget } from "@/lib/ip-restrictions/types";
 import type { AllowVerdict } from "@/lib/ip";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ export function IpRestrictionsView({
   rules,
   clientIp,
   verdict,
+  allowlist,
   target,
   mode,
   enabled,
@@ -27,6 +29,7 @@ export function IpRestrictionsView({
   rules: IpRestrictionView[];
   clientIp: string | null;
   verdict: AllowVerdict | null;
+  allowlist: Record<IpTarget, { enabled: boolean; allowRules: number }>;
   target: string;
   mode: string;
   enabled: string;
@@ -41,7 +44,30 @@ export function IpRestrictionsView({
   const toast = useToast();
   const formatDate = useFormatDateTime();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const canUpdate = useCan("ip_restriction", "update");
   const params = { target: target || undefined, mode: mode || undefined, enabled: enabled || undefined };
+
+  /** Allow-list mode switch per target (Phase P4-1). */
+  async function toggleAllowlist(tgt: IpTarget) {
+    const next = !allowlist[tgt].enabled;
+    const label = t(`ipEnums.target.${tgt}`);
+    const ok = await confirm({
+      title: t("ipRestrictions.allowlistTitle"),
+      body: next ? t("ipRestrictions.allowlistConfirmOn", { target: label }) : t("ipRestrictions.allowlistConfirmOff", { target: label }),
+      confirmLabel: next ? t("ipRestrictions.allowlistOn") : t("ipRestrictions.allowlistOff"),
+      tone: next ? "danger" : "primary",
+    });
+    if (!ok) return;
+    setBusyId(`allowlist:${tgt}`);
+    const res = await apiJson(`/api/ip-restrictions/allowlist`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: tgt, enabled: next }) });
+    setBusyId(null);
+    if (!res.ok) {
+      toast.show(res.error.message, "error");
+      return;
+    }
+    toast.show(t("ipRestrictions.allowlistSaved"));
+    router.refresh();
+  }
   const href = (next: Partial<typeof params>) => {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries({ ...params, ...next })) if (v) q.set(k, v);
@@ -87,7 +113,38 @@ export function IpRestrictionsView({
           <p className="mt-1 font-mono text-lg text-slate-900">{clientIp ?? t("ipRestrictions.ipUnknown")}</p>
           <p className="mt-1 text-xs text-slate-500">{t("ipRestrictions.currentIpHelp")}</p>
         </div>
-        <VerdictBadge verdict={verdict} />
+        <VerdictBadge verdict={verdict} enforced={allowlist.admin.enabled} />
+      </section>
+
+      <section className="card mb-6 p-5" aria-labelledby="allowlist-heading" data-testid="allowlist-mode">
+        <h2 id="allowlist-heading" className="text-sm font-semibold text-slate-800">
+          {t("ipRestrictions.allowlistTitle")}
+        </h2>
+        <p className="mt-1 text-xs text-slate-600">{t("ipRestrictions.allowlistHelp")}</p>
+        <ul className="mt-3 divide-y divide-slate-100">
+          {(["admin", "merchant_api"] as const).map((tgt) => (
+            <li key={tgt} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div>
+                <p className="text-sm font-medium text-slate-900">{t(`ipEnums.target.${tgt}`)}</p>
+                <p className="text-xs text-slate-500">
+                  {t("ipRestrictions.allowlistRules", { count: allowlist[tgt].allowRules })} · {tgt === "admin" ? t("ipRestrictions.allowlistAdminHelp") : t("ipRestrictions.allowlistMerchantHelp")}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={allowlist[tgt].enabled}
+                aria-label={`${t("ipRestrictions.allowlistTitle")}: ${t(`ipEnums.target.${tgt}`)}`}
+                data-testid={`allowlist-${tgt}`}
+                className={cn("badge cursor-pointer px-3 py-1.5", allowlist[tgt].enabled ? "bg-rose-600 text-white ring-rose-700" : "bg-slate-100 text-slate-700 ring-slate-200", (!canUpdate || busyId !== null) && "cursor-not-allowed opacity-60")}
+                disabled={!canUpdate || busyId !== null}
+                onClick={() => void toggleAllowlist(tgt)}
+              >
+                {allowlist[tgt].enabled ? t("ipRestrictions.allowlistOn") : t("ipRestrictions.allowlistOff")}
+              </button>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -184,7 +241,7 @@ export function ModeBadge({ mode }: { mode: IpMode }) {
   );
 }
 
-function VerdictBadge({ verdict }: { verdict: AllowVerdict | null }) {
+function VerdictBadge({ verdict, enforced = false }: { verdict: AllowVerdict | null; enforced?: boolean }) {
   const t = useT();
   if (!verdict) return <span className="badge bg-slate-100 text-slate-700 ring-slate-200">{t("ipRestrictions.verdict_unknown")}</span>;
   switch (verdict.kind) {
@@ -203,7 +260,7 @@ function VerdictBadge({ verdict }: { verdict: AllowVerdict | null }) {
         </span>
       );
     case "denied":
-      return <span className="badge bg-amber-100 text-amber-800 ring-amber-200">{t("ipRestrictions.verdict_denied")}</span>;
+      return <span className={cn("badge", enforced ? "bg-rose-100 text-rose-800 ring-rose-200" : "bg-amber-100 text-amber-800 ring-amber-200")}>{enforced ? t("ipRestrictions.verdict_deniedEnforced") : t("ipRestrictions.verdict_denied")}</span>;
     case "no_rules":
       return <span className="badge bg-slate-100 text-slate-700 ring-slate-200">{t("ipRestrictions.verdict_noRules")}</span>;
     default:

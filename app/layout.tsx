@@ -54,7 +54,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     return (
       <html lang={lang}>
         <body>
-          <BlockedScreen lang={lang} ip={access.ip ?? ""} matched={access.matched ?? ""} />
+          <BlockedScreen lang={lang} ip={access.ip ?? ""} matched={access.matched ?? ""} reason={access.reason ?? "deny"} />
         </body>
       </html>
     );

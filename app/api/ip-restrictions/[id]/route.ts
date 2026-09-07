@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/api/role-guard";
 import { ApiError, ok, readJson, withApiHandler } from "@/lib/api/handler";
 import { validateIpRestrictionInput } from "@/lib/ip-restrictions/schema";
-import { assertNotSelfBlock } from "@/lib/ip-restrictions/self-block";
+import { assertAllowlistKeepsSelf, assertNotSelfBlock } from "@/lib/ip-restrictions/self-block";
 import { normalizeCidr } from "@/lib/ip";
 import { IP_RESTRICTION_SELECT } from "../select";
 import { auditContextFromRequest, recordAudit } from "@/lib/audit";
@@ -26,6 +26,7 @@ export const PATCH = withApiHandler<Ctx>(async (req, { params }) => {
   assertNotSelfBlock(req, v.data);
   const existing = await prisma.ipRestriction.findUnique({ where: { id: params.id }, select: IP_RESTRICTION_SELECT });
   if (!existing) throw new ApiError(404, "not_found", "errors.notFound");
+  if (existing.target === "admin") await assertAllowlistKeepsSelf(prisma, req, { excludeId: params.id, replacement: v.data });
   const audit = await auditContextFromRequest(req);
   const updated = await prisma.$transaction(async (tx) => {
     const row = await tx.ipRestriction.update({
@@ -43,6 +44,7 @@ export const DELETE = withApiHandler<Ctx>(async (req, { params }) => {
     await requirePermission(req, "ip_restriction", "delete");
   const existing = await prisma.ipRestriction.findUnique({ where: { id: params.id }, select: IP_RESTRICTION_SELECT });
   if (!existing) throw new ApiError(404, "not_found", "errors.notFound");
+  if (existing.target === "admin") await assertAllowlistKeepsSelf(prisma, req, { excludeId: params.id, replacement: null });
   const audit = await auditContextFromRequest(req);
   await prisma.$transaction(async (tx) => {
     await tx.ipRestriction.delete({ where: { id: params.id } });
