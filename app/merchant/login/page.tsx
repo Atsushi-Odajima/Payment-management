@@ -13,5 +13,5 @@ export default async function MerchantLoginPage() {
     const rows = await prisma.merchant.findMany({ where: { id: { in: Object.keys(SEED_MERCHANT_PASSWORDS) } }, select: { id: true, merchantCode: true, siteName: true }, orderBy: { merchantCode: "asc" } });
     demo = rows.map((r) => ({ merchantCode: r.merchantCode, siteName: r.siteName, password: SEED_MERCHANT_PASSWORDS[r.id as keyof typeof SEED_MERCHANT_PASSWORDS] }));
   }
-  return <MerchantLoginView demo={demo} />;
+  return <MerchantLoginView demo={demo} showAdminLink={Boolean(process.env.DEMO_LOGIN_HINT)} />;
 }

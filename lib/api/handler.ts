@@ -73,7 +73,7 @@ export function withApiHandler<Ctx = unknown>(handler: Handler<Ctx>, options: Ha
       if (ipRestricted) {
         const access = await checkAdminAccess((n) => req.headers.get(n));
         if (access.blocked) {
-          throw new ApiError(403, "ip_blocked", "errors.ipBlocked", { ip: access.ip ?? "" });
+          throw new ApiError(403, "ip_blocked", access.reason === "not_in_allowlist" ? "errors.ipNotInAllowlist" : "errors.ipBlocked", { ip: access.ip ?? "" }, { reason: access.reason ?? "deny" });
         }
       }
       if (new URL(req.url).searchParams.get("format") === "csv") await assertCsvExportAllowed(req);

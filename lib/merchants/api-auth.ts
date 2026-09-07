@@ -11,6 +11,7 @@ import { clientIpFromHeaders, evaluateRules } from "@/lib/ip";
 import { API_KEY_SELECT, apiKeyUsable, looksLikeApiKey, toApiKeyView, type ApiKeyView } from "./api-keys";
 import { hashApiKey } from "./api-keys-server";
 import { enforceApiRateLimit, rateLimitHeaders, type RateLimitOutcome } from "@/lib/public-api/rate-limit";
+import { loadGlobalSettings } from "@/lib/settings/global";
 
 export interface MerchantApiIdentity extends ApiKeyView {
   merchantId: string;
@@ -34,7 +35,11 @@ export async function authenticateMerchantApiKey(db: PrismaClient, req: Request)
       ip,
       rules.map((r) => ({ cidr: r.cidr, mode: r.mode === "deny" ? ("deny" as const) : ("allow" as const) })),
     );
-    if (verdict.kind === "blocked") throw new ApiError(403, "ip_blocked", "errors.ipBlocked", { ip });
+    if (verdict.kind === "blocked") throw new ApiError(403, "ip_blocked", "errors.ipBlocked", { ip }, { reason: "deny" });
+    // Allow-list mode for the merchant API (Phase P4-1): a merchant with enabled allow rules only accepts those addresses.
+    if (verdict.kind === "denied" && (await loadGlobalSettings(db)).ipAllowlistMerchantApi) {
+      throw new ApiError(403, "ip_blocked", "errors.ipNotInAllowlist", { ip }, { reason: "not_in_allowlist" });
+    }
   }
   await db.apiKey.update({ where: { id: key.id }, data: { lastUsedAt: new Date() } });
   return { ...toApiKeyView(key), merchantId: key.merchantId, merchantCode: key.merchant.merchantCode, siteName: key.merchant.siteName };

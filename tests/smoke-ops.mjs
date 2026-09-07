@@ -334,6 +334,14 @@ async function login(loginId, password) {
   check("applications: overdue tab lists only the overdue transfer with its explanation", overdueBody.includes("ORD-DEMO-005") && !overdueBody.includes("ORD-DEMO-004") && overdueBody.includes("Different from the"));
   await page.goto(BASE + "/", { waitUntil: "networkidle" });
   check("dashboard: overdue badge links to the overdue tab", (await page.locator('a[href="/applications?overdue=1"]').count()) >= 1);
+  // Phase P4-1: allow-list mode panel, off by default; turning it on from a non-listed address is refused with ip_self_block.
+  await page.goto(BASE + "/ip-restrictions", { waitUntil: "networkidle" });
+  check("ip restrictions: allow-list mode panel with both targets off", (await page.locator("[data-testid=allowlist-admin]").getAttribute("aria-checked")) === "false" && (await page.locator("[data-testid=allowlist-merchant_api]").getAttribute("aria-checked")) === "false");
+  await page.locator("[data-testid=allowlist-admin]").click();
+  await page.locator("dialog[open]").getByRole("button", { name: /ON/ }).click();
+  await page.getByText(/Allow-list mode requires your current IP|allow rule/).first().waitFor({ timeout: 8000 });
+  check("ip restrictions: enabling admin allow-list from a non-listed address is refused", true);
+  await page.screenshot({ path: `${OUT}/ip-restrictions-allowlist-en.png`, fullPage: true });
   await page.goto(BASE + "/applications", { waitUntil: "networkidle" });
   await page.getByText("ORD-DEMO-016").first().click();
   await page.waitForURL(/\/applications\/[a-z0-9_]+$/);
@@ -625,6 +633,9 @@ async function login(loginId, password) {
 
   // Merchant login: wrong password, then the seeded credentials.
   await page.goto(BASE + "/merchant/login", { waitUntil: "networkidle" });
+  // Phase P4-2 / P4-3: the PSP shortcut is shown because the smoke server runs with DEMO_LOGIN_HINT; the merchant-id field must not autofill an operator id.
+  check("merchant login: PSP link shown only in demo (DEMO_LOGIN_HINT set)", (await page.getByRole("link", { name: "PSP dashboard" }).count()) === 1);
+  check("merchant login: merchant id field opts out of username autofill", (await page.locator("#merchantCode").getAttribute("autocomplete")) === "off" && (await page.locator("#merchantCode").getAttribute("name")) === "merchant-code");
   await page.fill("#merchantCode", "MER-00001");
   await page.fill("#merchantPassword", "wrong-password");
   await page.getByRole("button", { name: "Log in" }).click();

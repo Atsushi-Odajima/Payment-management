@@ -1009,6 +1009,10 @@ model GlobalSetting {
   piiRetentionMonths   Int      @default(24)
   auditRetentionYears  Int      @default(7)
   csvPii               String   @default("masked")
+  // IP allow-list mode per target (Phase P4-1): when on, a caller that matches
+  // no enabled allow rule is blocked (deny rules always win; no allow rules = no enforcement).
+  ipAllowlistAdmin       Boolean  @default(false)
+  ipAllowlistMerchantApi Boolean  @default(false)
   updatedAt       DateTime @updatedAt
 }
 

@@ -5,7 +5,7 @@
 import { translate, type Lang } from "@/lib/i18n";
 import { WirePayIcon } from "@/components/wire-pay-icon";
 
-export function BlockedScreen({ lang, ip, matched }: { lang: Lang; ip: string; matched: string }) {
+export function BlockedScreen({ lang, ip, matched, reason = "deny" }: { lang: Lang; ip: string; matched: string; reason?: "deny" | "not_in_allowlist" }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
       <div className="card w-full max-w-md p-8 text-center">
@@ -13,7 +13,7 @@ export function BlockedScreen({ lang, ip, matched }: { lang: Lang; ip: string; m
           <WirePayIcon className="h-7 w-7 text-white" />
         </div>
         <h1 className="text-lg font-semibold text-slate-900">{translate(lang, "pages.blockedTitle")}</h1>
-        <p className="mt-2 text-sm text-slate-600">{translate(lang, "pages.blockedBody")}</p>
+        <p className="mt-2 text-sm text-slate-600">{translate(lang, reason === "not_in_allowlist" ? "pages.blockedBodyAllowlist" : "pages.blockedBody")}</p>
         <dl className="mt-5 space-y-1 rounded-lg bg-slate-100 px-4 py-3 text-left font-mono text-xs text-slate-700">
           <div className="flex justify-between gap-4">
             <dt className="text-slate-500">{translate(lang, "pages.blockedIp")}</dt>
@@ -21,7 +21,7 @@ export function BlockedScreen({ lang, ip, matched }: { lang: Lang; ip: string; m
           </div>
           <div className="flex justify-between gap-4">
             <dt className="text-slate-500">{translate(lang, "pages.blockedRule")}</dt>
-            <dd>{matched}</dd>
+            <dd>{reason === "not_in_allowlist" ? translate(lang, "pages.blockedNotInAllowlist") : matched}</dd>
           </div>
         </dl>
       </div>

@@ -10,5 +10,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function MerchantLayout({ children }: { children: React.ReactNode }) {
   const m = await currentMerchantFromCookies();
-  return <MerchantShell merchant={m ? { id: m.id, merchantCode: m.merchantCode, siteName: m.siteName } : null}>{children}</MerchantShell>;
+  // The "PSP dashboard" shortcut is a demo convenience (Phase P4-2): shown only with DEMO_LOGIN_HINT.
+  return (
+    <MerchantShell merchant={m ? { id: m.id, merchantCode: m.merchantCode, siteName: m.siteName } : null} showAdminLink={Boolean(process.env.DEMO_LOGIN_HINT)}>
+      {children}
+    </MerchantShell>
+  );
 }
