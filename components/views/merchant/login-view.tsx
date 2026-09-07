@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useApiJson, useT } from "@/components/language-provider";
 import { WirePayIcon } from "@/components/wire-pay-icon";
 
-export function MerchantLoginView({ demo }: { demo?: Array<{ merchantCode: string; siteName: string; password: string }> }) {
+export function MerchantLoginView({ demo, showAdminLink = false }: { demo?: Array<{ merchantCode: string; siteName: string; password: string }>; showAdminLink?: boolean }) {
   const t = useT();
   const router = useRouter();
   const apiJson = useApiJson();
@@ -48,13 +48,13 @@ export function MerchantLoginView({ demo }: { demo?: Array<{ merchantCode: strin
           <label htmlFor="merchantCode" className="label">
             {t("merchantPortal.merchantCode")}
           </label>
-          <input id="merchantCode" className="input font-mono" value={merchantCode} onChange={(e) => setMerchantCode(e.target.value)} required autoComplete="username" autoFocus autoCapitalize="characters" placeholder="MER-00001" />
+          <input id="merchantCode" name="merchant-code" className="input font-mono" value={merchantCode} onChange={(e) => setMerchantCode(e.target.value)} required autoComplete="off" autoFocus autoCapitalize="characters" placeholder="MER-00001" />
         </div>
         <div>
           <label htmlFor="merchantPassword" className="label">
             {t("merchantPortal.password")}
           </label>
-          <input id="merchantPassword" type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+          <input id="merchantPassword" name="merchant-password" type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
         </div>
         {demo && demo.length > 0 && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -78,10 +78,14 @@ export function MerchantLoginView({ demo }: { demo?: Array<{ merchantCode: strin
           <Link href="/docs/api" className="text-brand-700 hover:underline">
             {t("merchantPortal.docsLink")}
           </Link>
-          {" · "}
-          <Link href="/login" className="text-brand-700 hover:underline">
-            {t("merchantPortal.adminLink")}
-          </Link>
+          {showAdminLink && (
+            <>
+              {" · "}
+              <Link href="/login" className="text-brand-700 hover:underline">
+                {t("merchantPortal.adminLink")}
+              </Link>
+            </>
+          )}
         </p>
       </form>
     </div>

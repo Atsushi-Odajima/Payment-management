@@ -6,6 +6,7 @@ import { IP_RESTRICTION_SELECT } from "@/app/api/ip-restrictions/select";
 import { isIpMode, isIpTarget } from "@/lib/ip-restrictions/types";
 import { loadAdminRules } from "@/lib/ip-restrictions/enforce";
 import { clientIpFromHeaders, evaluateRules } from "@/lib/ip";
+import { allowlistStatus } from "@/lib/ip-restrictions/allowlist";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export default async function IpRestrictionsPage({
     ...(enabled ? { enabled: enabled === "1" } : {}),
   };
 
-  const [rows, total, adminRules] = await Promise.all([
+  const [rows, total, adminRules, allowlist] = await Promise.all([
     prisma.ipRestriction.findMany({
       where,
       orderBy: [{ target: "asc" }, { mode: "asc" }, { createdAt: "asc" }],
@@ -35,6 +36,7 @@ export default async function IpRestrictionsPage({
     prisma.ipRestriction.count({ where }),
     // The verdict is for the admin UI, so only enabled admin rules count.
     loadAdminRules(),
+    allowlistStatus(),
   ]);
 
   const h = headers();
@@ -52,6 +54,7 @@ export default async function IpRestrictionsPage({
       }))}
       clientIp={clientIp}
       verdict={verdict}
+      allowlist={allowlist}
       target={target}
       mode={mode}
       enabled={enabled}

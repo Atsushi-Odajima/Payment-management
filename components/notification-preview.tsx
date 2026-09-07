@@ -144,6 +144,8 @@ function paramDescriptionKey(name: string): MessageKey {
       return "notifyParams.user_id";
     case "product_id":
       return "notifyParams.product_id";
+    case "event":
+      return "notifyParams.event";
     default:
       return "notifyParams.domain";
   }
