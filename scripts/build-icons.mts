@@ -4,8 +4,8 @@
 //
 // The SVG comes from lib/wire-pay-icon.ts — the same geometry the React
 // component renders — so there is exactly one definition of the icon.
-// Rendering goes through headless Chromium (Playwright) because the SVG uses
-// a serif <text> glyph (€) that pure SVG rasterizers handle inconsistently.
+// Rendering goes through headless Chromium (Playwright) so the anti-aliasing
+// of the thin strokes matches what browsers show for the inline SVG.
 //
 // Output:
 //   app/icon.svg          browser tab favicon (vector)

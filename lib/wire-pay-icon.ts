@@ -28,7 +28,6 @@ export interface IconGeometry {
   equator: Line;
   longitudeShapes: Array<{ kind: "line"; line: Line } | { kind: "path"; d: string }>;
   nodes: { cx: number; cy: number; r: number }[];
-  euro: { x: number; y: number; fontSize: number };
 }
 
 const num = (n: number) => Number(n.toFixed(3));
@@ -73,8 +72,6 @@ export function iconGeometry(size = 1024, rounded = true): IconGeometry {
     };
   });
 
-  const euroFontSize = globeR * 0.85;
-
   return {
     size: s,
     bgRadius: num(bgRadius),
@@ -91,7 +88,6 @@ export function iconGeometry(size = 1024, rounded = true): IconGeometry {
     equator: { x1: num(r - globeR), y1: num(r), x2: num(r + globeR), y2: num(r) },
     longitudeShapes,
     nodes: nodePts.map((n) => ({ cx: n.x, cy: n.y, r: num(nodeR) })),
-    euro: { x: num(r), y: num(r + euroFontSize * 0.35), fontSize: num(euroFontSize) },
   };
 }
 
@@ -124,6 +120,5 @@ export function buildWirePayIconSvg({ size = 1024, rounded = true }: BuildIconOp
     ${longitudes}
     ${g.nodes.map((n) => `<circle cx="${n.cx}" cy="${n.cy}" r="${n.r}" stroke-width="${g.strokes.thick}" fill="#0a0a0a"/>`).join("")}
   </g>
-  <text x="${g.euro.x}" y="${g.euro.y}" text-anchor="middle" fill="white" font-size="${g.euro.fontSize}" font-family="Georgia, 'Times New Roman', serif" font-weight="300" opacity="0.95">€</text>
 </svg>`;
 }
