@@ -135,6 +135,10 @@ async function login(loginId, password) {
   await page.waitForURL(/\/webhook-logs\/[a-z0-9_]+$/);
   check("webhook detail shows request headers with signature", (await page.textContent("body")).includes("X-Signature"));
   await page.getByRole("button", { name: "Resend now" }).click();
+  check("webhook detail: transaction row shows order number and status", (await page.locator("[data-testid=webhook-payment]").innerText()).includes("ORD-DEMO-006"));
+  await page.locator("dialog[open]").waitFor({ timeout: 5000 });
+  check("webhook resend asks for confirmation with the transaction status", (await page.locator("dialog[open]").innerText()).includes("Failed"));
+  await page.locator("dialog[open]").getByRole("button", { name: "Resend now" }).click();
   await page.getByText(/Resent/).waitFor({ timeout: 15000 });
   await page.waitForTimeout(500);
   check("manual resend adds an attempt (demo receiver answers 500)", (await page.locator("section[aria-labelledby=wh-attempts] li").count()) === 3);
@@ -434,6 +438,7 @@ async function login(loginId, password) {
   await page.locator("dialog[open]").getByRole("button", { name: "Cancel" }).click();
   await page.waitForTimeout(800);
   check("red banner shows the globally suspended method", (await page.locator("[role=region][aria-label='Payment method suspension banner']").textContent()).includes("Credit Card"));
+  check("method controls: suspended row shows reason, operator and time", (await page.locator("[data-testid=suspension-details]").first().innerText()).includes("Suspended by kuromaru"));
   await page.screenshot({ path: `${OUT}/payment-method-controls-en.png`, fullPage: true });
   await page.goto(BASE + "/payments/new", { waitUntil: "networkidle" });
   check("new payment form hides the suspended method", !(await page.locator("#providerId").textContent()).includes("Stripe"));
@@ -521,6 +526,7 @@ async function login(loginId, password) {
   await page.locator("tbody tr").filter({ hasText: "Confirmed" }).first().click();
   await page.waitForURL(/\/settlements\/[a-z0-9_]+$/);
   check("settlement detail shows the invoice number", /INV-\d{6}-\d{5}-\d{2}/.test(await page.innerText("body")));
+  check("settlement detail: tax breakdown rows (excl. / tax / incl.)", (await page.locator("[data-testid=tax-breakdown]").innerText()).includes("10%"));
   await ctx.close();
 }
 
@@ -644,6 +650,19 @@ async function login(loginId, password) {
   check("merchant: refund requested from the transaction detail", true);
   await page.goto(BASE + "/merchant/refunds", { waitUntil: "networkidle" });
   check("merchant refunds list shows the request", (await page.textContent("body")).includes("SUB-DEMO-0001"));
+  // Phase P3-8: the merchant issues a receipt with addressee and description.
+  // SUB-DEMO-0001 (pay_demo_012, merchant1) stays completed through the smoke (its refund is only requested), so the receipt is a first issue.
+  await page.goto(BASE + "/merchant/transactions/pay_demo_012", { waitUntil: "networkidle" });
+  await page.locator("[data-testid=merchant-receipt]").getByRole("button", { name: "Issue receipt" }).click();
+  await page.locator("dialog[open] #receipt-recipient").fill("Kotori Buyer Co.");
+  await page.locator("dialog[open] #receipt-description").fill("Goods");
+  await page.locator("dialog[open]").getByRole("button", { name: "Issue receipt" }).click();
+  await page.getByText(/Receipt RC-/).waitFor({ timeout: 8000 });
+  await page.waitForTimeout(500);
+  const mrBody = await page.locator("[data-testid=merchant-receipt]").innerText();
+  check("merchant receipt: number, addressee and description shown", /RC-\d{6}-\d{5}/.test(mrBody) && mrBody.includes("Kotori Buyer Co.") && mrBody.includes("Goods"));
+  const mrPdf = await page.request.get(page.url().replace("/merchant/transactions/", "/api/merchant-portal/receipts/"));
+  check("merchant receipt PDF served", mrPdf.status() === 200 && (mrPdf.headers()["content-type"] ?? "").includes("application/pdf"));
 
   // Webhook resend, settlements + invoice, API keys rotation, methods, announcements.
   await page.goto(BASE + "/merchant/webhooks", { waitUntil: "networkidle" });

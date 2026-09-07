@@ -50,6 +50,38 @@ export function summarizeTax(items: ReadonlyArray<{ taxCategory: string | null; 
     });
 }
 
+export interface InvoiceItem {
+  /** Payment method key (credit / qr / …) or "settlement_fee" for the transfer fee. */
+  key: string;
+  count: number;
+  /** Gross sales the fee was charged on (0 for the transfer fee). */
+  base: number;
+  /** Tax-inclusive fee total. */
+  fee: number;
+  taxCategory: TaxCategory;
+}
+
+/**
+ * Fee lines grouped by payment method plus the merchant's transfer fee — the
+ * rows of the qualified invoice. Shared by the PDF and the settlement detail
+ * screen (Phase P3-5) so both show the same numbers.
+ */
+export function invoiceItems(lines: ReadonlyArray<{ kind: string; method: string | null; amount: number; fee: number; taxCategory: string | null }>, settlementFee: number): InvoiceItem[] {
+  const groups = new Map<string, InvoiceItem>();
+  for (const l of lines) {
+    if (l.kind !== "payment" || l.fee === 0) continue;
+    const key = l.method ?? "other";
+    const g = groups.get(key) ?? { key, count: 0, base: 0, fee: 0, taxCategory: isTaxCategory(l.taxCategory) ? l.taxCategory : "standard10" };
+    g.count++;
+    g.base += l.amount;
+    g.fee += l.fee;
+    groups.set(key, g);
+  }
+  const items = [...groups.values()];
+  if (settlementFee > 0) items.push({ key: "settlement_fee", count: 1, base: 0, fee: settlementFee, taxCategory: "standard10" });
+  return items;
+}
+
 /** Default category of a settlement line's fee: services are taxed at the standard rate; lines without a fee carry none. */
 export function defaultTaxCategory(kind: "payment" | "refund" | "chargeback"): TaxCategory {
   return kind === "payment" ? "standard10" : "exempt";

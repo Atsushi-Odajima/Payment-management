@@ -22,6 +22,7 @@ export const RECEIPT_SELECT = {
   livemode: true,
   recipientName: true,
   amount: true,
+  description: true,
   source: true,
   issuedById: true,
   reissueCount: true,
@@ -49,11 +50,17 @@ export function receiptAmount(p: { amount: number; amountRefunded: number }): nu
   return p.amount - p.amountRefunded;
 }
 
+export const RECEIPT_SOURCES = ["dashboard", "customer", "merchant"] as const;
+export type ReceiptSource = (typeof RECEIPT_SOURCES)[number];
+
 export interface IssueReceiptInput {
   paymentId: string;
   /** 宛名; defaults to the customer name, then "上様" is left to the operator. */
   recipientName?: string | null;
-  source: "dashboard" | "customer";
+  /** 但し書き (Phase P3-8); empty keeps the previous value, null / undefined on first issue = default wording. */
+  description?: string | null;
+  /** dashboard (operator) | customer (hosted page download) | merchant (merchant portal, Phase P3-8). */
+  source: ReceiptSource;
   issuedById: string | null;
   audit: AuditContext;
   now?: Date;
@@ -68,14 +75,15 @@ export async function issueReceipt(db: PrismaClient, input: IssueReceiptInput): 
   if (!payment) throw new ApiError(404, "not_found", "errors.notFound");
   if (!RECEIPT_STATUSES.includes(payment.status)) throw new ApiError(409, "receipt_not_completed", "errors.receiptNotCompleted");
   const recipientName = (input.recipientName ?? "").trim() || payment.receipt?.recipientName || payment.customerName || "";
+  const description = (input.description ?? "").trim() || payment.receipt?.description || null;
   const amount = receiptAmount(payment);
 
   if (payment.receipt) {
-    // Customer re-downloads are not re-issues; operator re-issues are counted and audited.
+    // Customer re-downloads are not re-issues; operator / merchant re-issues are counted and audited.
     if (input.source === "customer") return payment.receipt;
     return db.$transaction(async (tx) => {
-      const row = await tx.receipt.update({ where: { id: payment.receipt!.id }, data: { recipientName, amount, reissueCount: { increment: 1 }, lastIssuedAt: now }, select: RECEIPT_SELECT });
-      await recordAudit(tx, input.audit, { action: "receipt.issue", targetType: "receipt", targetId: row.id, before: { receiptNo: row.receiptNo, reissueCount: payment.receipt!.reissueCount, recipientName: payment.receipt!.recipientName }, after: { receiptNo: row.receiptNo, reissueCount: row.reissueCount, recipientName, amount, reissue: true } });
+      const row = await tx.receipt.update({ where: { id: payment.receipt!.id }, data: { recipientName, description, amount, reissueCount: { increment: 1 }, lastIssuedAt: now }, select: RECEIPT_SELECT });
+      await recordAudit(tx, input.audit, { action: "receipt.issue", targetType: "receipt", targetId: row.id, before: { receiptNo: row.receiptNo, reissueCount: payment.receipt!.reissueCount, recipientName: payment.receipt!.recipientName, description: payment.receipt!.description }, after: { receiptNo: row.receiptNo, reissueCount: row.reissueCount, recipientName, description, amount, reissue: true, source: input.source } });
       return row;
     });
   }
@@ -85,10 +93,10 @@ export async function issueReceipt(db: PrismaClient, input: IssueReceiptInput): 
       return await db.$transaction(async (tx) => {
         const receiptNo = await nextReceiptNo(db, now);
         const row = await tx.receipt.create({
-          data: { receiptNo, paymentId: payment.id, merchantId: payment.merchantId, livemode: payment.livemode, recipientName, amount, source: input.source, issuedById: input.issuedById, issuedAt: now, lastIssuedAt: now },
+          data: { receiptNo, paymentId: payment.id, merchantId: payment.merchantId, livemode: payment.livemode, recipientName, description, amount, source: input.source, issuedById: input.issuedById, issuedAt: now, lastIssuedAt: now },
           select: RECEIPT_SELECT,
         });
-        await recordAudit(tx, input.audit, { action: "receipt.issue", targetType: "receipt", targetId: row.id, after: { receiptNo, paymentId: payment.id, recipientName, amount, source: input.source, reissue: false } });
+        await recordAudit(tx, input.audit, { action: "receipt.issue", targetType: "receipt", targetId: row.id, after: { receiptNo, paymentId: payment.id, recipientName, description, amount, source: input.source, reissue: false } });
         return row;
       });
     } catch (e) {

@@ -6,8 +6,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { DetailRow } from "@/components/ui/detail-row";
+import { useConfirm } from "@/components/confirm-dialog";
+import { RecipientField } from "@/components/receipt-card";
+import { RECEIPT_STATUSES } from "@/lib/receipts/statuses";
 import { ModeBadge, PaymentStatusBadge } from "@/components/payment-status-badge";
 import { RefundStatusBadge } from "@/components/refund-badges";
 import { useApiJson, useFormatDateTime, useLang, useT } from "@/components/language-provider";
@@ -47,6 +50,8 @@ export interface MerchantTransaction {
   overdue: boolean;
   events: Array<{ id: string; type: string; toStatus: string | null; amount: number | null; createdAt: Date }>;
   refunds: RefundItem[];
+  /** Receipt shared with the operator dashboard (Phase P3-8). */
+  receipt: { receiptNo: string; recipientName: string; description: string | null; reissueCount: number; lastIssuedAt: Date; source: string } | null;
 }
 
 export function MerchantTransactionDetailView({ payment }: { payment: MerchantTransaction }) {
@@ -183,7 +188,8 @@ export function MerchantTransactionDetailView({ payment }: { payment: MerchantTr
             )}
           </section>
         </div>
-        <aside>
+        <aside className="space-y-4">
+          <MerchantReceiptCard payment={payment} />
           <form onSubmit={requestRefund} className="card space-y-3 p-4" aria-busy={busy}>
             <p className="text-sm font-semibold text-slate-800">{t("merchantPortal.transactions.requestRefund")}</p>
             <p className="text-xs text-slate-500">{t("merchantPortal.transactions.requestRefundHelp")}</p>
@@ -235,6 +241,93 @@ export function MerchantTransactionDetailView({ payment }: { payment: MerchantTr
           </form>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/** Receipt issue / re-issue from the merchant portal (Phase P3-8): completed transactions only, addressee and 但し書き editable. */
+function MerchantReceiptCard({ payment }: { payment: MerchantTransaction }) {
+  const t = useT();
+  const router = useRouter();
+  const apiJson = useApiJson();
+  const formatDate = useFormatDateTime();
+  const { confirm } = useConfirm();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const fieldsRef = useRef<{ name: string; description: string }>({ name: "", description: "" });
+  const receipt = payment.receipt;
+  const eligible = RECEIPT_STATUSES.includes(payment.status);
+  if (!eligible && !receipt) return null;
+
+  async function issue() {
+    setError(null);
+    setNotice(null);
+    fieldsRef.current = { name: receipt?.recipientName ?? payment.customerName ?? "", description: receipt?.description ?? "" };
+    const ok = await confirm({
+      title: receipt ? t("merchantPortal.receipt.reissue") : t("merchantPortal.receipt.issue"),
+      body: t("merchantPortal.receipt.body"),
+      confirmLabel: receipt ? t("merchantPortal.receipt.reissue") : t("merchantPortal.receipt.issue"),
+      fields: <RecipientField valueRef={fieldsRef} />,
+    });
+    if (!ok) return;
+    setBusy(true);
+    const res = await apiJson<{ receiptNo: string }>(`/api/merchant-portal/receipts/${payment.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ recipientName: fieldsRef.current.name, description: fieldsRef.current.description }) });
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error.message);
+      return;
+    }
+    setNotice(t("merchantPortal.receipt.issued", { no: res.data.receiptNo }));
+    router.refresh();
+  }
+
+  return (
+    <div className="card p-4 text-xs text-slate-600" aria-busy={busy} data-testid="merchant-receipt">
+      <p className="text-sm font-semibold text-slate-800">{t("merchantPortal.receipt.title")}</p>
+      {receipt ? (
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+          <dt className="text-slate-500">{t("paymentDetail.receiptNo")}</dt>
+          <dd className="font-mono">{receipt.receiptNo}</dd>
+          <dt className="text-slate-500">{t("paymentDetail.receiptRecipient")}</dt>
+          <dd>{receipt.recipientName || "—"}</dd>
+          {receipt.description && (
+            <>
+              <dt className="text-slate-500">{t("paymentDetail.receiptDescription")}</dt>
+              <dd>{receipt.description}</dd>
+            </>
+          )}
+          <dt className="text-slate-500">{t("paymentDetail.receiptIssuedAt")}</dt>
+          <dd>
+            {formatDate(receipt.lastIssuedAt)}
+            {receipt.reissueCount > 0 && <span className="ml-1 text-amber-700">({t("paymentDetail.receiptReissueCount", { count: receipt.reissueCount })})</span>}
+          </dd>
+        </dl>
+      ) : (
+        <p className="mt-1">{t("merchantPortal.receipt.body")}</p>
+      )}
+      <div className="mt-3 flex flex-col gap-2">
+        {receipt && (
+          <a href={`/api/merchant-portal/receipts/${payment.id}`} target="_blank" rel="noopener" className="btn-secondary inline-flex w-full justify-center">
+            {t("paymentDetail.receiptDownload")}
+          </a>
+        )}
+        {eligible && (
+          <button type="button" className="btn-primary w-full" disabled={busy} onClick={issue}>
+            {busy ? t("common.processing") : receipt ? t("merchantPortal.receipt.reissue") : t("merchantPortal.receipt.issue")}
+          </button>
+        )}
+      </div>
+      {notice && (
+        <p role="status" className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+          {notice}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

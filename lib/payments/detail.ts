@@ -65,7 +65,7 @@ export interface TransactionDetail {
   /** Customer master row (Phase M-1), when linked. */
   customerRef: string | null;
   /** Receipt (Phase K-2) issued for this transaction, if any. */
-  receipt: { id: string; receiptNo: string; recipientName: string; amount: number; reissueCount: number; issuedAt: Date; lastIssuedAt: Date; source: string } | null;
+  receipt: { id: string; receiptNo: string; recipientName: string; description: string | null; amount: number; reissueCount: number; issuedAt: Date; lastIssuedAt: Date; source: string } | null;
   /** capturedAt + merchant.refundWindowDays (null when not completed or no merchant). */
   refundDeadlineAt: Date | null;
   /** Amount reserved by refund requests not decided yet. */
@@ -145,7 +145,7 @@ export async function loadTransactionDetail(id: string, now: Date = new Date()):
       cvsReceiptNo: true,
       cvsPaidAt: true,
       customerRef: true,
-      receipt: { select: { id: true, receiptNo: true, recipientName: true, amount: true, reissueCount: true, issuedAt: true, lastIssuedAt: true, source: true } },
+      receipt: { select: { id: true, receiptNo: true, recipientName: true, description: true, amount: true, reissueCount: true, issuedAt: true, lastIssuedAt: true, source: true } },
       merchant: { select: { id: true, merchantCode: true, siteName: true, transferIdDigits: true, refundWindowDays: true } },
       provider: {
         select: { id: true, displayName: true, providerKey: true, category: true, credentials: true },

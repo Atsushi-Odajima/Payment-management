@@ -11,7 +11,7 @@ A **receipt PDF** can be issued for a completed transaction (Completed / Partial
 | Receipt number | `RC-YYYYMM-00001` (sequential per month), assigned on the first issue and kept on re-issues |
 | Addressee | Editable at issue time; empty falls back to the customer name |
 | Amount | Transaction amount net of refunds (tax included) |
-| Description | Product name |
+| Description | Editable at issue time; empty falls back to the product name (or the default wording) |
 | Issuer | The merchant (company / site / address / registration number) with Wire Pay listed as the payment agent (issuer details from global settings) |
 | Re-issue | Counted and stamped "REISSUED" at the top right of the PDF |
 
@@ -20,6 +20,8 @@ A **receipt PDF** can be issued for a completed transaction (Completed / Partial
 1. On the transaction detail (payments list), press **Issue receipt** in the "Receipt" card (roles: admin / accounting / cs)
 2. Confirm the addressee; the number is assigned and `receipt.issue` is written to the audit log
 3. **Open PDF** shows the document from `GET /api/payments/<id>/receipt` (login required)
+
+Merchants can also issue or re-issue receipts from the **merchant portal transaction detail** (completed / partially refunded transactions only) with an addressee and a description (`POST /api/merchant-portal/receipts/<transaction id>`, `source = merchant`, audited with the merchant as actor). The receipt number and re-issue count are the same row the operator sees; the dashboard's receipt card notes "Issued from the merchant portal".
 
 ### Customer download
 
