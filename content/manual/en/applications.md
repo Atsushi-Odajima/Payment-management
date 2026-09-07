@@ -104,6 +104,19 @@ curl -X POST http://localhost:3000/api/demo/deposit-notify \
   -d '{"eventId":"bank-20260901-0007","transferId":"48213907","amount":24800,"mode":"test"}'
 ```
 
+## Following up short / excess deposits
+
+Transactions whose reconciliation left a short or excess deposit appear on **Deposit differences** as “Open”. The follow-up status moves as follows (also shown at the top of that screen).
+
+| Case | Action | Transition |
+|---|---|---|
+| Short | **Mark top-up requested** (sends and logs the `deposit_short` e-mail) | Open → Top-up requested → (the next deposit is reconciled again and completes) → Resolve |
+| Excess | **Request refund of excess** (files a refund request with reason “duplicate payment”; approve it in Refunds) | Open → Refund arranged → Resolve |
+
+Each row links to the refund request and the e-mail log it produced (“Open in refunds” / “View the e-mail sent”). The transaction detail shows the notifications received with the same transfer ID / receipt number and candidate unmatched deposits; in the reconcile dialog, clicking a candidate fills the amount and the result (exact / short / excess) is previewed before confirming.
+
+The **Overdue** tab of the applications list shows transactions still awaiting transfer / payment past their deadline (status unchanged). It is different from the “Expired” status: until the expiry job runs they can still be reconciled or cancelled.
+
 ## Deposit notification log
 
 Every notification received (bank / konbini) is recorded on the **Deposit Notification Log** screen (Transactions group, next to Unmatched Deposits) whatever its outcome: notification number (`DN-00001`), source, transfer ID / receipt number, amount, deposit time, result (applied / duplicate / unmatched / rejected) with the reason, and links to the transaction and the unmatched deposit. Filter by source, result and date; CSV export; the header's test / live switch selects the environment.

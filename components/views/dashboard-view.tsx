@@ -151,7 +151,7 @@ export function DashboardView({ stats }: { stats: DashboardStats }) {
                 return (
                   <li key={item.key}>
                     <Link
-                      href={item.href}
+                      href={item.key === "applications" && stats.overdueTransferCount > 0 ? "/applications?overdue=1" : item.href}
                       className="card group flex h-full items-start gap-3 p-4 transition hover:border-brand-300 hover:shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
                     >
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">

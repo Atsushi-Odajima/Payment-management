@@ -109,6 +109,25 @@ export function DepositDiffsView({
     { key: "paymentStatus", header: t("depositDiffs.thPaymentStatus"), render: (r) => (isPaymentStatus(r.paymentStatus) ? <PaymentStatusBadge status={r.paymentStatus} /> : r.paymentStatus) },
     { key: "depositDiffStatus", header: t("depositDiffs.thStatus"), sortable: true, render: (r) => <DepositDiffStatusBadge status={r.diffStatus} /> },
     {
+      key: "links",
+      header: t("depositDiffs.thLinks"),
+      render: (r) => (
+        <span className="flex flex-col gap-0.5 text-xs" onClick={(e) => e.stopPropagation()}>
+          {r.refund && (
+            <Link href={`/refunds/${r.refund.id}`} className="text-brand-700 hover:underline">
+              {t("depositDiffs.openRefund")} ({t(`refundEnums.status.${r.refund.status}` as MessageKey)})
+            </Link>
+          )}
+          {r.emailLog && (
+            <Link href={`/email-logs/${r.emailLog.id}`} className="text-brand-700 hover:underline">
+              {t("depositDiffs.openEmail")}
+            </Link>
+          )}
+          {!r.refund && !r.emailLog && <span className="text-slate-400">—</span>}
+        </span>
+      ),
+    },
+    {
       key: "actions",
       header: t("depositDiffs.thActions"),
       render: (r) => (
@@ -141,6 +160,20 @@ export function DepositDiffsView({
         helpHref="/manual/risk"
         actions={openCount > 0 ? <span className="badge bg-rose-100 text-rose-800 ring-rose-200">{t("depositDiffs.openCount", { count: openCount })}</span> : undefined}
       />
+      <section className="card mb-4 px-5 py-4" aria-label={t("depositDiffs.flowTitle")} data-testid="deposit-diff-flow">
+        <p className="text-xs font-semibold text-slate-600">{t("depositDiffs.flowTitle")}</p>
+        <ol className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <li className="rounded-full bg-rose-100 px-3 py-1 font-medium text-rose-800">{t("depositDiffEnums.status.open")}</li>
+          <li aria-hidden className="text-slate-400">→</li>
+          <li className="flex flex-col gap-1">
+            <span className="rounded-full bg-amber-100 px-3 py-1 font-medium text-amber-800">{t("depositDiffs.flowExcess")}</span>
+            <span className="rounded-full bg-sky-100 px-3 py-1 font-medium text-sky-800">{t("depositDiffs.flowShort")}</span>
+          </li>
+          <li aria-hidden className="text-slate-400">→</li>
+          <li className="rounded-full bg-emerald-100 px-3 py-1 font-medium text-emerald-800">{t("depositDiffEnums.status.resolved")}</li>
+        </ol>
+        <p className="mt-2 text-xs text-slate-600">{t("depositDiffs.flowHelp")}</p>
+      </section>
       <div className="mb-4 flex flex-wrap items-end gap-3 text-xs text-slate-600">
         <label className="flex flex-col gap-1">
           <span>{t("depositDiffs.filterStatus")}</span>
@@ -190,8 +223,8 @@ export function DepositDiffsView({
         page={page}
         pageSize={pageSize}
         csvHref={`/api/deposit-diffs?${csvQuery.toString()}`}
-        emptyText={t("depositDiffs.empty")}
-        minWidth="min-w-[1100px]"
+        emptyText={`${t("depositDiffs.empty")} ${t("depositDiffs.emptyHelp")}`}
+        minWidth="min-w-[1200px]"
       />
     </div>
   );

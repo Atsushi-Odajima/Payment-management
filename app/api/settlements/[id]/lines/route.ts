@@ -20,6 +20,7 @@ export const GET = withApiHandler<{ params: { id: string } }>(async (req, { para
         { header: "fee", value: (l) => l.fee },
       ]),
       `settlement-${data.batch.merchant.merchantCode}-${data.batch.id}.csv`,
+      data.batch.livemode ? "live" : "test",
     );
   }
   return ok(data.lines);

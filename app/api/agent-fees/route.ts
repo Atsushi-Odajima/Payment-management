@@ -26,6 +26,7 @@ export const GET = withApiHandler(async (req) => {
         { header: "fee", value: (l) => l.fee },
       ]),
       `agent-fees-${filters.month}.csv`,
+      filters.mode,
     );
   }
   return ok({ month: filters.month, rows, agents });

@@ -36,6 +36,7 @@ export const GET = withApiHandler(async (req) => {
         { header: "startedAt", value: (r) => r.startedAt },
       ]),
       "subscriptions.csv",
+      filters.mode,
     );
   }
   const page = parsePage(q.page);

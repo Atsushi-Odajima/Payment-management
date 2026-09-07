@@ -29,6 +29,7 @@ export const GET = withApiHandler(async (req) => {
         { header: "lines", value: (r) => r.lineCount },
       ]),
       "settlements.csv",
+      filters.mode,
     );
   }
   const page = parsePage(q.page);

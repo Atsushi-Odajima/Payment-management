@@ -276,6 +276,13 @@ Next.js 14 App Router + TypeScript + Tailwind + Prisma(SQLite / Postgres) + Zod�
 - **加盟店宛メール通知**（`Merchant.emailNotification`）: `lib/email/hooks.ts` の `notifyMerchantPaymentCompleted` が **per_payment** の加盟店に `merchant_payment_notice` を担当者メール（`Merchant.email`）へ送る。呼び出しは `createTransaction`（captured 作成、定期課金を含む）と `applyPaymentAction`（capture / deposit / late_deposit → captured）。**daily** は `lib/email/merchant-digest.ts` の `sendMerchantDailySummaries(db, now)`（前日 0:00〜24:00 JST を `summarizeMerchantDay` で集計、加盟店 × 環境で 1 通、完了 + 失敗 + 期限切れが 0 件なら送らない、本文末尾の `[YYYY-MM-DD/mode]` マーカーで同日の再送を抑止）を `GET/POST /api/cron/merchant-daily-summary`（`CRON_SECRET`、`vercel.json` で `0 0 * * *` = 09:00 JST）が呼ぶ。**none** は何も送らない。明細送付先メール（`statementEmail`）は精算関連にのみ使う。加盟店管理画面ホームに現在の設定を表示（変更は PSP）。テンプレートは 12 キー × 2 言語 = 24 行、プレースホルダーに `paymentMethod / completedAt / date / mode / completedCount / completedAmount / methodBreakdown / failedCount / expiredCount` を追加
 - **加盟店 API のレート制限**: `lib/public-api/rate-limit.ts` の `enforceApiRateLimit` / `rateLimitHeaders` を `/api/v1`（`authenticatePublicApi`）と `/api/merchant-api/*`（`lib/merchants/api-auth.ts` の `authenticateMerchantApi` = キー認証 + 制限 + 応答ヘッダー）で共用。バケットは加盟店 × 環境 × 分で共通（60 回 / 分）
 
+## 修正フェーズ3: 運用画面の改善（3-1〜3-4 実装済み、3-5〜3-8 は次セッション）
+
+- **モードの可視化（3-1）**: `PageHeader` が `useMode()` の現在モードをタイトル横にバッジ表示（`data-testid="current-mode"`）。`AppShell` / `MerchantShell` は本番モード中に赤ストライプ（`data-testid="live-stripe"`、`mode.liveLabel` / `mode.liveStripe`）とヘッダー左端の赤線を出す。`ModeToggle` は test → live 切替時にトースト `mode.liveToast`。`DataTable` は `<caption>`（`data-testid="table-mode"`）にモード名。`csvResponse(csv, filename, mode?)` は mode を渡すと `-test` / `-live` を `.csv` の前に挿入（モードで絞る一覧 12 route が渡す。監査ログ・管理者・顧客・ブラックリスト・メール送信ログはモード非依存なので付けない）
+- **期限超過タブ（3-2）**: `parseTransactionFilters` の `overdue`（`?overdue=1`）で `WAITING_STATUSES` かつ `transferDueAt < now` に絞る（ステータスは未変更 = 「期限切れ」ステータスとは別。`transactions.overdueTabHelp` で説明）。ダッシュボードの申請カードは期限超過があるとき `/applications?overdue=1` へリンク
+- **取引詳細の消込導線（3-3）**: `loadTransactionDetail` が銀行振込 / コンビニの取引に `depositNotifications`（`loadDepositNotificationsForPayment`）と `unmatchedCandidates`（未消込で同モードの `candidatePaymentId` 一致 / `givenTransferId` 一致 / `payerName` 一致、`match` で理由）を付ける。page.tsx は `maskRelatedDeposits` で振込名義をマスクしてから渡す。詳細画面の「関連する入金通知・未消込入金」セクション（`data-testid="related-deposits"`）。入金消込ダイアログ（`components/payment-actions.tsx` の `DepositFields`）は候補クリックで金額を入力し、純関数 `reconcileDeposit` で判定（一致 / 不足 / 超過）を確定前にプレビュー（`data-testid="deposit-preview"`）。入金日時は参考表示のみ（API は金額だけ受ける）
+- **過不足入金の導線（3-4）**: `DepositDiffRow.refund`（理由 duplicate の最新返金申請）/ `emailLog`（最新の `deposit_short` 送信ログ。`EmailLog` に relation が無いので `latestTopUpEmails` で別引き）で「返金管理で開く」「送信したメールを見る」リンク。画面上部に対応ステータスの流れ（`data-testid="deposit-diff-flow"`）、空状態に手順説明。マニュアルの申請章に「過不足入金の対応」を追記
+
 ## 代理店・決済申請・IP制限・マニュアル
 
 - **Agent（代理店）**: `agentCode`（`AGT-00001`・自動採番・変更不可）, `name`, `nameKana`（全角カタカナ）, `companyName`, `contactName`, `email`, `feeRate`（% 小数2桁まで）, `status`（`active | disabled`）。語彙 `lib/agents/types.ts`、Zod `lib/agents/schema.ts`、採番 `lib/agents/ids.ts`、API `app/api/agents`。加盟店を持つ代理店も削除ではなく `disabled` にする
@@ -347,7 +354,7 @@ IP制限=IP Restriction / ブロック=Block（DB値 `deny`） / 許可=Allow / 
 - [x] **フェーズM 顧客・PaymentToken・個人情報保護**（完了）: 加盟店 × ユーザーID の顧客マスタと保存カード（取引作成時に自動作成、既存行は冪等バックフィル）、管理画面全体のマスク表示（姓のみ / メール 2 文字 / 電話下 4 桁 / IP 第 4 オクテット、操作ログは保存時点でマスク）、監査付きマスク解除（admin / cs）、CSV の個人情報モード、手動匿名化（admin・理由必須）と保持期間による日次匿名化 + 操作ログの保持期間削除、加盟店管理画面の顧客一覧
 - [x] **修正フェーズ1 資金・整合性**（完了）: 入金通知の冪等化（`DepositNotification` + 入金通知ログ画面）、`mode` 必須と環境照合、期限後・キャンセル後入金の保留と `late_deposit` 遷移、Webhook 署名鍵の fail-closed と加盟店登録時の署名シークレット自動発行、精算バッチの請求書番号（確定時採番・一意）、コンビニ支払待ちの独立ステータス `awaiting_payment`、`docs/spec/CHANGELOG.md`
 - [x] **修正フェーズ2 通知まわり**（完了）: 即時完了取引の決済完了メール、加盟店宛メール通知設定の実装（`merchant_payment_notice` / `merchant_daily_summary` + 09:00 JST の cron）、`/api/merchant-api/*` のレート制限（公開 API と同じバケット）
-- [ ] **修正フェーズ3 運用画面の改善**（3-1〜3-8）
+- [ ] **修正フェーズ3 運用画面の改善**: 3-1 モード可視化 / 3-2 期限超過タブ / 3-3 消込導線 / 3-4 過不足入金の導線 は完了。残り 3-5 精算詳細の税率別内訳・注文番号リンク / 3-6 Webhook 詳細・断念フィルタ / 3-7 停止行の停止者・日時表示 / 3-8 加盟店側の領収書発行
 - [ ] **修正フェーズ4 設計判断項目**（IP 許可リストモード / PSP リンクのデモ限定 / 加盟店ログイン autocomplete）
 - [ ] **修正フェーズ5 文言・デモデータ・小修正**
 - [ ] **修正フェーズ6 仕様書・マニュアル再生成**（1.1.0）
