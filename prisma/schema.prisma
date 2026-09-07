@@ -1038,6 +1038,9 @@ model Receipt {
   livemode      Boolean   @default(false)
   recipientName String
   amount        Int
+  // 但し書き (Phase P3-8); null = the default "商品代金として" / product name.
+  description   String?
+  // dashboard | customer | merchant (issued from the merchant portal, Phase P3-8)
   source        String    @default("dashboard")
   issuedById    String?
   issuedBy      AdminUser? @relation(fields: [issuedById], references: [id], onDelete: SetNull)

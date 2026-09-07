@@ -14,12 +14,12 @@ The screens (`/merchant`) where a merchant reviews its own transactions and sett
 | Screen | Content |
 |---|---|
 | Home | Completed today, awaiting payment, refunds under review, failed webhooks, next payout, recent transactions, announcements |
-| Transactions | The merchant's transactions and details (no internal notes). The detail offers a **refund request**, which reaches the dashboard's refund screen as "requested" |
+| Transactions | The merchant's transactions and details (no internal notes). The detail offers a **refund request**, which reaches the dashboard's refund screen as "requested", and **receipt issuance** (addressee, description, PDF) for completed transactions |
 | Refund requests | Requests and their decisions (rejection notes included) |
 | Webhook log | Deliveries to the notification URL; failed ones can be **re-sent** (audit `webhook.resend`, actor merchant) |
 | Settlements | Batches, breakdown and lines; confirmed batches offer the **invoice PDF** |
 | API keys | Issued keys; **test keys can be rotated by the merchant** (live keys are read-only, ask the PSP) |
-| Payment methods | Methods enabled by the contract and global / per-merchant suspensions with reason and resume time |
+| Payment methods | Methods enabled by the contract and global / per-merchant suspensions with reason, suspended time and resume time |
 | Announcements | Published notices, maintenance and incidents (merchant targeting applied) |
 | Sandbox | A console that calls the real public API with a test key |
 

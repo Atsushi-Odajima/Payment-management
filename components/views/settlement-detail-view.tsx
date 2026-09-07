@@ -16,12 +16,13 @@ import { useCan } from "@/components/session-provider";
 import { useToast } from "@/components/toast";
 import { methodLabel } from "@/components/views/transactions-view";
 import type { SettlementLineRow, SettlementRow } from "@/lib/settlements/list";
-import { SETTLEMENT_TRANSITIONS, type SettlementAction } from "@/lib/settlements/types";
+import { SETTLEMENT_TRANSITIONS, type SettlementAction, type TaxRounding } from "@/lib/settlements/types";
+import { invoiceItems, summarizeTax } from "@/lib/settlements/tax";
 import { isPaymentMethod } from "@/lib/payments/methods";
 import type { MessageKey } from "@/lib/i18n";
 import { cn, formatYen } from "@/lib/utils";
 
-export function SettlementDetailView({ batch, lines }: { batch: SettlementRow; lines: SettlementLineRow[] }) {
+export function SettlementDetailView({ batch, lines, taxRounding = "floor" }: { batch: SettlementRow; lines: SettlementLineRow[]; taxRounding?: TaxRounding }) {
   const t = useT();
   const { lang } = useLang();
   const router = useRouter();
@@ -114,6 +115,9 @@ export function SettlementDetailView({ batch, lines }: { batch: SettlementRow; l
             <DetailRow label={t("settlements.fees")}>
               <span className="tabular-nums text-slate-600">−{formatYen(batch.feeAmount)}</span>
             </DetailRow>
+            <DetailRow label={t("settlements.taxBreakdown")}>
+              <TaxBreakdown lines={lines} settlementFee={batch.settlementFee} rounding={taxRounding} />
+            </DetailRow>
             <DetailRow label={t("settlements.refunds")}>
               <span className="tabular-nums text-slate-600">−{formatYen(batch.refundAmount)}</span>
             </DetailRow>
@@ -171,7 +175,7 @@ export function SettlementDetailView({ batch, lines }: { batch: SettlementRow; l
                         <td className="px-5 py-2">
                           {l.paymentId ? (
                             <Link href={`/payments/${l.paymentId}`} className="text-brand-700 hover:underline">
-                              {l.description ?? l.paymentId}
+                              {l.orderNumber ?? l.description ?? l.paymentId}
                             </Link>
                           ) : (
                             l.description ?? "—"
@@ -246,6 +250,50 @@ function ReasonField({ valueRef }: { valueRef: MutableRefObject<{ reason: string
         {t("settlements.holdReason")}
       </label>
       <input id="hold-reason" className="input" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+    </div>
+  );
+}
+
+/** Per-rate breakdown of the tax-inclusive fees (Phase P3-5) — the same items and rounding as the invoice PDF. */
+function TaxBreakdown({ lines, settlementFee, rounding }: { lines: SettlementLineRow[]; settlementFee: number; rounding: TaxRounding }) {
+  const t = useT();
+  const items = invoiceItems(lines, settlementFee);
+  const rows = summarizeTax(
+    items.map((i) => ({ taxCategory: i.taxCategory, amount: i.fee })),
+    rounding,
+  );
+  if (rows.length === 0) return <span className="text-slate-400">—</span>;
+  const total = rows.reduce((s, r) => s + r.inclusive, 0);
+  const tax = rows.reduce((s, r) => s + r.tax, 0);
+  return (
+    <div className="text-xs" data-testid="tax-breakdown">
+      <table className="w-full max-w-md text-left">
+        <thead className="text-[11px] uppercase tracking-wide text-slate-500">
+          <tr>
+            <th className="py-1 pr-3">{t("settlements.taxRate")}</th>
+            <th className="py-1 pr-3 text-right">{t("settlements.taxExclusive")}</th>
+            <th className="py-1 pr-3 text-right">{t("settlements.taxAmount")}</th>
+            <th className="py-1 text-right">{t("settlements.taxInclusive")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.category}>
+              <td className="py-1 pr-3">{t(`settlementEnums.taxCategory.${r.category}` as MessageKey)}</td>
+              <td className="py-1 pr-3 text-right tabular-nums">{formatYen(r.exclusive)}</td>
+              <td className="py-1 pr-3 text-right tabular-nums">{formatYen(r.tax)}</td>
+              <td className="py-1 text-right tabular-nums">{formatYen(r.inclusive)}</td>
+            </tr>
+          ))}
+          <tr className="border-t border-slate-200 font-semibold">
+            <td className="py-1 pr-3">{t("settlements.taxTotal")}</td>
+            <td className="py-1 pr-3 text-right tabular-nums">{formatYen(total - tax)}</td>
+            <td className="py-1 pr-3 text-right tabular-nums">{formatYen(tax)}</td>
+            <td className="py-1 text-right tabular-nums">{formatYen(total)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="mt-1 text-slate-500">{t("settlements.taxNote", { rounding: t(`globalSettings.rounding.${rounding}` as MessageKey) })}</p>
     </div>
   );
 }

@@ -13,7 +13,7 @@ A method is accepted only when all three allow it. The check lives in the shared
 ## Suspending and resuming
 
 - Four methods have switches: credit card, QR, konbini and bank transfer ("other" providers have none).
-- A suspension **requires a reason**. Optionally set an **automatic resume time**; the hourly cron at :45 (`/api/cron/payment-method-controls`) resumes the method after it.
+- Flipping a switch to "suspended" opens a modal asking for a **reason (required)** and an optional **automatic resume time**; nothing is suspended without them (global and per-merchant alike). The cron (`/api/cron/payment-method-controls`) resumes the method after that time. Suspended rows show the reason, who suspended it, when, and the planned resume; the merchant portal's "Payment methods" page shows the same.
 - Every suspend / resume is audited (`payment_method.suspend` / `payment_method.resume`) and creates a notification (Phase J) — critical for global, warning for merchant switches.
 - While a **global** switch is off, a red banner is shown on the dashboard and on every page header.
 - After a global suspension you are asked "Draft an incident announcement?"; choosing yes creates an incident draft and opens its edit screen, where you publish it.

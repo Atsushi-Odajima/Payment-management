@@ -9,8 +9,8 @@ import { ApiError } from "@/lib/api/handler";
 import { formatDateTime } from "@/lib/i18n";
 import { loadGlobalSettings } from "@/lib/settings/global";
 import { partsInTz, ymd } from "@/lib/settlements/schedule";
-import { summarizeTax } from "@/lib/settlements/tax";
-import { isTaxCategory, type TaxCategory } from "@/lib/settlements/types";
+import { invoiceItems, summarizeTax } from "@/lib/settlements/tax";
+import type { TaxCategory } from "@/lib/settlements/types";
 import { COLORS, Pdf, yen } from "./document";
 
 const METHOD_LABEL: Record<string, string> = {
@@ -57,19 +57,8 @@ export async function buildInvoicePdf(db: PrismaClient, batchId: string, now: Da
   const invoiceNo = b.invoiceNo;
   const period = `${ymd(partsInTz(b.periodFrom))} 〜 ${ymd(partsInTz(new Date(b.periodTo.getTime() - 1)))}`;
 
-  // Fee lines grouped by method (+ the transfer fee), each with its tax category.
-  const groups = new Map<string, { count: number; base: number; fee: number; taxCategory: TaxCategory }>();
-  for (const l of b.lines) {
-    if (l.kind !== "payment" || l.fee === 0) continue;
-    const key = l.method ?? "other";
-    const g = groups.get(key) ?? { count: 0, base: 0, fee: 0, taxCategory: isTaxCategory(l.taxCategory) ? l.taxCategory : "standard10" };
-    g.count++;
-    g.base += l.amount;
-    g.fee += l.fee;
-    groups.set(key, g);
-  }
-  const items: Array<{ label: string; count: number; base: number; fee: number; taxCategory: TaxCategory }> = [...groups.entries()].map(([k, g]) => ({ label: METHOD_LABEL[k] ?? METHOD_LABEL.other, ...g }));
-  if (b.settlementFee > 0) items.push({ label: "振込手数料", count: 1, base: 0, fee: b.settlementFee, taxCategory: "standard10" });
+  // Fee lines grouped by method (+ the transfer fee) — the same grouping the settlement detail shows (lib/settlements/tax.ts).
+  const items = invoiceItems(b.lines, b.settlementFee).map((i) => ({ label: i.key === "settlement_fee" ? "振込手数料" : (METHOD_LABEL[i.key] ?? METHOD_LABEL.other), count: i.count, base: i.base, fee: i.fee, taxCategory: i.taxCategory }));
   const taxRows = summarizeTax(
     items.map((i) => ({ taxCategory: i.taxCategory, amount: i.fee })),
     issuer.taxRounding,

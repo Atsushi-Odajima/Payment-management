@@ -73,9 +73,9 @@ export function MethodControlSwitch({ row, scope, merchantId, disabled, busy, on
       </button>
       <span className={cn("font-medium", row.suspended ? "text-rose-700" : "text-emerald-700")}>{row.suspended ? t("methodControls.stateSuspended") : t("methodControls.stateActive")}</span>
       {row.suspended && (
-        <span className="max-w-[260px] text-right">
-          {row.reason}
-          {row.suspendedAt && <span className="block">{formatDate(row.suspendedAt)}</span>}
+        <span className="max-w-[260px] text-right" data-testid="suspension-details">
+          <span className="block">{t("methodControls.reasonLabel", { reason: row.reason ?? "—" })}</span>
+          <span className="block">{t("methodControls.suspendedByLabel", { by: row.suspendedByName ?? t("methodControls.suspendedBySystem"), at: row.suspendedAt ? formatDate(row.suspendedAt) : "—" })}</span>
           {row.resumeAt && <span className="block">{t("methodControls.resumeAtLabel", { at: formatDate(row.resumeAt) })}</span>}
         </span>
       )}

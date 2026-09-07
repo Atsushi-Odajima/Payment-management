@@ -47,7 +47,8 @@ A non-2xx response, or no response within **10 seconds**, is recorded as a failu
 
 - The list shows failed / abandoned / retrying deliveries first and filters by merchant, event, status and period. CSV export is available. The **Webhook log** tab of the merchant detail shows that merchant's recent deliveries.
 - The detail shows the request (method, URL, headers, body), the last response (status code and first 1 KB) and the attempt history (count, response code, duration, trigger = automatic / cron / dashboard).
-- **Resend now** (master) sends a new attempt immediately regardless of the retry schedule. Abandoned deliveries can be resent as well; the action is audited (`webhook.resend`). A resend recomputes `X-Timestamp` and the signature.
+- The detail's "Transaction" row links to the order number and shows the transaction's current status, its last update and the time of the last successful delivery of the same event. The **Abandoned only** chip on the list filters abandoned deliveries.
+- **Resend now** (admin / developer) sends a new attempt immediately regardless of the retry schedule. The confirmation dialog shows the transaction's current status and the last successful delivery, and warns about double processing on the merchant side. Abandoned deliveries can be resent as well; the action is audited (`webhook.resend`). A resend recomputes `X-Timestamp` and the signature.
 
 ## Demo receiver
 

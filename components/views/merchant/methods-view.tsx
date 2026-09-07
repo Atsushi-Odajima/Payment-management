@@ -37,6 +37,7 @@ export function MerchantMethodsView({ enabled, global, merchant }: { enabled: Pa
                       <div>
                         <span className="badge bg-rose-100 text-rose-800 ring-rose-200">{g ? t("merchantPortal.methods.suspendedGlobal") : t("merchantPortal.methods.suspendedMerchant")}</span>
                         {row.reason && <p className="mt-1 text-xs text-slate-500">{t("merchantPortal.methods.reason", { reason: row.reason })}</p>}
+                        {row.suspendedAt && <p className="text-xs text-slate-500">{t("merchantPortal.methods.suspendedAt", { at: formatDate(row.suspendedAt) })}</p>}
                         {row.resumeAt && <p className="text-xs text-slate-500">{t("merchantPortal.methods.resumeAt", { at: formatDate(row.resumeAt) })}</p>}
                       </div>
                     ) : (
