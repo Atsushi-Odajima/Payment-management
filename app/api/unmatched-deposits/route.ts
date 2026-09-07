@@ -40,6 +40,7 @@ export const GET = withApiHandler(async (req) => {
         { header: "dismissReason", value: (r) => r.dismissReason ?? "" },
       ]),
       "unmatched-deposits.csv",
+      filters.mode,
     );
   }
   const page = parsePage(q.page);

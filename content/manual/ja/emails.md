@@ -7,11 +7,15 @@
 | キー | 送るタイミング | 主な宛先 |
 |---|---|---|
 | 振込案内 `transfer_guide` | 銀行振込の取引が作成され振込IDが発行されたとき | ユーザー |
-| 決済完了 `payment_completed` | 取引が完了になったとき（手動完了・入金消込の一致 / 超過） | ユーザー |
+| 決済完了 `payment_completed` | 取引が完了になったとき（クレジット / QR の即時完了、手動完了、入金消込の一致 / 超過、期限後入金の消込。定期課金の課金は対象外） | ユーザー |
 | 返金完了 `refund_completed` | 返金が承認され完了したとき | ユーザー |
 | 追加入金案内 `deposit_short` | 過不足入金で「追加入金を案内済にする」を実行したとき | ユーザー |
 | 明細送付 `statement` | 精算明細の送付（手動運用向け） | 加盟店 |
 | 管理者招待 `admin_invite` | 管理者を招待したとき | 管理者 |
+| 定期課金の失敗 / 停止 `subscription_failed` / `subscription_suspended` | 定期課金の課金が失敗したとき / 3 回失敗して停止したとき | ユーザー |
+| 通知センター `notification` | 通知センターの種別ごとにメール配信を選んだ管理者へ | 管理者 |
+| 加盟店向け決済完了通知 `merchant_payment_notice` | 加盟店設定「メール通知設定」が **決済ごと** の加盟店で取引が完了したとき | 加盟店（担当者メール） |
+| 加盟店向け日次サマリー `merchant_daily_summary` | 「メール通知設定」が **1 日まとめて通知** の加盟店へ、毎朝 9 時に前日分（環境ごとに 1 通。前日の取引が 0 件なら送らない） | 加盟店（担当者メール） |
 
 - 日本語 / 英語の 2 言語分があり、ユーザー向けメールは既定で日本語（環境変数 `EMAIL_DEFAULT_LANG=en` で英語）、管理者招待は操作時の表示言語で送ります。
 - 編集画面で件名・本文を変更し、**プレースホルダー** をクリックで挿入できます。右側にサンプル値を当てたプレビューを表示します。編集は **マスター権限** です。
@@ -19,7 +23,7 @@
 
 ### プレースホルダー
 
-`{{merchantName}}` 加盟店名 / `{{customerName}}` ユーザー名 / `{{amount}}` 金額 / `{{transferId}}` 振込ID / `{{deadline}}` 振込期限 / `{{transactionId}}` 取引ID / `{{orderNumber}}` 注文番号 / `{{productName}}` 商品名 / `{{shortAmount}}` 不足額 / `{{loginId}}` ログインID / `{{initialPassword}}` 初期パスワード / `{{loginUrl}}` ログイン URL
+`{{merchantName}}` 加盟店名 / `{{customerName}}` ユーザー名 / `{{amount}}` 金額 / `{{transferId}}` 振込ID / `{{deadline}}` 振込期限 / `{{transactionId}}` 取引ID / `{{orderNumber}}` 注文番号 / `{{productName}}` 商品名 / `{{shortAmount}}` 不足額 / `{{loginId}}` ログインID / `{{initialPassword}}` 初期パスワード / `{{loginUrl}}` ログイン URL / `{{receiptNo}}` 受付番号 / `{{cvsBrand}}` 支払店舗 / `{{planName}}` 課金プラン / `{{retryDate}}` 再試行日 / `{{title}}` `{{body}}` `{{link}}` 通知の内容 / `{{paymentMethod}}` 決済種別 / `{{completedAt}}` 完了日時 / `{{mode}}` 環境 / `{{date}}` 対象日 / `{{completedCount}}` `{{completedAmount}}` 完了件数・金額 / `{{methodBreakdown}}` 決済種別別内訳 / `{{failedCount}}` `{{expiredCount}}` 失敗・期限切れ件数
 
 ## 送信ログ
 

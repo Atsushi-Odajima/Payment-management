@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Pagination } from "./pagination";
 import { useT } from "./language-provider";
+import { useMode } from "./mode-provider";
 import { Icon } from "./icons";
 import { buildHref, type QueryParams, type SortState } from "@/lib/query";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
   const { columns, rows, rowKey, rowHref, rowClassName, basePath, params, sort, total, page, pageSize, csvHref, emptyText } = props;
   const t = useT();
   const router = useRouter();
+  const { mode } = useMode();
 
   const sortHref = (key: string) => {
     const dir = sort?.key === key && sort.dir === "asc" ? "desc" : "asc";
@@ -57,6 +59,9 @@ export function DataTable<T>(props: DataTableProps<T>) {
       ) : (
         <div className="overflow-x-auto">
           <table className={cn("w-full text-left text-sm", props.minWidth ?? "min-w-[820px]")}>
+            <caption className="px-5 py-1 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-400" style={{ captionSide: "top" }} data-testid="table-mode">
+              {mode === "live" ? t("mode.currentLive") : t("mode.currentTest")}
+            </caption>
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 {columns.map((c) => (

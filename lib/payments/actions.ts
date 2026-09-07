@@ -17,7 +17,7 @@ import { reconcileDeposit, type DepositDiff } from "./transfer";
 import { recordAudit, type AuditContext } from "@/lib/audit";
 import { emitPaymentWebhook } from "@/lib/webhooks/deliver";
 import { detectRepeatedFailures } from "@/lib/risk/service";
-import { notifyPaymentCompleted, notifyRefundCompleted } from "@/lib/email/hooks";
+import { notifyMerchantPaymentCompleted, notifyPaymentCompleted, notifyRefundCompleted } from "@/lib/email/hooks";
 import type { MerchantWebhookEvent } from "@/lib/webhooks/events";
 
 export const PAYMENT_ACTORS = ["dashboard", "api", "webhook", "bank", "cvs", "system", "seed"] as const;
@@ -186,7 +186,11 @@ export async function applyPaymentAction(
   if (event && payment.merchantId) await emitPaymentWebhook(prisma, paymentId, event);
   // Customer emails (Phase G-2): completion and refund confirmations.
   const finalStatus = toPaymentStatus(result.status);
-  if ((action === "capture" || action === "deposit" || action === "late_deposit") && finalStatus === "captured") await notifyPaymentCompleted(prisma, paymentId);
+  if ((action === "capture" || action === "deposit" || action === "late_deposit") && finalStatus === "captured") {
+    await notifyPaymentCompleted(prisma, paymentId);
+    // Merchant per-payment notice (Phase P2-2).
+    if (payment.merchantId) await notifyMerchantPaymentCompleted(prisma, paymentId);
+  }
   if (action === "refund") await notifyRefundCompleted(prisma, paymentId, eventAmount);
   // Repeated-failure detection (Phase F-2) after a failure.
   if (action === "fail") {

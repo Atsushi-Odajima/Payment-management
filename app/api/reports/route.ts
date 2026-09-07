@@ -25,6 +25,7 @@ export const GET = withApiHandler(async (req) => {
         { header: "amountRefunded", value: (r) => r.amountRefunded },
       ]),
       `report-detail-${filters.from}-${filters.to}.csv`,
+      filters.mode,
     );
   }
   const report = await buildReport(filters);
@@ -37,6 +38,7 @@ export const GET = withApiHandler(async (req) => {
         { header: "amount", value: (r) => r.amount },
       ]),
       `report-summary-${filters.from}-${filters.to}.csv`,
+      filters.mode,
     );
   }
   return ok(report);

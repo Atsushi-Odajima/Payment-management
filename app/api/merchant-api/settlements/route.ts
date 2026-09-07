@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ApiError, ok, withApiHandler } from "@/lib/api/handler";
-import { authenticateMerchantApiKey } from "@/lib/merchants/api-auth";
+import { authenticateMerchantApi } from "@/lib/merchants/api-auth";
 import { loadMerchantSettlements, loadSettlement } from "@/lib/settlements/list";
 
 /**
@@ -11,17 +11,17 @@ import { loadMerchantSettlements, loadSettlement } from "@/lib/settlements/list"
  */
 export const GET = withApiHandler(
   async (req) => {
-    const key = await authenticateMerchantApiKey(prisma, req);
+    const { key, headers } = await authenticateMerchantApi(prisma, req);
     const id = new URL(req.url).searchParams.get("id");
     if (id) {
       const data = await loadSettlement(id);
       if (!data || data.batch.merchant.id !== key.merchantId || data.batch.livemode !== (key.mode === "live")) {
         throw new ApiError(404, "not_found", "errors.notFound");
       }
-      return ok(data);
+      return ok(data, { headers });
     }
     const batches = await loadMerchantSettlements(key.merchantId, key.mode, 100);
-    return ok({ merchantCode: key.merchantCode, mode: key.mode, settlements: batches });
+    return ok({ merchantCode: key.merchantCode, mode: key.mode, settlements: batches }, { headers });
   },
   { ipRestricted: false },
 );

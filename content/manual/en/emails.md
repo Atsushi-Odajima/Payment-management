@@ -7,11 +7,15 @@ Emails to customers, merchants and operators are produced from templates on tran
 | Key | Sent when | Recipient |
 |---|---|---|
 | Transfer instructions `transfer_guide` | A bank-transfer transaction is created and a transfer ID issued | Customer |
-| Payment completed `payment_completed` | The transaction completes (manual completion, matching / excess deposit) | Customer |
+| Payment completed `payment_completed` | The transaction completes (instant card / QR completion, manual completion, matching / excess deposit, late deposit; subscription charges excluded) | Customer |
 | Refund completed `refund_completed` | A refund is approved and completed | Customer |
 | Top-up request `deposit_short` | “Mark top-up requested” is used on a short deposit | Customer |
 | Statement `statement` | Settlement statements (manual use) | Merchant |
 | Admin invitation `admin_invite` | An operator is invited | Operator |
+| Subscription failed / suspended `subscription_failed` / `subscription_suspended` | A recurring charge fails / the subscription is suspended after three failures | Customer |
+| Notification centre `notification` | Operators who chose e-mail for a notification kind | Operator |
+| Merchant payment notice `merchant_payment_notice` | A transaction completes for a merchant whose e-mail notification setting is **every payment** | Merchant (contact e-mail) |
+| Merchant daily summary `merchant_daily_summary` | 09:00 JST, the previous day, for merchants set to **daily digest** (one per environment; nothing on a day without transactions) | Merchant (contact e-mail) |
 
 - Each template exists in Japanese and English. Customer emails default to Japanese (`EMAIL_DEFAULT_LANG=en` switches to English); the invitation uses the UI language of the inviting operator.
 - The editor changes subject and body, inserts **placeholders** with a click and shows a preview rendered with sample values. Editing requires the **master role**.
@@ -19,7 +23,7 @@ Emails to customers, merchants and operators are produced from templates on tran
 
 ### Placeholders
 
-`{{merchantName}}` merchant name / `{{customerName}}` customer / `{{amount}}` amount / `{{transferId}}` transfer ID / `{{deadline}}` transfer deadline / `{{transactionId}}` transaction ID / `{{orderNumber}}` order number / `{{productName}}` product / `{{shortAmount}}` short amount / `{{loginId}}` login ID / `{{initialPassword}}` initial password / `{{loginUrl}}` login URL
+`{{merchantName}}` merchant name / `{{customerName}}` customer / `{{amount}}` amount / `{{transferId}}` transfer ID / `{{deadline}}` transfer deadline / `{{transactionId}}` transaction ID / `{{orderNumber}}` order number / `{{productName}}` product / `{{shortAmount}}` short amount / `{{loginId}}` login ID / `{{initialPassword}}` initial password / `{{loginUrl}}` login URL / `{{receiptNo}}` receipt number / `{{cvsBrand}}` store / `{{planName}}` billing plan / `{{retryDate}}` retry date / `{{title}}` `{{body}}` `{{link}}` notification content / `{{paymentMethod}}` payment method / `{{completedAt}}` completed at / `{{mode}}` environment / `{{date}}` day covered / `{{completedCount}}` `{{completedAmount}}` completed count and amount / `{{methodBreakdown}}` per-method breakdown / `{{failedCount}}` `{{expiredCount}}` failed and expired counts
 
 ## Email log
 

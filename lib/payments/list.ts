@@ -53,6 +53,8 @@ export interface TransactionFilters {
   to: string;
   /** Test / live data (header toggle, cookie). */
   mode: DataMode;
+  /** Only transfers / slips still awaited past their deadline (status unchanged, Phase P3-2). */
+  overdue: boolean;
 }
 
 export interface MerchantOption {
@@ -78,7 +80,7 @@ export function parseTransactionFilters(
   const method = isPaymentMethod(q?.method) ? q.method : "";
   const from = parseDateInTz(q?.from) ? q!.from!.trim() : "";
   const to = parseDateInTz(q?.to) ? q!.to!.trim() : "";
-  return { status, method, merchant: (q?.merchant ?? "").trim().slice(0, 64), from, to, mode };
+  return { status, method, merchant: (q?.merchant ?? "").trim().slice(0, 64), from, to, mode, overdue: q?.overdue === "1" };
 }
 
 export const TRANSACTION_SELECT = {
@@ -197,8 +199,10 @@ export async function loadTransactions(opts: {
   const now = opts.now ?? new Date();
   const from = parseDateInTz(filters.from);
   const to = parseDateInTz(filters.to);
+  const statuses = filters.status ? [filters.status] : [...opts.allowedStatuses];
   const where = {
-    status: { in: filters.status ? [filters.status] : [...opts.allowedStatuses] },
+    status: { in: filters.overdue ? statuses.filter((s) => WAITING_STATUSES.includes(s)) : statuses },
+    ...(filters.overdue ? { transferDueAt: { lt: now } } : {}),
     ...(filters.method ? { method: filters.method } : {}),
     ...(filters.merchant ? { merchantId: filters.merchant } : {}),
     livemode: filters.mode === "live",

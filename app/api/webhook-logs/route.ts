@@ -26,6 +26,7 @@ export const GET = withApiHandler(async (req) => {
         { header: "nextRetryAt", value: (r) => r.nextRetryAt },
       ]),
       "webhook-logs.csv",
+      filters.mode,
     );
   }
   const page = parsePage(q.page);

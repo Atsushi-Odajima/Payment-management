@@ -247,7 +247,7 @@ tests/integration/           Route Handler の統合テスト
 2. 環境変数: `ENCRYPTION_KEY`（base64 32 バイト・変更不可）、`SESSION_SECRET`、`CRON_SECRET`、`DEPOSIT_NOTIFY_SECRET`、`APP_URL`、任意で `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`。`DEMO_LOGIN_HINT` / `DEMO_READONLY` は設定しない
 3. スキーマ: `vercel.json` の `prisma db push --accept-data-loss` は使い捨てのデモ DB 向け。実データでは `prisma migrate deploy` に切り替える（スキーマ変更は追加のみ）
 4. seed（デモ加盟店・取引・管理者 `kuromaru` / `general`）をビルドから外し、管理者を自分で作る
-5. cron を登録: `/api/cron/expire-transfers`（毎時 0 分）・`/api/cron/webhook-retry`（毎時 30 分）・`/api/cron/subscriptions`（毎時 15 分）・`/api/cron/payment-method-controls`（毎時 45 分）・`/api/cron/notifications`（毎時 50 分）・`/api/cron/anonymize`（毎日 19:00 UTC）。`/api/demo/reset` は登録しない
+5. cron を登録: `/api/cron/expire-transfers`・`/api/cron/webhook-retry`・`/api/cron/subscriptions`・`/api/cron/payment-method-controls`・`/api/cron/notifications`（本番運用では毎時が望ましい。デモの `vercel.json` は Hobby プランの制約で 1 日 1 回に分散）・`/api/cron/anonymize`（毎日 19:00 UTC）・`/api/cron/merchant-daily-summary`（毎日 00:00 UTC = 09:00 JST、加盟店向け日次サマリー）。`/api/demo/reset` は登録しない
 6. 加盟店ごとに通知先 URL と署名シークレットを発行し、`X-Signature` の検証を実装してもらう（マニュアル「通知パラメータ仕様」）
 
 ### 残課題（デモの範囲で未実装・簡略化しているもの）
@@ -393,7 +393,7 @@ See [`DEPLOY.md`](./DEPLOY.md): Vercel (Tokyo) + Neon for the public demo, or th
 2. Environment: `ENCRYPTION_KEY` (base64 32 bytes, never rotate casually), `SESSION_SECRET`, `CRON_SECRET`, `DEPOSIT_NOTIFY_SECRET`, `APP_URL`, optionally `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`. Do not set `DEMO_LOGIN_HINT` / `DEMO_READONLY`.
 3. Schema: the `prisma db push --accept-data-loss` in `vercel.json` is for the disposable demo DB; with real data switch to `prisma migrate deploy` (schema changes stay additive).
 4. Remove the seed (demo merchants, transactions and the `kuromaru` / `general` admins) from the build and create your own admin.
-5. Register the crons `/api/cron/expire-transfers` (hourly at :00), `/api/cron/webhook-retry` (:30), `/api/cron/subscriptions` (:15), `/api/cron/payment-method-controls` (:45), `/api/cron/notifications` (:50) and `/api/cron/anonymize` (daily 19:00 UTC); do not register `/api/demo/reset`.
+5. Register the crons `/api/cron/expire-transfers`, `/api/cron/webhook-retry`, `/api/cron/subscriptions`, `/api/cron/payment-method-controls`, `/api/cron/notifications` (hourly is recommended in production; the demo `vercel.json` spreads them once a day because of the Hobby plan), `/api/cron/anonymize` (daily 19:00 UTC) and `/api/cron/merchant-daily-summary` (daily 00:00 UTC = 09:00 JST, merchant daily summaries); do not register `/api/demo/reset`.
 6. Issue a notification URL and a signing secret per merchant and have them verify `X-Signature` (manual chapter "Notification parameter specification").
 
 ### Open items (not implemented or simplified in the demo)

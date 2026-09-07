@@ -39,4 +39,8 @@ export interface DepositDiffRow {
   livemode: boolean;
   capturedAt: Date | null;
   updatedAt: Date;
+  /** The refund request filed for an excess (Phase P3-4), newest first. */
+  refund: { id: string; status: string } | null;
+  /** The top-up e-mail logged for a short deposit (Phase P3-4), newest first. */
+  emailLog: { id: string; createdAt: Date } | null;
 }
