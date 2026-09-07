@@ -52,6 +52,8 @@ export interface SettlementLineRow {
   occurredAt: Date;
   /** standard10 | reduced8 | exempt (Phase K-3); older lines default per kind. */
   taxCategory: TaxCategory;
+  /** Order number of the source transaction (Phase P3-5); null when the transaction is gone. */
+  orderNumber: string | null;
 }
 
 export const SETTLEMENT_SORT_KEYS = ["periodFrom", "netAmount", "status", "scheduledAt"] as const;
@@ -145,6 +147,9 @@ export async function loadSettlement(id: string): Promise<{ batch: SettlementRow
   const r = await prisma.settlementBatch.findUnique({ where: { id }, select: { ...BATCH_SELECT, lines: { orderBy: { occurredAt: "asc" } } } });
   if (!r) return null;
   const { lines, ...rest } = r;
+  // Lines keep plain payment ids (the ledger outlives the transaction); resolve order numbers for display.
+  const paymentIds = [...new Set(lines.map((l) => l.paymentId).filter((x): x is string => x !== null))];
+  const orders = new Map((await prisma.payment.findMany({ where: { id: { in: paymentIds } }, select: { id: true, orderNumber: true } })).map((p) => [p.id, p.orderNumber]));
   return {
     batch: toSettlementRow(rest),
     lines: lines.map((l) => {
@@ -153,6 +158,7 @@ export async function loadSettlement(id: string): Promise<{ batch: SettlementRow
         id: l.id,
         kind,
         paymentId: l.paymentId,
+        orderNumber: l.paymentId ? (orders.get(l.paymentId) ?? null) : null,
         refundId: l.refundId,
         chargebackId: l.chargebackId,
         method: l.method,

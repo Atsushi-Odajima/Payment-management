@@ -35,6 +35,8 @@ export interface MethodControlRow {
   suspended: boolean;
   reason: string | null;
   suspendedById: string | null;
+  /** Display name of the operator who suspended it (Phase P3-7); null for cron / unknown. */
+  suspendedByName: string | null;
   suspendedAt: Date | null;
   resumeAt: Date | null;
   resumedAt: Date | null;

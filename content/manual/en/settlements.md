@@ -61,7 +61,7 @@ Every action follows the transition table and is audited (`settlement.generate /
 
 ## Detail and line CSV
 
-The batch detail shows the invoice number, the breakdown (gross, fees, refunds, chargebacks, settlement fee, net payout) and the lines (time, kind, order number, method, amount, fee).
+The batch detail shows the invoice number, the breakdown (gross, fees, refunds, chargebacks, settlement fee, net payout), a **tax breakdown** under the fee total (excl. tax / tax / incl. tax per rate with the rounding method — the same calculation as the invoice PDF) and the lines (time, kind, order number linked to the transaction, method, amount, fee, tax category).
 
 The **invoice number** is assigned on confirmation as `INV-YYYYMM-<merchant no.>-<2-digit sequence>` (year-month of the period start; the sequence restarts at 01 per merchant and month) and never changes afterwards. It appears on the list, the detail, the invoice PDF, the merchant portal and the merchant API response (`invoiceNo`), and the global search finds batches by it. Collecting batches have no number yet; batches confirmed before the column existed get one from `npm run db:backfill`. **Line CSV** (`/api/settlements/<id>/lines?format=csv`) exports the lines; the **CSV** button of the list exports the batches.
 

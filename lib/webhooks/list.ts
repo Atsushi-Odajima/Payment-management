@@ -49,6 +49,10 @@ export interface WebhookDetail extends WebhookRow {
   requestBody: string | null;
   responseBody: string | null;
   attemptLog: WebhookAttemptRow[];
+  /** The transaction the delivery is about, as it is now (Phase P3-6). */
+  payment: { id: string; orderNumber: string; status: string; updatedAt: Date } | null;
+  /** Last successful delivery of the same event for the same transaction (this one excluded). */
+  lastSuccess: { id: string; lastSentAt: Date | null } | null;
 }
 
 export const WEBHOOK_SORT_KEYS = ["createdAt", "status", "attempts", "lastSentAt"] as const;
@@ -140,7 +144,11 @@ export async function loadWebhookDelivery(id: string): Promise<WebhookDetail | n
   }
   const { requestHeaders: _h, attemptLog, ...rest } = r;
   void _h;
-  return { ...toRow(rest), requestHeaders: headers, requestBody: r.requestBody, responseBody: r.responseBody, attemptLog };
+  const [payment, lastSuccess] = await Promise.all([
+    r.paymentId ? prisma.payment.findUnique({ where: { id: r.paymentId }, select: { id: true, orderNumber: true, status: true, updatedAt: true } }) : Promise.resolve(null),
+    r.paymentId ? prisma.webhookDelivery.findFirst({ where: { paymentId: r.paymentId, event: r.event, status: "success", id: { not: r.id } }, orderBy: { lastSentAt: "desc" }, select: { id: true, lastSentAt: true } }) : Promise.resolve(null),
+  ]);
+  return { ...toRow(rest), requestHeaders: headers, requestBody: r.requestBody, responseBody: r.responseBody, attemptLog, payment, lastSuccess };
 }
 
 /** Recent deliveries of one merchant (merchant detail tab). */

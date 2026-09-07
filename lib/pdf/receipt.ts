@@ -36,7 +36,7 @@ export async function buildReceiptPdf(db: PrismaClient, paymentId: string): Prom
       capturedAt: true,
       createdAt: true,
       livemode: true,
-      receipt: { select: { receiptNo: true, recipientName: true, amount: true, reissueCount: true, issuedAt: true, lastIssuedAt: true } },
+      receipt: { select: { receiptNo: true, recipientName: true, amount: true, description: true, reissueCount: true, issuedAt: true, lastIssuedAt: true } },
       merchant: { select: { siteName: true, companyName: true, address: true, invoiceNumber: true } },
       provider: { select: { category: true } },
     },
@@ -63,7 +63,7 @@ export async function buildReceiptPdf(db: PrismaClient, paymentId: string): Prom
   const paidAt = p.capturedAt ?? p.createdAt;
   pdf.rows(
     [
-      ["但し / For", p.productName ? `${p.productName} として` : "商品代金として"],
+      ["但し / For", r.description ? `${r.description} として` : p.productName ? `${p.productName} として` : "商品代金として"],
       ["領収日 / Paid on", formatDateTime(paidAt, "ja")],
       ["決済方法 / Method", METHOD_LABEL[p.method ?? p.provider.category] ?? METHOD_LABEL.other],
       ["注文番号 / Order", p.orderNumber],
