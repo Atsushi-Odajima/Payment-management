@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | 1.0.0 |
-| 対象システム | Wire Pay（決済管理ダッシュボード）— コミット `6b72a40`（`main`） |
-| 作成日 | 2026-09-06 |
+| 版数 | 1.1.0 |
+| 対象システム | Wire Pay（決済管理ダッシュボード）— コミット `cf1c153`（`main`） |
+| 作成日 / 更新日 | 2026-09-06（1.0.0）/ 2026-09-07（1.1.0。変更点は巻末の改訂履歴と `docs/spec/CHANGELOG.md`） |
 | 言語 | 日本語（英語版: `docs/spec/en/A-merchant-integration-spec.md`） |
 | 用語 | `docs/spec/ja/glossary.md` の対訳に従う |
 
@@ -44,6 +44,9 @@ Wire Pay が決済処理を **委託する先**（Stripe、PayPay、アクワイ
 - 付録 B [ステータス一覧](#付録-b-ステータス一覧)
 - 付録 C [Webhook イベント一覧](#付録-c-webhook-イベント一覧)
 - 付録 D [画面一覧](#付録-d-画面一覧)
+- 付録 E [権限マトリクス（完全版）](#付録-e-権限マトリクス完全版)
+- 付録 F [よくある問い合わせ → 参照章](#付録-f-よくある問い合わせ--参照章)
+- [改訂履歴](#改訂履歴)
 
 ---
 
@@ -79,7 +82,7 @@ flowchart LR
     Pay["/pay/<token><br/>ホスト型決済ページ (公開)"]
     Admin["管理画面 (PSP オペレータ)"]
     DB[("DB (Prisma / Postgres・SQLite)")]
-    Cron["cron<br/>(期限切れ・Webhook 再送・定期課金・通知・匿名化)"]
+    Cron["cron<br/>(期限切れ・Webhook 再送・定期課金・通知・匿名化・加盟店日次サマリー)"]
     WH["Webhook 送信<br/>(lib/webhooks/deliver.ts)"]
   end
   Customer["購入者 (ブラウザ)"]
@@ -120,7 +123,7 @@ Wire Pay は「テスト（test）」と「本番（live）」の 2 つの環境
 |---|---|---|---|
 | `credit` | クレジットカード | `captured`（`autoCapture: true`、既定）または `authorized`（`autoCapture: false`） | 作成時に即時完了。与信済の場合は PSP 管理画面の「完了にする」 |
 | `qr` | QR コード決済 | `credit` と同じ | 同上 |
-| `convenience` | コンビニ決済 | `pending`（支払待ち）+ 13 桁の受付番号 + 支払期限 | 店頭支払いの入金通知（`deposit` アクション） |
+| `convenience` | コンビニ決済 | `awaiting_payment`（支払待ち）+ 13 桁の受付番号 + 支払期限 | 店頭支払いの入金通知（`deposit` アクション） |
 | `bank` | 銀行振込 | `awaiting_transfer`（振込待ち）+ 7 / 8 桁の振込ID + 振込期限 | 銀行の入金通知または PSP の入金消込（`deposit` アクション） |
 | `other` | その他 | 公開 API では指定できません（`API_METHODS` は上記 4 種） | — |
 
@@ -151,9 +154,10 @@ Wire Pay では、加盟店サイトで購入者が決済手段を選択した�
 
 | 一覧 | 含まれるステータス（`lib/payments/transitions.ts`） |
 |---|---|
-| 決済申請一覧（`APPLICATION_STATUSES`） | `pending`, `awaiting_transfer`, `authorized`, `failed`, `expired`, `cancelled` |
+| 決済申請一覧（`APPLICATION_STATUSES`） | `pending`, `awaiting_transfer`, `awaiting_payment`, `authorized`, `failed`, `expired`, `cancelled` |
 | 決済一覧（`SALES_STATUSES`） | `captured`, `partially_refunded`, `refunded`, `chargeback` |
-| 未完了（ダッシュボード KPI、`OPEN_STATUSES`） | `pending`, `awaiting_transfer`, `authorized` |
+| 未完了（ダッシュボード KPI、`OPEN_STATUSES`） | `pending`, `awaiting_transfer`, `awaiting_payment`, `authorized` |
+| 入金待ち（期限 `transferDueAt` を持つ、`WAITING_STATUSES`） | `awaiting_transfer`, `awaiting_payment` |
 
 主要な用語は用語集（`glossary.md`）を正とします。本章で頻出するものだけ抜粋します。
 
@@ -173,15 +177,16 @@ Wire Pay では、加盟店サイトで購入者が決済手段を選択した�
 
 | ステータス（DB 値） | 表示（ja / en） | 意味 |
 |---|---|---|
-| `pending` | 申請中 / Applied | 作成直後で何も確定していない。コンビニ決済では「支払待ち」（受付番号あり） |
+| `pending` | 申請中 / Pending | 作成直後で何も確定していない（1.1.0 で英語表示を "Applied" から "Pending" に変更） |
 | `awaiting_transfer` | 振込待ち / Awaiting transfer | 銀行振込。振込IDを発行し入金を待っている |
+| `awaiting_payment` | 支払待ち / Awaiting payment | コンビニ決済。受付番号を発行し店頭支払いを待っている（**1.1.0 で追加**。以前は `pending` を流用） |
 | `authorized` | 与信済 / Authorized | クレジット / QR の与信が取れている（`autoCapture: false`、またはテストカード「与信止まり」） |
 | `captured` | 完了 / Completed | 決済成立。`capturedAt` が刻まれる |
 | `partially_refunded` | 一部返金 / Partially refunded | 返金済額が取引額未満 |
 | `refunded` | 返金済 / Refunded | 返金済額が取引額に達した |
 | `cancelled` | キャンセル / Cancelled | 完了前に取りやめた（`cancelledAt`） |
 | `failed` | 失敗 / Failed | 作成時の拒否（限度額・ブラックリスト・テストカード）または手動 / Webhook による失敗。`failureReason` に理由 |
-| `expired` | 期限切れ / Expired | 振込期限・支払期限を過ぎた |
+| `expired` | 期限切れ / Expired | 振込期限・支払期限を過ぎた。期限後に届いた入金は未消込入金として保留され、PSP が `late_deposit` で完了にできる（7.3 節） |
 | `chargeback` | チャージバック / Chargeback | チャージバックが敗訴・確定した |
 
 `failureReason` の値は第 5.3.4 節（`failureReason` の値）にまとめています。
@@ -192,27 +197,35 @@ Wire Pay では、加盟店サイトで購入者が決済手段を選択した�
 
 ```mermaid
 stateDiagram-v2
-  [*] --> pending: 作成 (convenience)
-  [*] --> awaiting_transfer: 作成 (bank)
-  [*] --> authorized: 作成 (credit/qr, autoCapture=false)
-  [*] --> captured: 作成 (credit/qr, autoCapture=true)
-  [*] --> failed: 作成時の拒否<br/>(限度額 / ブラックリスト / テストカード)
+  direction TB
+  state "作成" as create
+  [*] --> create
+  create --> pending: その他
+  create --> awaiting_transfer: bank
+  create --> awaiting_payment: convenience
+  create --> authorized: credit/qr<br/>autoCapture=false
+  create --> captured: credit/qr<br/>autoCapture=true
+  create --> failed: 作成時の拒否<br/>(限度額 / ブラックリスト / テストカード)
 
-  pending --> captured: capture / deposit(一致・超過)
-  pending --> pending: deposit(不足) ※depositDiff=short
+  state "入金待ち (awaiting_transfer / awaiting_payment)" as waiting {
+    awaiting_transfer
+    awaiting_payment
+  }
+  waiting --> waiting: deposit(不足)<br/>depositDiff=short
+  waiting --> captured: deposit(一致・超過) / capture
+  waiting --> expired: expire (期限超過のみ)
+  waiting --> cancelled: cancel
+  waiting --> failed: fail
+
+  pending --> captured: capture
   pending --> cancelled: cancel
   pending --> failed: fail
-  pending --> expired: expire (期限超過のみ)
-
-  awaiting_transfer --> captured: deposit(一致・超過) / capture
-  awaiting_transfer --> awaiting_transfer: deposit(不足) ※depositDiff=short
-  awaiting_transfer --> cancelled: cancel
-  awaiting_transfer --> failed: fail
-  awaiting_transfer --> expired: expire (期限超過のみ)
 
   authorized --> captured: capture
   authorized --> cancelled: cancel
   authorized --> failed: fail
+
+  expired --> captured: late_deposit (期限後入金の消込, 1.1.0)
 
   captured --> partially_refunded: refund (一部)
   captured --> refunded: refund (全額)
@@ -224,7 +237,6 @@ stateDiagram-v2
 
   cancelled --> [*]
   failed --> [*]
-  expired --> [*]
   chargeback --> [*]
 ```
 
@@ -232,12 +244,13 @@ stateDiagram-v2
 
 | アクション | 遷移元 | 遷移先（名目） | 刻まれる日時 | 誰が実行するか |
 |---|---|---|---|---|
-| `capture` | `pending`, `authorized`, `awaiting_transfer` | `captured` | `capturedAt` | PSP 管理画面（権限 `payment.state`）、決済ページの「支払いを確定」（デモ）、プロバイダ Webhook `payment.captured` |
-| `cancel` | `pending`, `authorized`, `awaiting_transfer` | `cancelled` | `cancelledAt` | PSP 管理画面、プロバイダ Webhook `payment.cancelled` |
+| `capture` | `pending`, `authorized`, `awaiting_transfer`, `awaiting_payment` | `captured` | `capturedAt` | PSP 管理画面（権限 `payment.state`）、決済ページの「支払いを確定」（デモ）、プロバイダ Webhook `payment.captured` |
+| `cancel` | `pending`, `authorized`, `awaiting_transfer`, `awaiting_payment` | `cancelled` | `cancelledAt` | PSP 管理画面、プロバイダ Webhook `payment.cancelled` |
 | `refund` | `captured`, `partially_refunded` | `refunded`（一部なら `partially_refunded`） | `refundedAt`（全額時） | 返金申請の承認（第 8 章）、プロバイダ Webhook `payment.refunded` |
-| `fail` | `pending`, `authorized`, `awaiting_transfer` | `failed` | — | PSP 管理画面、プロバイダ Webhook `payment.failed` |
-| `expire` | `pending`, `awaiting_transfer` | `expired` | — | 毎時の cron（期限超過のみ）、PSP 管理画面 |
-| `deposit` | `awaiting_transfer`, `pending` | `captured`（不足時は遷移元のまま） | `capturedAt`（完了時） | 銀行 / コンビニの入金通知（デモ API）、PSP 管理画面の入金消込（権限 `payment.deposit`）、未消込入金の消込 |
+| `fail` | `pending`, `authorized`, `awaiting_transfer`, `awaiting_payment` | `failed` | — | PSP 管理画面、プロバイダ Webhook `payment.failed` |
+| `expire` | `awaiting_transfer`, `awaiting_payment` | `expired` | — | 期限切れ cron（期限超過のみ。実行頻度は仕様書B 8.4 節）、PSP 管理画面 |
+| `deposit` | `awaiting_transfer`, `awaiting_payment` | `captured`（不足時は遷移元のまま） | `capturedAt`（完了時） | 銀行 / コンビニの入金通知（デモ API）、PSP 管理画面の入金消込（権限 `payment.deposit`）、未消込入金の消込 |
+| `late_deposit` | `expired` | `captured`（金額の過不足があっても完了し `depositDiff` に記録） | `capturedAt` | 未消込入金画面の「期限後入金として消込」（権限 `unmatched_deposit.match`、理由必須。**1.1.0 で追加**。API・Webhook からは実行されない） |
 | `chargeback` | `captured`, `partially_refunded`, `refunded` | `chargeback` | — | チャージバックの敗訴・確定（管理画面の直接操作ではない） |
 
 ### 2.4 決済手段ごとの違い
@@ -253,15 +266,17 @@ stateDiagram-v2
 - 作成時に加盟店設定の桁数（7 または 8 桁、`transferIdDigits`）で **振込ID** を発行します。先頭は 0 以外、システム全体で一意です。
 - **振込期限** = 作成日時 + 加盟店設定の `transferDueDays`（既定 7 日、1〜60）。
 - 入金は **累計** で判定します（`reconcileDeposit`）。一致 → `captured`、不足 → `awaiting_transfer` のまま `depositDiff = "short"`（次の入金で累計）、超過 → `captured` + `depositDiff = "excess"`。過不足は PSP 側の「過不足入金」画面で追跡され、超過分は差額返金申請、不足分は追加入金案内メールで対応されます。
-- 期限を過ぎた振込待ちは毎時 0 分の cron が `expired` にします（`payment.expired` の Webhook）。
+- 期限を過ぎた振込待ちは cron `/api/cron/expire-transfers` が `expired` にします（`payment.expired` の Webhook。デモの `vercel.json` では 1 日 1 回、本番運用では毎時を推奨。仕様書B 8.4 節）。
 - 振込IDが付いていない入金は「未消込入金」として記録され、PSP のサポートが振込IDを付与して消込します（完了時に `payment.completed` が送られます）。
+- **期限切れ後・キャンセル後に届いた入金、環境（test / live）が一致しない入金** は消込されず、未消込入金として保留されます（1.1.0）。期限後入金は PSP が理由を付けて「期限後入金として消込」すると取引が `captured` になり、通常どおり `payment.completed` と決済完了メールが送られます。キャンセル済の取引への入金は組戻し（返金手配）として却下されます（7.3 節）。
+- 同じ入金通知の再送（同じ `eventId`、または内容が同じ通知）は二重に計上されません（1.1.0）。
 
 #### コンビニ決済（受付番号・支払期限）
 
 - 作成時に **13 桁の受付番号**（先頭 0 以外、一意）と **支払店舗**（`cvsBrand`: `seven` / `lawson` / `familymart` / `ministop` / `other`、未指定は `seven`）を記録します。
 - **支払期限** = 作成日時 + 加盟店設定の `cvsDueDays`（既定 3 日、1〜30）。振込期限と同じ列（`transferDueAt`）を使います。
-- ステータスは新設せず `pending` = 支払待ちです。店頭支払いの通知は銀行振込と同じ `deposit` アクションで処理され、完了時に `cvsPaidAt` が刻まれます。
-- 期限切れは銀行振込と同じ cron が行います。
+- 作成時のステータスは **`awaiting_payment`（支払待ち）** です（1.1.0 で追加。以前は `pending` を流用していました）。店頭支払いの通知は銀行振込と同じ `deposit` アクションで処理され、完了時に `cvsPaidAt` が刻まれます。
+- 期限切れ・期限後入金・環境不一致・再送の扱いは銀行振込と同じです。
 
 #### 共通
 
@@ -292,7 +307,7 @@ stateDiagram-v2
 | 利用可能な決済手段（`enabledMethods`） | `credit` / `qr` / `convenience` / `bank` / `other` の組み合わせ。ここに無い手段は API で 400 `method_not_enabled` |
 | 振込IDの桁数（`transferIdDigits`） | 7 または 8 |
 
-発行後、PSP は加盟店詳細の **API キー** タブで API キー（`api_key`）と署名シークレット（`signing_secret`）を環境（test / live）ごとに発行します。平文は発行時に 1 回だけ表示され、DB には SHA-256 ハッシュのみ保存されます（署名シークレットは Webhook 署名のため暗号文も保持）。
+登録と同時に **テスト環境の署名シークレット（`wp_test_ss_…`）が自動発行** され、登録完了画面で平文が 1 回だけ表示されます（1.1.0）。API キー（`api_key`）と本番環境の署名シークレット（`signing_secret`）は、PSP が加盟店詳細の **API キー** タブで環境（test / live）ごとに発行します。平文は発行時に 1 回だけ表示され、DB には SHA-256 ハッシュのみ保存されます（署名シークレットは Webhook 署名のため暗号文も保持）。使用可能な署名シークレットが無い環境への Webhook は送信されません（6.4 節）。
 
 ### 3.2 API キーと署名シークレット
 
@@ -339,7 +354,8 @@ stateDiagram-v2
 | 決済リンクの発行 | `/api/v1/payment-links` | 無効化は PSP 管理画面のみ（第 14 章） |
 | Webhook の再送 | 加盟店管理画面 | 自社宛の送信のみ |
 | テストキーのローテーション | 加盟店管理画面 | 本番キーは不可 |
-| 精算バッチ・明細の参照、請求書 PDF の出力 | 加盟店管理画面、`/api/merchant-api/settlements` | 請求書は確定以降のバッチのみ |
+| 精算バッチ・明細の参照、請求書 PDF の出力 | 加盟店管理画面、`/api/merchant-api/settlements` | 請求書は確定以降のバッチのみ（請求書番号は確定時に採番） |
+| 領収書の発行（自社の完了 / 一部返金の取引） | 加盟店管理画面の取引詳細 | 宛名・但し書きを指定して PDF を取得（4.5 節、1.1.0） |
 | 決済手段の状態・お知らせの参照 | 加盟店管理画面、`/api/merchant-api/announcements` | |
 | 自社顧客の参照 | 加盟店管理画面 | 個人情報はマスクなし（自社データ） |
 | サンドボックスからの API 呼び出し | 加盟店管理画面 | テストキーのみ |
@@ -356,7 +372,8 @@ stateDiagram-v2
 | 本番 API キーの発行・ローテーション・失効、署名シークレットの発行 | PSP（admin / developer） |
 | 決済手段の停止 / 再開、IP 制限、ブラックリスト | PSP |
 | 精算バッチの生成・確定・振込 | PSP（admin / accounting） |
-| 領収書の発行（管理画面から） | PSP（admin / accounting / cs）。購入者は決済ページ経由で自分の領収書を取得可 |
+| 領収書の発行（PSP 管理画面から） | PSP（admin / accounting / cs）。加盟店は加盟店管理画面の取引詳細から、購入者は決済ページ経由で取得可 |
+| 未消込入金の消込・期限後入金の消込・組戻し | PSP（admin / accounting） |
 | 内部メモ（取引メモ）の閲覧 | PSP のみ（加盟店管理画面には表示されません） |
 
 ### 3.5 PSP 側ロールの概要（参考）
@@ -371,10 +388,14 @@ PSP 管理画面のロールは `admin` / `accounting` / `cs` / `developer` / `v
 | API キー・署名シークレットの発行 / ローテーション / 失効 | ○ | | | ○ | |
 | 取引の完了 / 失敗 / キャンセル / 期限切れ | ○ | | | | |
 | 入金消込 | ○ | ○ | | | |
+| 未消込入金の消込（期限後入金を含む） | ○ | ○ | | | |
 | 返金の承認 / 否認 | ○ | ○ | | | |
 | 精算バッチの生成 / 確定 / 振込 | ○ | ○ | | | |
 | Webhook の再送（PSP 側） | ○ | | | ○ | |
 | 決済手段の全体停止 / 加盟店別停止 | ○ | | ○（加盟店別のみ） | | |
+| IP 制限のルールと許可リストモードの変更 | ○ | | | ○ | |
+
+完全な権限マトリクスは付録 E を参照してください。
 
 ### 3.6 未実装・今後の予定（第 3 章）
 
@@ -385,14 +406,15 @@ PSP 管理画面のロールは `admin` / `accounting` / `cs` / `developer` / `v
 
 ## 4. 管理画面の操作説明
 
-本章は **加盟店管理画面（`/merchant/*`）** と、購入者が利用する **ホスト型決済ページ（`/pay/<token>`）** を画面ごとに説明します。PSP 管理画面は加盟店に関係する範囲（加盟店設定として PSP が行うもの）のみ 4.16 節で触れます。ラベルは辞書（`lib/i18n/messages/ja.ts` / `en.ts`）の値で、英語表示はヘッダーの「EN / 日本語」で切り替えます。
+本章は **加盟店管理画面（`/merchant/*`）** と、購入者が利用する **ホスト型決済ページ（`/pay/<token>`）** を画面ごとに説明します。PSP 管理画面は加盟店に関係する範囲（加盟店設定として PSP が行うもの）のみ 4.17 節で触れます。ラベルは辞書（`lib/i18n/messages/ja.ts` / `en.ts`）の値で、英語表示はヘッダーの「EN / 日本語」で切り替えます。
 
 ### 4.1 共通レイアウト
 
 | 要素 | 内容 |
 |---|---|
 | ヘッダー | Wire Pay ロゴ（→ `/merchant`）、「加盟店管理画面」、**テスト / 本番** スイッチ（ログイン時のみ）、「API ドキュメント」リンク（→ `/docs/api`）、言語切替、ログアウト（`POST /api/merchant-portal/logout` → `/merchant/login`）。スマートフォン幅ではスイッチと言語切替が 2 段目に移動 |
-| サイドバー | サイト名・加盟店ID、メニュー（下表）、「表示するデータの環境（テスト / 本番）。API キーの環境に対応します。」、PSP 管理画面へのリンク |
+| 本番モードの表示 | 本番モード中はヘッダー左端の赤線と画面上部の赤いストライプ「本番モード — 実際のデータを表示しています」を出し、各画面のタイトル横に現在のモードのバッジを表示します。テスト → 本番に切り替えるとトーストで注意を表示（1.1.0） |
+| サイドバー | サイト名・加盟店ID、メニュー（下表）、「表示するデータの環境（テスト / 本番）。API キーの環境に対応します。」。PSP 管理画面へのリンクはデモ環境（`DEMO_LOGIN_HINT` 設定時）のみ表示（1.1.0） |
 | ガード | ログインページ以外はすべて加盟店セッション必須。未ログインは `/merchant/login` へリダイレクト |
 
 | メニュー | パス | 節 |
@@ -418,7 +440,7 @@ PSP 管理画面のロールは `admin` / `accounting` / `cs` / `developer` / `v
 | 入力 | 加盟店ID（`MER-00001` 形式、大文字小文字は区別しない）、パスワード |
 | 操作 | 「ログイン」→ `POST /api/merchant-portal/login` `{ merchantCode, password }`。成功で `/merchant` へ |
 | エラー | パスワード不一致 401、5 回連続失敗で 423（「ログイン失敗が続いたためアカウントをロックしました。{minutes} 分後に再度お試しください」）。第 3.3 節 |
-| その他 | 既にログイン済みなら `/merchant` へリダイレクト。デモ環境（`DEMO_LOGIN_HINT` 設定時）はデモ用アカウントを表示。フッターに API ドキュメントと PSP 管理画面へのリンク |
+| その他 | 既にログイン済みなら `/merchant` へリダイレクト。デモ環境（`DEMO_LOGIN_HINT` 設定時）はデモ用アカウントと PSP 管理画面へのリンクを表示（本番では出ない）。フッターに API ドキュメントへのリンク。入力欄は `name="merchant-code"`（`autocomplete="off"`）/ `name="merchant-password"` で、ブラウザが PSP 管理者の ID を自動入力しないようにしている（1.1.0） |
 
 ### 4.3 ホーム（`/merchant`）
 
@@ -427,19 +449,19 @@ PSP 管理画面のロールは `admin` / `accounting` / `cs` / `developer` / `v
 | カード | 集計内容 | リンク先 |
 |---|---|---|
 | 本日の完了取引 | 完了系ステータス（完了 / 一部返金 / 返金済 / チャージバック）で `capturedAt` が本日（JST）の件数と金額 | 取引 |
-| 支払待ち・与信済 | `pending` / `awaiting_transfer` / `authorized` の件数 | 取引 |
+| 支払待ち・与信済 | `pending` / `awaiting_transfer` / `awaiting_payment` / `authorized` の件数 | 取引 |
 | 審査中の返金申請 | ステータス `requested` の返金申請件数 | 返金申請 |
 | 失敗 / 再送待ちの Webhook | ステータス `failed` / `abandoned` / `retrying` の送信件数 | Webhook 送信ログ |
 | 次回の振込予定 | ステータス `confirmed` / `scheduled` の精算バッチのうち最も早い振込予定日と差引支払額。無ければ「予定なし」 | 該当バッチ / 精算 |
 
-下部に「最近の取引」（新しい順 8 件: 注文番号・決済種別・申請日時・金額・ステータス）と「お知らせ」（公開中のもの: タイトル・種別・公開日）を表示します。
+下部に「最近の取引」（新しい順 8 件: 注文番号・決済種別・申請日時・金額・ステータス）と「お知らせ」（公開中のもの: タイトル・種別・公開日）、現在の **メール通知設定**（決済ごと / 1 日まとめて / 無し。変更は PSP に依頼、11.1 節）を表示します（1.1.0）。
 
 ### 4.4 取引一覧（`/merchant/transactions`）
 
 | 項目 | 内容 |
 |---|---|
 | 目的 | 自社の決済申請と完了した決済を一覧で確認する |
-| 絞り込み | ステータス（すべて + 10 ステータス）。URL は `?status=<値>`。環境はヘッダーのスイッチ |
+| 絞り込み | ステータス（すべて + 11 ステータス）。URL は `?status=<値>`。環境はヘッダーのスイッチ |
 | 並び | 完了取引を優先した表示順（`order: "sales"`）、20 件ごとのページング |
 | 列 | 注文番号（+ 取引ID）、ユーザー（ユーザー名 + ユーザーID）、決済種別、金額（返金済みがあれば `−返金額` を併記）、ステータス（期限超過は「期限超過」バッジ）、申請日時 |
 | 操作 | 行の注文番号から詳細へ。CSV 出力・操作ボタンはありません |
@@ -456,6 +478,7 @@ PSP 管理画面のロールは `admin` / `accounting` / `cs` / `developer` / `v
 | コンビニ決済（受付番号がある場合） | 支払店舗、受付番号（4-4-5 区切り）、期限、支払日時（未払いなら「未払い」） |
 | 履歴 | ステータス変更履歴（種別 → 遷移後ステータス、日時） |
 | 返金 | 返金申請の一覧（理由コード、日時、金額、ステータス） |
+| 領収書（完了 / 一部返金の取引） | 宛名（≤120）と但し書き（≤120、空なら前回値 → 商品名 → 「商品代金」）を入力して「発行」→ `POST /api/merchant-portal/receipts/{paymentId}` `{ recipientName?, description? }`、PDF は `GET` 同パス。番号は `RC-YYYYMM-00001`（PSP 管理画面の発行と同じ採番）、再発行は番号据え置きで回数 +1。`source = merchant`、監査 `receipt.issue`（1.1.0） |
 
 **返金を申請**（右側のフォーム）:
 
@@ -497,13 +520,13 @@ PSP 管理画面のロールは `admin` / `accounting` / `cs` / `developer` / `v
 |---|---|
 | 目的 | 精算バッチ（売上・手数料・返金・チャージバックの差引）と振込予定を確認する |
 | 表示 | 環境スイッチに従い最新 100 件 |
-| 列 | 対象期間（→ 詳細）、売上総額、差引支払額（負なら赤）、ステータス（集計中 / 確定 / 振込予定 / 振込済 / 保留）、振込予定日（振込済なら振込完了日） |
+| 列 | 対象期間（→ 詳細）、請求書番号（確定以降）、売上総額、差引支払額（負なら赤）、ステータス（集計中 / 確定 / 振込予定 / 振込済 / 保留）、振込予定日（振込済なら振込完了日） |
 
 ### 4.9 精算詳細（`/merchant/settlements/[id]`）
 
 | セクション | 表示項目 |
 |---|---|
-| 内訳 | 売上総額、手数料合計、返金合計、チャージバック合計、精算手数料（振込手数料）、差引支払額、振込予定日、振込完了日 |
+| 内訳 | 請求書番号（`INV-YYYYMM-<加盟店番号>-<連番 2 桁>`、確定時に採番。集計中は未採番）、売上総額、手数料合計、返金合計、チャージバック合計、精算手数料（振込手数料）、差引支払額、振込予定日、振込完了日 |
 | 明細 | 発生日時、種別（売上 / 返金 / チャージバック）、注文番号（→ 取引詳細）、決済手段、金額（負なら赤）、手数料 |
 | 請求書 PDF（インボイス） | 集計中は「集計中のバッチは確定後に出力できます。」。確定以降は `GET /api/merchant-portal/settlements/{id}/invoice` を新しいタブで開く（監査 `settlement.invoice_export`） |
 
@@ -591,6 +614,8 @@ PSP 管理画面のロールは `admin` / `accounting` / `cs` / `developer` / `v
 | 精算設定 | 締めサイクル、支払サイト、振込先口座、精算手数料、適格請求書用の登録番号・住所 | 9 |
 | 決済手段 | 加盟店別の一時停止 | 10.3 |
 | Webhook送信ログ | 加盟店宛の直近の通知と結果（詳細・再送） | 6 |
+| IP 制限（`/ip-restrictions`） | 加盟店 API の許可 / ブロックルールと **許可リストモード**（対象「加盟店API」） | 10.1 |
+| 入金通知ログ（`/deposit-notifications`）/ 未消込入金（`/unmatched-deposits`） | 銀行・コンビニからの入金通知の記録と、保留された入金の消込 / 期限後入金の消込 / 組戻し | 7.3 |
 
 ### 4.18 未実装・今後の予定（第 4 章）
 
@@ -609,10 +634,10 @@ PSP 管理画面のロールは `admin` / `accounting` / `cs` / `developer` / `v
 |---|---|
 | ベース URL | `https://<host>/api/v1`（`servers[0].url`） |
 | 形式 | リクエスト・レスポンスともに JSON（`Content-Type: application/json`）。金額は円の整数 |
-| 認証 | `Authorization: Bearer <API キー>`。キーの形式は `wp_(test|live)_(ak|ss)_[A-Za-z0-9]{32}`。`ak` 以外（署名シークレット）は 401 `invalid_api_key` |
+| 認証 | `Authorization: Bearer <API キー>`。キーの形式は `wp_(test\|live)_(ak\|ss)_[A-Za-z0-9]{32}`。`ak` 以外（署名シークレット）は 401 `invalid_api_key` |
 | 環境の切替 | キーの `test` / `live` がそのままデータの環境。エンドポイントは共通 |
-| IP 制限 | 加盟店に対象「加盟店API」の **ブロック** ルールが設定されている場合、一致する接続元は 403 `ip_blocked`。接続元は `X-Forwarded-For` の先頭、無ければ `X-Real-IP` |
-| レート制限 | 加盟店 × 環境ごとに **60 リクエスト / 分**（UNIX 分単位の固定ウィンドウ、DB 集計）。超過は 429 `rate_limited` + `Retry-After`（秒）+ `X-RateLimit-Limit` + `X-RateLimit-Remaining: 0`。成功レスポンスにも `X-RateLimit-Limit` / `X-RateLimit-Remaining` が付きます。**認証成功後・ビジネス処理前** に消費されるため、4xx で失敗したリクエストもカウントされます |
+| IP 制限 | 加盟店に対象「加盟店API」の **ブロック** ルールが設定されている場合、一致する接続元は 403 `ip_blocked`。PSP が **許可リストモード**（加盟店API）を ON にしている場合は、許可ルールを 1 件以上持つ加盟店について、いずれにも一致しない接続元も 403 `ip_blocked`（`details.reason = "not_in_allowlist"`。許可ルールの無い加盟店は影響なし。1.1.0、10.1 節）。接続元は `X-Forwarded-For` の先頭、無ければ `X-Real-IP` |
+| レート制限 | 加盟店 × 環境ごとに **60 リクエスト / 分**（UNIX 分単位の固定ウィンドウ、DB 集計。`/api/merchant-api/*` の呼び出しも同じ枠を消費、1.1.0）。超過は 429 `rate_limited` + `Retry-After`（秒）+ `X-RateLimit-Limit` + `X-RateLimit-Remaining: 0`。成功レスポンスにも `X-RateLimit-Limit` / `X-RateLimit-Remaining` が付きます。**認証成功後・ビジネス処理前** に消費されるため、4xx で失敗したリクエストもカウントされます |
 | 冪等性 | `POST /transactions` は `Idempotency-Key` ヘッダー（またはボディの `idempotencyKey`、8〜128 文字）を受け付けます。同じキーの再送は **同じ取引** を返し（HTTP 201、レスポンスは同一形状）、二重作成しません。キーはシステム全体で一意（`Payment.idempotencyKey @unique`）です |
 | 言語 | エラーメッセージ `message` は `x-lang` ヘッダー（`ja` / `en`）、無ければ `Accept-Language`、既定 `ja` |
 | CSRF / セッション | `/api/v1/*` は middleware のセッション・CSRF 検査の対象外（Bearer 認証のみ） |
@@ -687,7 +712,7 @@ PSP 管理画面のロールは `admin` / `accounting` / `cs` / `developer` / `v
    5. 限度額判定（ブラックリスト非該当時のみ）。1 回 / 1 日 / 1 か月の順に判定し、超過すると **`failed` として記録**（`failureReason = "limit_exceeded:<per_transaction|daily|monthly>"`）。加盟店へ Webhook `limit.exceeded` を送信。
    6. 顧客マスタの作成 / 更新（`customerId` があるとき）。
    7. 取引行の作成。`bank` は振込ID + 振込期限、`convenience` は受付番号 + 支払期限 + 支払店舗を発行。振込ID / 受付番号の一意制約違反は 1 回だけ再抽選。
-   8. `captured` で作成された場合は Webhook `payment.completed`、`bank` は「振込案内」メール、`convenience` は「コンビニ支払案内」メール。
+   8. `captured` で作成された場合は Webhook `payment.completed` と購入者への「決済完了」メール（1.1.0。定期課金の課金を除く）、`bank` は「振込案内」メール、`convenience` は「コンビニ支払案内」メール。加盟店のメール通知設定が「決済ごと」なら加盟店担当者にも通知（11.1 節）。
    9. `failed` の場合は連続失敗検知（ブラックリスト候補の登録）。
 
 限度額・ブラックリスト・テストカード失敗はいずれも **HTTP 201 で `status: "failed"` の取引** として返ります（エラーレスポンスではありません）。`failureReason` を確認してください。
@@ -746,7 +771,7 @@ Idempotency-Key: order-2026-00042
 ```
 
 銀行振込の例（抜粋）: `"status": "awaiting_transfer", "bankTransfer": { "transferId": "4821390", "dueAt": "2026-09-08T03:00:00.000Z", "depositAmount": 0 }`
-コンビニの例（抜粋）: `"status": "pending", "konbini": { "brand": "lawson", "receiptNo": "4102993827716", "dueAt": "2026-09-04T03:00:00.000Z", "paidAt": null }`
+コンビニの例（抜粋）: `"status": "awaiting_payment", "konbini": { "brand": "lawson", "receiptNo": "4102993827716", "dueAt": "2026-09-04T03:00:00.000Z", "paidAt": null }`
 
 #### エラー
 
@@ -768,7 +793,7 @@ Idempotency-Key: order-2026-00042
 
 | クエリ | 型 | 制約 | 説明 |
 |---|---|---|---|
-| `status` | string | ≤32 | ステータスで絞り込み（完全一致） |
+| `status` | string | ≤32 | ステータスで絞り込み（完全一致。`awaiting_payment` を含む 2.2 節の 11 値） |
 | `method` | string | `credit` / `qr` / `convenience` / `bank` | 決済手段で絞り込み |
 | `from` | string | `YYYY-MM-DD` | 作成日がこの日以降（JST 0:00 起点） |
 | `to` | string | `YYYY-MM-DD` | 作成日がこの日以前（JST、当日を含む） |
@@ -844,12 +869,12 @@ Idempotency-Key: order-2026-00042
 
 ### 5.8 加盟店 API（`/api/merchant-api/*`）
 
-公開 API と同じ API キーで認証する補助エンドポイントです。IP 制限・キー状態の扱いは公開 API と同じですが、**加盟店 × 環境のレート制限は適用されません**（`authenticateMerchantApiKey` のみで、`consumePublicApiRateLimit` を呼びません）。middleware も `/api/merchant-api/` を独自認証パスとして扱い、IP 単位のレート制限・CSRF・セッション検査を行いません。
+公開 API と同じ API キーで認証する補助エンドポイントです。IP 制限（許可リストモードを含む）・キー状態の扱いは公開 API と同じで、**レート制限も公開 API と同じバケット**（加盟店 × 環境 × 分、`/api/v1` と合算で 60 回 / 分。超過は 429 `rate_limited` + `Retry-After`、応答に `X-RateLimit-Limit` / `X-RateLimit-Remaining`）を消費します（1.1.0。以前は無制限）。middleware は `/api/merchant-api/` を独自認証パスとして扱い、IP 単位のレート制限・CSRF・セッション検査を行いません。
 
 | エンドポイント | 応答 `data` |
 |---|---|
 | `GET` / `POST /api/merchant-api/ping` | `{ merchantCode, siteName, mode, kind, keyPrefix, status }`。疎通確認・キーの検証 |
-| `GET /api/merchant-api/settlements` | `{ merchantCode, mode, settlements: [ { id, periodFrom, periodTo, status, grossAmount, feeAmount, refundAmount, chargebackAmount, settlementFee, netAmount, scheduledAt, paidAt, holdReason, createdAt } ] }`（キーの環境、最新 100 件） |
+| `GET /api/merchant-api/settlements` | `{ merchantCode, mode, settlements: [ { id, periodFrom, periodTo, status, invoiceNo, grossAmount, feeAmount, refundAmount, chargebackAmount, settlementFee, netAmount, scheduledAt, paidAt, holdReason, createdAt } ] }`（キーの環境、最新 100 件。`invoiceNo` は確定以降に採番、集計中は null。1.1.0） |
 | `GET /api/merchant-api/settlements?id=<batchId>` | `{ batch, lines: [ { kind, method, description, amount, fee, occurredAt } ] }`。他社・他環境は 404 |
 | `GET /api/merchant-api/announcements` | `{ merchantCode, announcements: [ { id, kind, title, body, publishFrom, publishUntil, updates } ] }`。公開中で、全加盟店向けまたは自社を対象に含むもの |
 
@@ -882,7 +907,7 @@ Idempotency-Key: order-2026-00042
 
 | `event` | 送信タイミング | `status` の値 | 紐づく取引（`payment_id`） |
 |---|---|---|---|
-| `payment.completed` | 取引が完了になったとき（クレジット / QR の即時完了、PSP の「完了にする」、入金消込の一致 / 超過、決済ページの完了、未消込入金の消込、API 再通知） | `captured` | 当該取引 |
+| `payment.completed` | 取引が完了になったとき（クレジット / QR の即時完了、PSP の「完了にする」、入金消込の一致 / 超過、決済ページの完了、未消込入金の消込、期限後入金の消込 `late_deposit`、API 再通知） | `captured` | 当該取引 |
 | `payment.failed` | 取引が失敗になったとき（PSP の「失敗にする」、プロバイダ Webhook） | `failed` | 当該取引 |
 | `payment.expired` | 振込期限 / 支払期限の超過で期限切れになったとき（毎時の cron を含む） | `expired` | 当該取引 |
 | `payment.cancelled` | 取引がキャンセルされたとき | `cancelled` | 当該取引 |
@@ -961,10 +986,10 @@ signed_payload = "<X-Timestamp>" + "." + <署名対象>      # 署名対象: ボ
 v1 = hex( HMAC_SHA256( key = 署名鍵, message = signed_payload ) )
 ```
 
-**署名鍵** の優先順位:
+**署名鍵** は加盟店の **署名シークレット**（`wp_<test\|live>_ss_…`）です。通知と同じ環境（test / live）で、失効・期限切れでない **最新の発行分**（`issuedAt` 降順の先頭で `apiKeyUsable` なもの）を使います。
 
-1. 加盟店の **署名シークレット**（`wp_<test|live>_ss_…`）。通知と同じ環境（test / live）で、失効・期限切れでない **最新の発行分**（`issuedAt` 降順の先頭で `apiKeyUsable` なもの）
-2. 署名シークレットが 1 つも無い場合は **加盟店パスワード**
+- **使用可能な署名シークレットが無い環境への通知は送信されません**（fail closed、1.1.0。以前は加盟店パスワードで署名していました）。送信ログに `failed` / `error: signing_secret_missing` で記録され、PSP の通知センターに警告（`webhook.signing_secret_missing`、加盟店 × 環境ごとに 24 時間に 1 通）が出ます。署名シークレットを発行した後に手動再送すると署名して送られます。
+- テスト環境の署名シークレットは加盟店登録時に自動発行されます（3.1 節）。本番環境の署名シークレットは本番開通時に PSP が発行します。
 
 環境ごとに鍵が異なるため、受信側は test / live 両方の署名シークレットを保持し、`payment_id` またはリクエスト元の環境に応じて検証してください（※ペイロードに環境を示すパラメータは含まれません。テストキーで作成した取引の通知はテストの署名シークレットで署名されます）。
 
@@ -1044,7 +1069,8 @@ form-urlencoded（POST）の場合はボディが `payment_id=…&event=payment.
 | 送信の契機 | 状態変更をコミットした **後**（Webhook の失敗は元の操作を失敗させません） |
 | タイムアウト | **10 秒**（`WEBHOOK_TIMEOUT_MS`）。リダイレクトは追いません（`redirect: "manual"` — 3xx は失敗扱い） |
 | 成功判定 | HTTP **2xx** |
-| 自動再送 | 失敗（2xx 以外・タイムアウト・通信エラー）後、**1 分 → 5 分 → 30 分 → 2 時間 → 24 時間**（`RETRY_DELAYS_MS`）の間隔で再送。期限が来た再送は毎時 30 分の cron `/api/cron/webhook-retry` が送信します（1 回あたり最大 100 件） |
+| 自動再送 | 失敗（2xx 以外・タイムアウト・通信エラー）後、**1 分 → 5 分 → 30 分 → 2 時間 → 24 時間**（`RETRY_DELAYS_MS`）の間隔で再送。期限が来た再送は cron `/api/cron/webhook-retry` が送信します（1 回あたり最大 100 件。デモの `vercel.json` では 1 日 1 回 01:30 UTC のため再送は日次、本番運用では毎時を推奨。仕様書B 8.4 節） |
+| 署名鍵なし | 使用可能な署名シークレットが無い環境への通知は送信せず `failed`（`error: signing_secret_missing`）で記録（6.4 節、1.1.0） |
 | 断念 | **5 回**（`MAX_ATTEMPTS`）失敗すると `abandoned`。PSP の通知センターに critical 通知。手動再送で復活可 |
 | 送信ログのステータス | `pending`（送信待ち）/ `success` / `retrying` / `failed` / `abandoned` |
 | 記録 | 送信ごとに `WebhookAttempt`（試行番号、応答コード、応答ボディ先頭 1 KB、所要時間、きっかけ = `system` / `cron` / `dashboard`） |
@@ -1059,7 +1085,7 @@ form-urlencoded（POST）の場合はボディが `payment_id=…&event=payment.
 | 冪等性 | 同じ `payment_id` + `event` の通知は **複数回届く可能性** があります（自動再送・手動再送・API 再通知）。`payment_id` + `event` で重複排除してください |
 | 順序 | 1 つの取引に対して複数のイベント（例 `payment.completed` → `refund.completed`）が届きますが、順序は保証されません。`paid_at` / `status` の新旧ではなく、自システムの状態と `event` で判断してください |
 | 状態の確認 | 疑わしい場合は `GET /api/v1/transactions/{id}` で取引の現在の状態を取得できます |
-| 署名鍵の管理 | 環境（test / live）ごとの署名シークレットを安全に保管。ローテーション時は猶予期間中に新旧両方を受け付ける |
+| 署名鍵の管理 | 環境（test / live）ごとの署名シークレットを安全に保管。ローテーション時は猶予期間中に新旧両方を受け付ける。署名シークレットを失効させたまま新しいものを発行しないと、その環境の通知は送信されない（6.4 節） |
 | IP 許可リスト | Wire Pay の送信元 IP は固定されていません（サーバーレス環境）。IP ではなく署名で検証してください（**※要確認**: 本番の送信元 IP レンジは運用環境に依存） |
 
 ### 6.8 再送の依頼方法
@@ -1141,7 +1167,8 @@ sequenceDiagram
   S-->>C: 振込ID・期限を表示
   C->>B: 振込 (振込名義の先頭に振込ID)
   alt 入金通知 (デモ: POST /api/demo/deposit-notify)
-    B->>W: {transferId, amount}
+    B->>W: {eventId?, transferId, amount, mode, payerName?, bankReference?, receivedAt?}
+    Note over W: 入金通知ログに記録。同じ eventId / 同内容の再送は 200 duplicate で再適用しない<br/>mode ≠ 取引の環境 / 期限切れ / キャンセル済 → 202 で未消込入金に保留
   else PSP が手動で消込
     P->>W: 取引詳細「入金消込」{amount}
   end
@@ -1153,12 +1180,21 @@ sequenceDiagram
     Note over W: Webhook なし。過不足入金画面に「不足」で登録
     P->>C: (PSP 操作) メール「追加入金案内」
   end
-  Note over W: 期限超過で未入金 → 毎時 cron が expire
+  Note over W: 期限超過で未入金 → 期限切れ cron が expire
   W->>R: Webhook payment.expired (期限切れ時)
+  opt 期限後に入金が届いた場合 (1.1.0)
+    B->>W: 入金通知 (transferId 一致, 取引は expired)
+    W-->>B: 202 {matched: false, reason: "late_deposit", unmatchedDepositId, paymentId}
+    P->>W: 未消込入金「期限後入金として消込」{reason} → late_deposit (expired → captured)
+    W->>R: Webhook payment.completed
+    W->>C: メール「決済完了」
+  end
 ```
 
 - 振込IDが無い / 誤った入金は Wire Pay 側で「未消込入金」として保留され、PSP のサポートが正しい振込IDを付与すると同じ消込が走り、完了時に `payment.completed` が送られます。加盟店側の作業はありません。
 - 超過入金の差額は PSP が返金申請（理由 `duplicate`）を作成し、承認後に `refund.completed` が送られます。
+- **期限後入金**（取引が `expired` の後に届いた入金）と **環境不一致**（テストの通知で本番の振込IDが一致した場合など）の入金も未消込入金として保留されます（1.1.0）。期限後入金は PSP が理由を付けて消込すると `late_deposit` 遷移で `captured` になり、金額が一致しなくても完了して過不足は `depositDiff` に記録されます。キャンセル済の取引への入金は消込できず、組戻し（返金手配）として却下されます。
+- 銀行から同じ通知が再送されても（同じ `eventId`、または送信元・振込ID・金額・入金日時（分）・銀行参照番号が同じ）入金は二重計上されません（1.1.0）。すべての通知は PSP 管理画面「入金通知ログ」に残ります。
 
 ### 7.4 コンビニ決済
 
@@ -1171,19 +1207,19 @@ sequenceDiagram
   participant R as 加盟店 通知受信
 
   S->>W: POST /transactions {method: convenience, cvsBrand, customerEmail}
-  W-->>S: 201 {status: "pending", konbini: {brand, receiptNo, dueAt}}
+  W-->>S: 201 {status: "awaiting_payment", konbini: {brand, receiptNo, dueAt}}
   W->>C: メール「コンビニ支払案内」(店舗・受付番号・金額・期限)
   S-->>C: 受付番号・期限を表示
   C->>K: 店頭で受付番号を提示して支払い
-  K->>W: 入金通知 (デモ: POST /api/demo/cvs-notify {receiptNo})
-  Note over W: deposit アクション (waiting = pending) → captured, cvsPaidAt
+  K->>W: 入金通知 (デモ: POST /api/demo/cvs-notify {eventId?, receiptNo, amount?, mode})
+  Note over W: 入金通知ログに記録 (再送は再適用しない)<br/>deposit アクション (waiting = awaiting_payment) → captured, cvsPaidAt
   W->>R: Webhook payment.completed
   W->>C: メール「決済完了」
-  Note over W: 期限超過で未払い → 毎時 cron が expire → payment.expired
+  Note over W: 期限超過で未払い → 期限切れ cron が expire → payment.expired<br/>期限後の通知は未消込入金に保留 (7.3 と同じ)
 ```
 
 - 受付番号は 13 桁（表示は 4-4-5 区切り、API は区切りなし）。入金通知ではハイフン付きでも受け付けます。
-- 金額が不足した通知は `pending` のまま `depositDiff = short` になります（銀行振込と同じ扱い）。
+- 金額が不足した通知は `awaiting_payment` のまま `depositDiff = short` になります（銀行振込と同じ扱い）。
 
 ### 7.5 決済リンク（ホスト型決済ページ）
 
@@ -1204,7 +1240,7 @@ sequenceDiagram
   alt bank
     W-->>C: awaiting_transfer, 振込ID・期限を表示 (以降 7.3 と同じ)
   else convenience
-    W-->>C: pending, 受付番号・期限を表示 + 「店頭で支払い済みにする（デモ）」
+    W-->>C: awaiting_payment, 受付番号・期限を表示 + 「店頭で支払い済みにする（デモ）」
     C->>W: POST /api/pay/<token>/complete {paymentId} → deposit(actor cvs)
   else credit / qr / other
     W-->>C: authorized + 「お支払いを確定する（デモ）」
@@ -1470,7 +1506,7 @@ stateDiagram-v2
 | ステータス | 表示 | 意味 | 加盟店から見えるもの |
 |---|---|---|---|
 | `collecting` | 集計中 | 生成直後。PSP が明細を確認する段階 | 一覧・詳細（請求書は不可） |
-| `confirmed` | 確定 | 金額確定、明細変更不可 | 請求書 PDF 可。ホームの「次回の振込予定」に表示 |
+| `confirmed` | 確定 | 金額確定、明細変更不可。**確定時に請求書番号を採番**（1.1.0） | 請求書番号、請求書 PDF 可。ホームの「次回の振込予定」に表示 |
 | `scheduled` | 振込予定 | 振込予定日に支払予定 | 同上 |
 | `paid` | 振込済 | 支払完了（`paidAt`） | 振込完了日 |
 | `held` | 保留 | チャージバック係争中などで支払を止めている（`holdReason`） | 保留理由（API の `holdReason`） |
@@ -1482,6 +1518,7 @@ stateDiagram-v2
 | 対象期間 | `periodFrom`〜`periodTo − 1 日`（画面は終了日を含む表記、API の `periodTo` は排他的） |
 | 売上総額 / 手数料合計 / 返金合計 / チャージバック合計 / 精算手数料 / 差引支払額 | 9.5 節 |
 | 振込予定日 / 振込完了日 | `scheduledAt` / `paidAt` |
+| 請求書番号 | `invoiceNo`（確定以降。集計中は null）。横断検索の対象 |
 | 明細行 | 発生日時、種別、注文番号（→ 取引詳細）、決済手段、金額（返金・チャージバックは負）、手数料 |
 
 ### 9.8 適格請求書（インボイス）PDF
@@ -1492,7 +1529,7 @@ stateDiagram-v2
 |---|---|
 | 出力条件 | 確定以降（`confirmed` / `scheduled` / `paid` / `held`）のバッチ。集計中は 409 `settlement_not_confirmed` |
 | 出力経路 | 加盟店管理画面の精算詳細（`GET /api/merchant-portal/settlements/{id}/invoice`）、PSP 管理画面（権限 `invoice.export` = admin / accounting） |
-| 請求書番号 | `INV-YYYYMM-<加盟店番号>`（対象期間の開始月、加盟店番号は `MER-` を除いた数字） |
+| 請求書番号 | `INV-YYYYMM-<加盟店番号>-<連番 2 桁>`（対象期間の開始月、加盟店番号は `MER-` を除いた数字、連番は同月・同加盟店のバッチの確定順）。**確定時に採番して `SettlementBatch.invoiceNo`（一意）に保存** し、PDF は保存値を印字する。未採番のバッチは 409 `invoice_no_missing`（1.1.0。旧形式 `INV-YYYYMM-<加盟店番号>` は 15 日・月末締め / 週次締めで同月に複数バッチが立つと重複した） |
 | 発行者 | PSP の全体設定（発行者名・登録番号 `T` + 13 桁・住所・電話） |
 | 宛先 | 加盟店の会社名・住所・登録番号（精算設定タブ） |
 | 明細 | 決済手段ごとの手数料（件数・対象売上・税区分・税込金額）と振込手数料 |
@@ -1518,8 +1555,14 @@ stateDiagram-v2
 
 | 対象（`target`） | 内容 |
 |---|---|
-| `merchant_api`（加盟店API） | 加盟店ごとに設定。**ブロック（`deny`）** ルールに一致する接続元からの `/api/v1/*`・`/api/merchant-api/*` 呼び出しは 403 `ip_blocked`。許可（`allow`）ルールは判定表示のみで、一致しない接続元を遮断することはありません |
-| `admin`（管理画面） | PSP 管理画面向け。加盟店には関係しません |
+| `merchant_api`（加盟店API） | 加盟店ごとに設定。**ブロック（`deny`）** ルールに一致する接続元からの `/api/v1/*`・`/api/merchant-api/*` 呼び出しは 403 `ip_blocked`。許可（`allow`）ルールは、PSP が **許可リストモード** を ON にしている場合に強制されます（下記）。OFF のときは判定表示のみ |
+| `admin`（管理画面） | PSP 管理画面向け。加盟店には関係しません（同じ許可リストモードを持つ） |
+
+**許可リストモード**（`GlobalSetting.ipAllowlistMerchantApi`、既定 OFF、1.1.0）:
+
+- ON のとき、有効な許可ルールを 1 件以上持つ加盟店では、いずれの許可ルールにも一致しない接続元が 403 `ip_blocked`（`details.reason = "not_in_allowlist"`）になります。許可ルールの無い加盟店は影響を受けません。ブロックルールは常に優先します。
+- 対象の有効な許可ルールが 1 件も無いと ON にできません（400 `allowlist_no_rules`）。管理画面側（`admin`）はさらに、切替を行うオペレータ自身の IP が許可ルールに含まれていないと ON にできず（400 `ip_self_block`）、ON の間は自分の IP が外れる許可ルールの変更・削除も拒否されます。
+- 加盟店側の対処: 許可リストモードが ON の環境では、API サーバーの送信元 IP をすべて PSP に登録してもらってから接続してください。
 
 - ルールは IPv4 単体（`203.0.113.10`）または CIDR（`198.51.100.0/24`、`/0`〜`/32`）。IPv6 は判定対象外（遮断されません。IPv4 射影形式 `::ffff:a.b.c.d` は IPv4 として判定）。
 - 接続元 IP は `X-Forwarded-For` の先頭、無ければ `X-Real-IP` から取ります。
@@ -1590,7 +1633,7 @@ PSP は決済事業者側の障害や加盟店からの依頼で、特定の決�
 |---|---|
 | 通知先 URL | https のみ |
 | API キー | Bearer のみ。クエリ文字列でのキー送信は不可 |
-| レート制限 | 公開 API 60 回 / 分（加盟店 × 環境）。加盟店管理画面の更新系 API は IP ごとに 60 回 / 分、ログインは 10 回 / 分 |
+| レート制限 | 公開 API と加盟店 API の合算で 60 回 / 分（加盟店 × 環境）。加盟店管理画面の更新系 API は IP ごとに 60 回 / 分、ログインは 10 回 / 分 |
 | CSRF | 加盟店管理画面の更新系 API は同一オリジンの `Origin` / `Referer` と `X-Requested-With: fetch` を要求（ブラウザからのみ呼ぶ想定） |
 | デモ上限 | 取引 1,000 件、加盟店 200 件、API キー 20 件 / 加盟店 など（`DEMO_LIMITS`）。到達時は 403 `demo_limit` |
 | Cookie | 加盟店セッション `wirepay.merchant`: `Path=/; HttpOnly; SameSite=Lax; Max-Age=43200`、本番（`NODE_ENV=production`）では `Secure` 付き |
@@ -1609,13 +1652,15 @@ PSP は決済事業者側の障害や加盟店からの依頼で、特定の決�
 
 ### 11.1 メール通知設定の 3 種（加盟店設定 `emailNotification`）
 
-| 設定値 | 表示 | 意味 |
-|---|---|---|
-| `per_payment` | 決済ごと | 決済ごとにメール通知する設定値 |
-| `daily` | 1 日まとめて通知 | 1 日 1 回まとめて通知する設定値 |
-| `none` | メール通知無し | 通知しない |
+加盟店宛の決済通知メールは、加盟店設定 `emailNotification` に従って **担当者メール（`Merchant.email`）** へ送られます（1.1.0 で実装。明細送付先メール `statementEmail` は精算関連にのみ使います）。
 
-この設定値は加盟店レコード（`Merchant.emailNotification`）に保存され、PSP 管理画面の加盟店一覧・詳細・フォームで表示・編集されますが、**対象コミットのコードでこの値を参照してメールの送信可否・頻度を切り替える処理はありません**（`lib/email/*` は `emailNotification` を読まず、加盟店宛の取引メールも送信しません）。加盟店向けの決済通知メールを実装する際の設定として予約されている項目です（第 14.4 節）。
+| 設定値 | 表示 | 送信内容（テンプレート） |
+|---|---|---|
+| `per_payment` | 決済ごと | 取引が完了（`captured`）になるたびに `merchant_payment_notice`（注文番号・金額・決済種別・完了日時・取引ID）。即時完了・PSP の完了操作・入金消込・期限後入金の消込・定期課金の課金すべてが対象 |
+| `daily` | 1 日まとめて通知 | 毎日 09:00 JST の cron `/api/cron/merchant-daily-summary` が **前日 0:00〜24:00（JST）** の完了件数・金額・決済種別別内訳・失敗件数・期限切れ件数を `merchant_daily_summary` で 1 通（加盟店 × 環境ごと）。該当取引が 0 件の日は送らず、同じ日の分は再実行しても重複しない |
+| `none` | メール通知無し | 送らない |
+
+現在の設定は加盟店管理画面のホームに表示されます（変更は PSP に依頼）。デモ環境では 11.2 節と同じく送信ログへの記録のみです。
 
 ### 11.2 購入者へのメール
 
@@ -1625,7 +1670,7 @@ PSP は決済事業者側の障害や加盟店からの依頼で、特定の決�
 |---|---|---|
 | `transfer_guide` 振込案内 | 銀行振込の取引作成時 | 振込金額、振込ID、振込期限、商品 |
 | `cvs_guide` コンビニ支払案内 | コンビニ決済の取引作成時 | 支払店舗、受付番号（4-4-5 区切り）、金額、期限 |
-| `payment_completed` 決済完了 | 取引が `capture` または一致 / 超過の `deposit` で完了したとき（PSP の「完了にする」、決済ページの確定、入金消込・入金通知）。**作成と同時に `captured` になる取引（`autoCapture: true` のクレジット / QR）ではこのメールは送られません**（`createTransaction` は完了メールのフックを呼びません） | 注文番号、金額、取引ID |
+| `payment_completed` 決済完了 | 取引が完了したとき: `capture`、一致 / 超過の `deposit`、期限後入金の `late_deposit`（PSP の「完了にする」、決済ページの確定、入金消込・入金通知、未消込入金の消込）。**作成と同時に `captured` になる取引（`autoCapture: true` のクレジット / QR）でも送られます**（1.1.0。定期課金の課金は `subscription_*` テンプレートに任せるため除外） | 注文番号、金額、取引ID |
 | `refund_completed` 返金完了 | 返金申請が承認されたとき | 返金額、注文番号、取引ID |
 | `deposit_short` 追加入金案内 | 過不足入金で PSP が「追加入金を案内済にする」を実行したとき | 振込ID、不足額、請求金額、期限 |
 | `subscription_failed` 定期課金の失敗 | 課金失敗（再試行待ち） | プラン名、金額、再試行日 |
@@ -1633,7 +1678,7 @@ PSP は決済事業者側の障害や加盟店からの依頼で、特定の決�
 
 - **デモ環境ではメールを実際には送信せず**、送信ログ（PSP 管理画面「メール送信ログ」）に「デモ（未送信）」として記録します（`EMAIL_PROVIDER=log` 既定）。実サービスへの接続は PSP 側の設定です。
 - 無効化されたテンプレートではメールを作成しません。
-- 加盟店宛のメール（`statement` 明細送付）は手動運用向けの文面のみで、自動送信はありません。
+- 加盟店宛のメールは 11.1 節の 2 種（`merchant_payment_notice` / `merchant_daily_summary`）が自動送信されます。`statement`（明細送付）は手動運用向けの文面のみで、自動送信はありません。
 
 ### 11.3 お知らせ・メンテナンス・障害情報
 
@@ -1649,7 +1694,7 @@ PSP は決済事業者側の障害や加盟店からの依頼で、特定の決�
 
 ### 11.4 PSP 側の通知センター（参考）
 
-PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限度額超過、返金申請、定期課金失敗、期限超過の日次まとめ、ブラックリスト候補 など 15 種）は PSP 管理画面の通知センターとメール / Slack に配信されます。加盟店には配信されませんが、加盟店の取引に起因する次の通知が PSP に届くことを知っておくと問い合わせが円滑です。
+PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限度額超過、返金申請、定期課金失敗、期限超過の日次まとめ、ブラックリスト候補 など 17 種）は PSP 管理画面の通知センターとメール / Slack に配信されます。加盟店には配信されませんが、加盟店の取引に起因する次の通知が PSP に届くことを知っておくと問い合わせが円滑です。
 
 | PSP への通知 | 契機 |
 |---|---|
@@ -1657,11 +1702,13 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 | `limit.exceeded` | 加盟店の限度額超過 |
 | `refund.requested` | 加盟店からの返金申請 |
 | `transfer.overdue` / `cvs.overdue` | 期限超過の振込 / コンビニ支払（日次） |
+| `deposit.late` | 期限切れ・キャンセル後に届いた入金の未処理件数（日次、1.1.0） |
+| `webhook.signing_secret_missing` | 署名シークレットが無く送信できなかった加盟店 Webhook（加盟店 × 環境ごとに 24 時間に 1 通、1.1.0） |
 | `blacklist.candidate` | 連続失敗の検知 |
 
 ### 11.5 未実装・今後の予定（第 11 章）
 
-- 加盟店設定「メール通知設定」に基づく加盟店宛メールの送信は未実装です（設定値の保存のみ）。
+- 加盟店宛メールの文面を加盟店自身が変更する機能はありません（テンプレートは PSP が編集）。
 - 精算明細メールの自動送信、お知らせの Webhook / メール配信はありません。
 - 実メール配信サービスへの接続は `lib/email/send.ts` へのプロバイダ追加が必要です。
 
@@ -1695,7 +1742,9 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 |---|---|
 | コンビニ | (a) PSP 管理画面の取引詳細「入金消込」、(b) デモ入金通知 API `POST /api/demo/cvs-notify`、(c) 決済リンクページの「店頭で支払い済みにする（デモ）」 |
 | 銀行振込 | (a) PSP 管理画面の取引詳細「入金消込」（不足 / 超過も再現可）、(b) デモ入金通知 API `POST /api/demo/deposit-notify` |
-| 期限切れ | 毎時 0 分の cron を待つ、または PSP 管理画面の「期限切れにする」（期限超過後のみ） |
+| 期限切れ | 期限切れ cron（`/api/cron/expire-transfers`）を待つ、または PSP 管理画面の「期限切れにする」（期限超過後のみ） |
+| 期限後入金・環境不一致 | 期限切れの振込IDや、`mode` と環境が違う振込IDでデモ入金通知 API を呼ぶと 202 で未消込入金に保留される。PSP 管理画面「未消込入金」で「期限後入金として消込」（理由必須）または却下 |
+| 入金通知の再送 | 同じ `eventId` で 2 回送ると 2 回目は 200 `{ duplicate: true }` で再適用されない |
 
 ### 12.3 デモ用エンドポイント
 
@@ -1703,9 +1752,11 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 
 | エンドポイント | リクエスト | 応答 |
 |---|---|---|
-| `POST /api/demo/deposit-notify` | `Authorization: Bearer <DEPOSIT_NOTIFY_SECRET>`、`{ transferId, amount, payerName?, bankReference?, receivedAt?, mode? }` | 一致 / 超過: 200 `{ matched: true, status: "captured", depositDiff: null \| "excess", completed: true, … }`、不足: 200 `{ status: "awaiting_transfer", depositDiff: "short", completed: false }`、振込ID不明: **202** `{ matched: false, unmatchedDepositId }`（未消込入金として記録）、振込待ち以外: 409 `invalid_transition` |
-| `POST /api/demo/cvs-notify` | 同じ Bearer、`{ receiptNo（13 桁、ハイフン可）, amount? }` | 200 `{ receiptNo, paymentId, status, depositDiff, completed }`、不明: 404 `receipt_not_found` |
+| `POST /api/demo/deposit-notify` | `Authorization: Bearer <DEPOSIT_NOTIFY_SECRET>`、`{ eventId?, transferId, amount, mode, payerName?, bankReference?, receivedAt? }`。**`mode`（`test` / `live`）は必須**（未指定は 400 `invalid_input`、`fieldErrors.mode = "required"`）、`eventId` は ≤128 文字の任意の重複排除キー（1.1.0） | 一致 / 超過: 200 `{ matched: true, notificationId, notificationNo, duplicate: false, status: "captured", depositDiff: null \| "excess", completed: true, … }`、不足: 200 `{ status: "awaiting_transfer", depositDiff: "short", completed: false }`、振込ID不明 / 環境不一致 / 期限切れ / キャンセル済: **202** `{ matched: false, reason: "not_found" \| "mode_mismatch" \| "late_deposit" \| "cancelled_deposit", unmatchedDepositId, paymentId }`（未消込入金として保留）、再送（同じ `eventId`、または内容が同じ通知）: 200 `{ duplicate: true, notificationId, paymentId }` で再適用しない、完了済みなど: 409 `invalid_transition` |
+| `POST /api/demo/cvs-notify` | 同じ Bearer、`{ eventId?, receiptNo（13 桁、ハイフン可）, amount?, receivedAt?, mode }`（`mode` 必須） | 200 `{ receiptNo, paymentId, status, depositDiff, completed, notificationId, … }`、環境不一致 / 期限切れ / キャンセル済: 202（上と同じ）、不明: 404 `receipt_not_found`、再送: 200 `{ duplicate: true }` |
 | `GET` / `POST /api/demo/webhook-receiver?result=ok\|error\|timeout` | 認証なし | Webhook 受信の模擬。`ok` = 200（受信内容をエコー）、`error` = 500、`timeout` = 12 秒待機。seed の加盟店の通知先に設定されています |
+
+入金通知はすべて（適用 / 重複 / 未消込 / 拒否）PSP 管理画面「入金通知ログ」（`/deposit-notifications`、通知番号 `DN-00001`）に記録され、取引詳細の「関連する入金通知・未消込入金」からも参照できます（1.1.0）。詳細な契約は仕様書B 第 3 章を参照してください。
 
 ### 12.4 サンドボックスコンソールの使い方
 
@@ -1768,7 +1819,7 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 - [ ] `POST /api/v1/transactions` に `Idempotency-Key` を付け、5xx / 通信断時に同じキーで再送する実装がある（5.1）
 - [ ] レスポンスの `status` で分岐し、`failed` のときは `failureReason` をユーザーに適切に案内する（5.3）
 - [ ] `bank`: `bankTransfer.transferId` と `dueAt` を購入者に表示し、「振込名義の先頭に振込ID」を案内する（7.3）
-- [ ] `convenience`: `konbini.receiptNo`（4-4-5 区切りで表示）、`brand`、`dueAt` を購入者に表示する（7.4）
+- [ ] `convenience`: `konbini.receiptNo`（4-4-5 区切りで表示）、`brand`、`dueAt` を購入者に表示し、`status` は `awaiting_payment`（支払待ち）として扱う（7.4）
 - [ ] `credit` / `qr`: `autoCapture` の方針（即時完了か与信のみか）を決め、与信のみの場合は PSP の完了操作の運用を決めた（7.2）
 - [ ] 429 `rate_limited` を `Retry-After` に従って再送する（5.1）
 - [ ] テストカード 9 番号で成功・与信止まり・各失敗シナリオの挙動を確認した（12.1）
@@ -1780,6 +1831,7 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 - [ ] `X-Timestamp` + `X-Signature` を **生のボディ（GET はクエリ文字列）** で HMAC-SHA256 検証し、定数時間比較している（6.4）
 - [ ] タイムスタンプが 5 分以上ずれた通知を拒否する（6.4）
 - [ ] test / live 両方の署名シークレットで検証できる（6.4）
+- [ ] 各環境に有効な署名シークレットが発行されていることを加盟店管理画面「API キー」で確認した（無い環境の Webhook は送信されない）（6.4）
 - [ ] `payment_id` + `event` で **冪等** に処理し、順序に依存しない（6.7）
 - [ ] 10 秒以内に 2xx を返す（重い処理は非同期）（6.6）
 - [ ] 全イベント（`payment.completed` / `payment.failed` / `payment.expired` / `payment.cancelled` / `refund.completed` / `chargeback.opened` / `limit.exceeded` / `subscription.*`）を受けても 2xx を返し、未知のイベントも安全に無視する（6.1）
@@ -1792,6 +1844,7 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 - [ ] 精算バッチ・明細の確認方法（加盟店管理画面、`/api/merchant-api/settlements`）と請求書 PDF の取得を確認した（9.7, 9.8）
 - [ ] お知らせ・障害情報の確認手段（加盟店管理画面 / `GET /api/merchant-api/announcements`）を決めた（11.3）
 - [ ] 購入者メール（振込案内・コンビニ案内・完了・返金）の文面を PSP と確認した（11.2）
+- [ ] 加盟店宛メール通知設定（決済ごと / 1 日まとめて / 無し）と宛先（担当者メール）を PSP と合意した（11.1）
 - [ ] 個人情報の保持期間（既定 24 か月）と匿名化の影響を理解した（10.5）
 
 ### 13.6 本番切替
@@ -1799,6 +1852,7 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 - [ ] 本番キーに切り替え、テストカード番号を送っていない（`test_card_in_live` にならない）（12.1）
 - [ ] ヘッダーの環境スイッチを「本番」にして取引・Webhook・精算を確認した（1.3）
 - [ ] 本番の署名シークレットで Webhook 検証が通る（6.4）
+- [ ] 許可リストモードが ON の場合、本番 API サーバーの送信元 IP がすべて許可ルールに登録されている（10.1）
 
 ---
 
@@ -1842,7 +1896,6 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 
 | 項目 | 現状 |
 |---|---|
-| 加盟店設定「メール通知設定」に基づく加盟店宛メール | 設定値の保存のみ |
 | 実メール配信サービスへの接続 | `EMAIL_PROVIDER=log` で記録のみ |
 | 精算バッチの自動生成、振込 API 接続、精算明細メールの自動送信 | なし |
 | 返金の否認・チャージバックの勝訴 / 敗訴 / 確定の Webhook | なし |
@@ -1856,6 +1909,8 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 | IPv6 の IP 制限 | 判定対象外 |
 | 固定の Webhook 送信元 IP | なし（署名で検証） |
 
+1.1.0 で実装済みになり本表から外した項目: 加盟店宛メール通知設定に基づくメール（11.1）、加盟店管理画面からの領収書発行（4.5）、加盟店 API のレート制限（5.8）、入金通知の重複排除と期限後入金の保留（7.3）、Webhook 署名鍵の fail closed（6.4）、IP 許可リストの強制（10.1）。
+
 ---
 
 ## 付録 A: エラーコード一覧
@@ -1867,7 +1922,7 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 | code | HTTP | 意味 |
 |---|---|---|
 | `invalid_api_key` | 401 | API キーが無い・形式不正・失効・期限切れ、または署名シークレットで認証しようとした |
-| `ip_blocked` | 403 | 加盟店の IP 制限（ブロック）に一致 |
+| `ip_blocked` | 403 | 加盟店の IP 制限に一致（ブロックルール、または許可リストモード ON で許可ルール不一致。`details.reason` = `deny` / `not_in_allowlist`） |
 | `invalid_input` | 400 | 検証エラー。`details.fieldErrors` に項目ごとの理由 |
 | `invalid_json` | 400 | ボディが JSON でない |
 | `test_card_in_live` | 400 | 本番環境にテストカード番号 |
@@ -1898,6 +1953,8 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 | `live_key_rotation` | 403 | 本番キーのローテーション |
 | `key_not_active` | 409 | 失効・期限切れキーのローテーション |
 | `settlement_not_confirmed` | 409 | 集計中バッチの請求書 PDF |
+| `invoice_no_missing` | 409 | 請求書番号が未採番のバッチ（1.1.0 より前に確定したバッチは `npm run db:backfill` で採番） |
+| `receipt_not_completed` | 409 | 完了 / 一部返金以外の取引の領収書（加盟店管理画面からの発行） |
 
 ### A.3 ホスト型決済ページ API（`/api/pay/*`）
 
@@ -1916,15 +1973,16 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 |---|---|---|
 | `unauthorized` | 401 | `DEPOSIT_NOTIFY_SECRET` 不一致 |
 | `not_found` | 404 | 本番でシークレット未設定（無効化） |
-| `receipt_not_found` | 404 | 受付番号が不明 |
-| `invalid_transition` | 409 | 振込待ち / 支払待ち以外の取引への入金 |
+| `invalid_input` | 400 | `mode` 未指定（`fieldErrors.mode = "required"`）、`amount` 不正、`receivedAt` 不正 など |
+| `receipt_not_found` | 404 | 受付番号が不明（コンビニ） |
+| `invalid_transition` | 409 | 完了済みなど、振込待ち / 支払待ち以外の取引への入金。期限切れ・キャンセル済への入金は 409 ではなく 202 で未消込入金に保留（1.1.0） |
 | `not_bank_transfer` | 400 | 振込IDも受付番号も無い取引 |
 
 ## 付録 B: ステータス一覧
 
 | 対象 | 値（表示 ja / en） |
 |---|---|
-| 取引（`Payment.status`） | 第 2.2 節の 10 値 |
+| 取引（`Payment.status`） | 第 2.2 節の 11 値（`awaiting_payment` を含む） |
 | 返金申請（`Refund.status`） | `requested` 申請中 / Requested、`approved` 承認 / Approved、`rejected` 否認 / Rejected、`processing` 処理中 / Processing、`completed` 完了 / Completed、`failed` 失敗 / Failed |
 | 返金種別（`Refund.kind`） | `full` 全額、`partial` 一部 |
 | 返金理由（`reasonCode`） | `customer` 顧客都合、`defect` 商品不良、`duplicate` 重複決済、`other` その他 |
@@ -1939,6 +1997,9 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 | 過不足入金（`Payment.depositDiff` / `depositDiffStatus`） | `short` 不足 / `excess` 超過。対応状況 `open` 未対応、`refund_arranged` 差額返金手配中、`notified` 追加入金案内済、`resolved` 完了 |
 | お知らせ（`Announcement.status` / `kind`） | `draft` 下書き、`published` 公開、`ended` 終了。種別 `notice` / `maintenance` / `incident`。障害の更新 `occurred` / `investigating` / `resolved` |
 | 顧客 | `anonymizedAt` あり = 匿名化済み |
+| 入金通知（`DepositNotification.result`） | `applied` 適用、`duplicate` 重複、`unmatched` 未消込、`rejected` 拒否。理由 `resultReason`: `mode_mismatch` / `late_deposit` / `cancelled_deposit` / `not_found` / `no_id` / `invalid_status` / `apply_failed` |
+| 未消込入金（`UnmatchedDeposit.status` / `reason` / `dismissKind`） | `unmatched` 未消込、`matched` 消込済、`dismissed` 却下。理由 `late_deposit` 期限後入金 / `cancelled_deposit` キャンセル後入金 / `mode_mismatch` 環境不一致。却下区分 `returned` 組戻し手配 / `other` |
+| 領収書の発行元（`Receipt.source`） | `dashboard` PSP 管理画面、`customer` 決済ページ、`merchant` 加盟店管理画面 |
 
 ## 付録 C: Webhook イベント一覧
 
@@ -1977,11 +2038,138 @@ PSP オペレータ向けの通知（Webhook 断念、決済手段停止、限�
 | `/settlements`, `/settlements/[id]` | 精算管理 |
 | `/webhook-logs`, `/webhook-logs/[id]` | Webhook 送信ログ（詳細・再送） |
 | `/chargebacks`, `/chargebacks/new`, `/chargebacks/[id]` | チャージバック |
-| `/unmatched-deposits`, `/deposit-diffs` | 未消込入金 / 過不足入金 |
+| `/unmatched-deposits`, `/deposit-diffs`, `/deposit-notifications` | 未消込入金（消込・期限後入金の消込・組戻し）/ 過不足入金 / 入金通知ログ |
 | `/payment-links`, `/payment-links/[id]` | 決済リンク（無効化・QR） |
 | `/subscriptions`, `/subscriptions/[id]` | 定期課金 |
 | `/payment-method-controls` | 決済手段の停止（全体） |
-| `/ip-restrictions`, `/blacklist` | IP 制限 / ブラックリスト |
+| `/ip-restrictions`, `/blacklist` | IP 制限（ルール・許可リストモード）/ ブラックリスト |
 | `/announcements` | お知らせ配信 |
 | `/customers`, `/customers/[id]` | 顧客（マスク表示・匿名化） |
 | `/email-templates`, `/email-logs` | メールテンプレート / 送信ログ |
+
+## 付録 E: 権限マトリクス（完全版）
+
+PSP 管理画面のロール（`admin` / `accounting` / `cs` / `developer` / `viewer`）ごとの権限です。**唯一のソースは `lib/role.ts` の `PERMISSIONS`** で、下表は `npx tsx scripts/gen-permissions.ts` が生成します（手で編集しない）。加盟店に直接関係する行は第 3.5 節に抜粋しています。未ログインは閲覧のみ、`DEMO_READONLY=1` では削除とプロバイダの更新が全員 403 です。
+
+<!-- permissions:start -->
+| 機能 | 操作 | admin | accounting | cs | developer | viewer |
+|---|---|---|---|---|---|---|
+| 加盟店 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 加盟店 | 作成 | ○ |  | ○ |  |  |
+| 加盟店 | 更新 | ○ |  | ○ |  |  |
+| 加盟店 | パスワード表示 | ○ |  |  |  |  |
+| 加盟店 | パスワード再発行 | ○ |  |  |  |  |
+| 契約・手数料 / 限度額 / 期限 / 精算設定 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 契約・手数料 / 限度額 / 期限 / 精算設定 | 更新 | ○ | ○ |  |  |  |
+| API キー・署名シークレット | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| API キー・署名シークレット | 発行 | ○ |  |  | ○ |  |
+| API キー・署名シークレット | ローテーション | ○ |  |  | ○ |  |
+| API キー・署名シークレット | 失効 | ○ |  |  | ○ |  |
+| 代理店 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 代理店 | 作成 | ○ |  | ○ |  |  |
+| 代理店 | 更新 | ○ |  | ○ |  |  |
+| 取引 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 取引 | 作成 | ○ |  | ○ |  |  |
+| 取引 | 完了 / 失敗 / キャンセル / 期限切れ | ○ |  |  |  |  |
+| 取引 | 入金消込 | ○ | ○ |  |  |  |
+| 取引 | API 再通知 | ○ |  | ○ | ○ |  |
+| 取引 | Webhook シミュレート | ○ |  |  | ○ |  |
+| 取引メモ | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 取引メモ | 作成 | ○ | ○ | ○ | ○ |  |
+| 取引メモ | 自分の投稿を編集 | ○ | ○ | ○ | ○ |  |
+| 取引メモ | 削除 | ○ |  |  |  |  |
+| 取引メモ | ピン留め | ○ |  | ○ |  |  |
+| 未消込入金 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 未消込入金 | 登録 | ○ | ○ | ○ |  |  |
+| 未消込入金 | 消込 | ○ | ○ |  |  |  |
+| 未消込入金 | 却下 | ○ | ○ | ○ |  |  |
+| 入金通知ログ | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 過不足入金 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 過不足入金 | 更新 | ○ | ○ | ○ |  |  |
+| 返金 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 返金 | 申請 | ○ |  | ○ |  |  |
+| 返金 | 期限超過の強制 | ○ |  |  |  |  |
+| 返金 | 承認 / 否認 | ○ | ○ |  |  |  |
+| 領収書 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 領収書 | 発行 | ○ | ○ | ○ |  |  |
+| 精算バッチ | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 精算バッチ | 生成 | ○ | ○ |  |  |  |
+| 精算バッチ | 確定 / 振込予定 / 振込済 / 保留 / 解除 | ○ | ○ |  |  |  |
+| 精算バッチ | 削除 | ○ | ○ |  |  |  |
+| 請求書（インボイス） | 出力 | ○ | ○ |  |  |  |
+| 代理店手数料 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 集計レポート | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| Webhook 送信ログ | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| Webhook 送信ログ | 再送 | ○ |  |  | ○ |  |
+| チャージバック | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| チャージバック | 作成 | ○ | ○ |  |  |  |
+| チャージバック | 更新 | ○ | ○ |  |  |  |
+| ブラックリスト | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| ブラックリスト | 作成 | ○ |  | ○ |  |  |
+| ブラックリスト | 更新 | ○ |  | ○ |  |  |
+| 検知ルール | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 検知ルール | 更新 | ○ |  | ○ |  |  |
+| メールテンプレート | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| メールテンプレート | 更新 | ○ |  |  | ○ |  |
+| メール送信ログ | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| お知らせ | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| お知らせ | 作成 | ○ |  | ○ |  |  |
+| お知らせ | 更新 | ○ |  | ○ |  |  |
+| お知らせ | 公開 / 終了 / 更新追加 | ○ |  | ○ |  |  |
+| 課金プラン | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 課金プラン | 作成 | ○ |  | ○ |  |  |
+| 課金プラン | 更新 | ○ |  | ○ |  |  |
+| 定期課金 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 定期課金 | 作成 | ○ |  | ○ |  |  |
+| 定期課金 | 課金 / 一時停止 / 再開 / 解約 | ○ |  | ○ |  |  |
+| デモの課金失敗率 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| デモの課金失敗率 | 更新 | ○ |  |  | ○ |  |
+| 決済リンク | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 決済リンク | 作成 | ○ |  | ○ |  |  |
+| 決済リンク | 無効化 | ○ |  | ○ |  |  |
+| IP 制限 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| IP 制限 | 作成 | ○ |  |  | ○ |  |
+| IP 制限 | 更新 | ○ |  |  | ○ |  |
+| IP 制限 | 削除 | ○ |  |  | ○ |  |
+| 決済プロバイダ | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 決済プロバイダ | 作成 | ○ |  |  | ○ |  |
+| 決済プロバイダ | 更新 | ○ |  |  | ○ |  |
+| 決済プロバイダ | 削除 | ○ |  |  | ○ |  |
+| 決済プロバイダ | 接続テスト | ○ |  |  | ○ |  |
+| 決済手段の停止 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 決済手段の停止 | 全体停止 | ○ |  |  |  |  |
+| 決済手段の停止 | 加盟店別停止 | ○ |  | ○ |  |  |
+| 管理者アカウント | 閲覧 | ○ |  |  |  |  |
+| 管理者アカウント | 作成 | ○ |  |  |  |  |
+| 管理者アカウント | 更新 | ○ |  |  |  |  |
+| 管理者アカウント | 仮パスワード / 2FA 解除 | ○ |  |  |  |  |
+| 自分のアカウント | 更新 | ○ | ○ | ○ | ○ | ○ |
+| 操作ログ | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 横断検索（管理者） | 閲覧 | ○ |  |  |  |  |
+| 全体設定 | 閲覧 | ○ |  |  |  |  |
+| 全体設定 | 更新 | ○ |  |  |  |  |
+| 顧客 | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+| 顧客 | 匿名化 | ○ |  |  |  |  |
+| CSV 出力 | 出力 | ○ | ○ | ○ | ○ |  |
+| 個人情報 | マスク解除 | ○ |  | ○ |  |  |
+| API ドキュメント | 閲覧 | ○ | ○ | ○ | ○ | ○ |
+<!-- permissions:end -->
+
+## 付録 F: よくある問い合わせ → 参照章
+
+| 問い合わせ | まず確認すること | 参照章 |
+|---|---|---|
+| 入金が反映されない（銀行振込 / コンビニ） | 取引のステータスと期限（`expired` なら期限後入金として未消込入金に保留されている）。振込IDが正しく付いているか。入金通知の `mode` が取引の環境と一致しているか。PSP 管理画面「入金通知ログ」「未消込入金」に該当の通知があるか | 2.4, 7.3, 7.4, 12.3, 仕様書B 3.2〜3.5 / 5.3 |
+| Webhook が届かない | 加盟店管理画面「Webhook 送信ログ」のステータスと応答（`failed` / `abandoned`、`error: signing_secret_missing` なら署名シークレット未発行）。通知先 URL が https で 10 秒以内に 2xx を返すか。署名検証に使う環境（test / live）が合っているか。再送は送信ログの「再送」 | 4.7, 6.4, 6.6, 6.7, 6.8 |
+| 返金できない | 取引が `captured` / `partially_refunded` か（`authorized` はキャンセル、`chargeback` は返金不可）。返金可能残額（取引額 − 返金済 − 審査待ち）と返金可能期限（`refundWindowDays`）。期限超過は PSP の admin による強制返金のみ | 5.6, 8.1, 8.2 |
+| 精算額が合わない | 明細の集計ルール（売上 = `capturedAt`、返金 = `completedAt`、チャージバック = `resolvedAt` が期間内）、完了日時に適用中の契約料率、精算手数料、環境（test / live）ごとに別バッチ。請求書の税額は内税・税率別・端数処理 | 9.2〜9.5, 9.8 |
+| 本番キーで 400 になる | `test_card_in_live`（本番環境にテストカード番号）、`method_not_enabled`（契約に無い決済手段）、`provider_not_found`（本番環境に有効なプロバイダが無い）、`invalid_input`（`details.fieldErrors`）。403 `ip_blocked` は IP 制限（ブロック / 許可リストモード） | 5.3, 10.1, 12.1, 付録 A |
+| 取引が `failed` で作成される | `failureReason`（限度額 `limit_exceeded:*`、ブラックリスト `blocked:*`、テストカードの失敗シナリオ）。HTTP は 201 | 5.3, 10.2, 10.4, 12.1 |
+| メールが届かない | デモ環境ではメールは実送信されず送信ログのみ。購入者メールは取引の `customerEmail` が必要。加盟店宛は `emailNotification` の設定と担当者メール | 11.1, 11.2 |
+
+## 改訂履歴
+
+| 版 | 日付 | 対象コミット | 変更点 |
+|---|---|---|---|
+| 1.0.0 | 2026-09-06 | `6b72a40` | 初版 |
+| 1.1.0 | 2026-09-07 | `cf1c153` | 修正フェーズ1〜5 の実装変更を反映。**破壊的変更**: 取引ステータス `awaiting_payment`（支払待ち）の追加（2.2, 2.3, 7.4）、入金通知の `mode` 必須化と環境照合・期限後 / キャンセル後入金の 202 保留（7.3, 12.3, 付録 A.4）、請求書番号の形式 `INV-YYYYMM-<加盟店番号>-<連番 2 桁>`（9.8）。**追加**: 入金通知の冪等化（`eventId`）と入金通知ログ、`late_deposit` 遷移、加盟店登録時のテスト署名シークレット自動発行（3.1）、Webhook 署名鍵の fail closed（6.4）、加盟店宛メール通知設定の実装（11.1）、即時完了取引の決済完了メール（11.2）、加盟店 API のレート制限（5.8）、加盟店管理画面からの領収書発行（4.5）、IP 許可リストモード（10.1）、本番モードの可視化（4.1）、PSP リンクのデモ限定と加盟店ログインの autocomplete（4.2）、英語表示 `pending` = "Pending"、付録 E（権限マトリクス）・付録 F（よくある問い合わせ）。詳細は `docs/spec/CHANGELOG.md` |

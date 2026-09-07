@@ -17,7 +17,7 @@ The demo never calls an external payment API.
 
 The top page asks for a **login ID and password** (plus the authenticator code when two-factor is enabled). A session lasts 12 hours. Every screen can be viewed publicly, but **creating, updating and deleting require a login**. Your name in the top-right corner opens Account settings.
 
-The **EN / 日本語** toggle switches the language; the choice is saved for the next visit. Amounts are always Japanese yen (¥) and times are Japan time (Asia/Tokyo). The **test / live** switch in the header selects the data mode used by lists, the dashboard and reports.
+The **EN / 日本語** toggle switches the language; the choice is saved for the next visit. Amounts are always Japanese yen (¥) and times are Japan time (Asia/Tokyo). The **test / live** switch in the header selects the data mode used by lists, the dashboard and reports. The current mode is shown as a badge next to every page title and in the caption of each list, and **in live mode a red line at the left of the header and a red "Live mode" stripe across the top** appear (switching from test to live also shows a warning toast). CSV file names carry `-test` / `-live`. The merchant portal shows the same indications.
 
 ## Permission matrix
 

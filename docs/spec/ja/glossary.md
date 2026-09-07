@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| 版数 | 1.0.0 |
-| 対象システム | コミット `6b72a40`（`main`） |
-| 作成日 | 2026-09-06 |
+| 版数 | 1.1.0 |
+| 対象システム | コミット `cf1c153`（`main`） |
+| 作成日 / 更新日 | 2026-09-06 / 2026-09-07（1.1.0 で追加・変更した行は定義欄に「1.1.0」） |
 
 本用語集は仕様書A・B（日本語版・英語版）で使う用語の対訳と定義を定めます。DB 値・API 値は実装の文字列をそのまま示します。UI 表示は辞書（`lib/i18n/messages/ja.ts` / `en.ts`）の値です。`CLAUDE.md` の「決済用語の対訳（変更しないこと）」を包含します。
 
@@ -45,8 +45,9 @@
 | コンビニ決済 | Konbini payments | `convenience` | |
 | 銀行振込決済 | Bank transfer payments | `bank` | |
 | その他 Web サービス決済 | Other web payment services | `other` | |
-| 申請中 | Applied | `pending` | 作成直後。コンビニでは「支払待ち」 |
-| 支払待ち（コンビニ） | Awaiting payment | `pending` + `cvsReceiptNo` | 受付番号発行後、店頭支払い待ち |
+| 申請中 | Pending | `pending` | 作成直後（1.1.0 で英語表示を "Applied" から "Pending" に変更） |
+| 支払待ち（コンビニ） | Awaiting payment | `awaiting_payment` | 受付番号発行後、店頭支払い待ち（1.1.0 で独立ステータス化。以前は `pending` + `cvsReceiptNo`） |
+| 入金待ち | Waiting for money | `WAITING_STATUSES`: `awaiting_transfer` / `awaiting_payment` | 期限（`transferDueAt`）を持つステータス（1.1.0） |
 | 振込待ち | Awaiting transfer | `awaiting_transfer` | 振込ID発行後、入金待ち |
 | 与信 / 与信済 | Authorization / Authorized | `authorized` | 支払い枠の確保 |
 | 売上確定 / 完了 | Capture / Completed | `captured`、アクション `capture` | 決済の成立 |
@@ -54,7 +55,9 @@
 | 返金済 | Refunded | `refunded` | |
 | 取消 / キャンセル | Void / Cancelled | `cancelled`、アクション `cancel` | 完了前の取りやめ。UI 表示は「キャンセル / Cancelled」 |
 | 失敗 | Failed | `failed` | |
-| 期限切れ | Expired | `expired`、アクション `expire` | |
+| 期限切れ | Expired | `expired`、アクション `expire` | 期限後の入金は `late_deposit` で完了にできる |
+| 期限後入金 | Late deposit | アクション `late_deposit`（`expired` → `captured`）、`UnmatchedDeposit.reason = late_deposit` | 期限切れ後に届いた入金を PSP が理由付きで消込する（1.1.0） |
+| 期限超過 | Overdue | `?overdue=1`、`overdue` フラグ | 期限を過ぎたがステータスは未変更の入金待ち |
 | チャージバック（ステータス） | Chargeback | `chargeback` | 敗訴・確定した取引 |
 | 失敗理由 | Failure reason | `failureReason` | `limit_exceeded:*` / `blocked:*` / テストカード理由 / `charge_declined` |
 | ステータス変更履歴 | Status history | `PaymentEvent` | 遷移の追記ログ |
@@ -78,7 +81,10 @@
 | 支払期限（コンビニ） | Payment deadline (konbini) | `transferDueAt` / `cvsDueDays` | 既定 3 日 |
 | 支払日時 | Paid at | `cvsPaidAt` | |
 | 入金 | Deposit | アクション `deposit` | 銀行・コンビニからの入金 |
-| 入金通知 | Deposit notification | `/api/demo/deposit-notify`、`/api/demo/cvs-notify` | 銀行・コンビニからの通知 |
+| 入金通知 | Deposit notification | `/api/demo/deposit-notify`、`/api/demo/cvs-notify` | 銀行・コンビニからの通知。`mode` 必須、`eventId` 任意（1.1.0） |
+| 入金通知ログ | Deposit notification log | `DepositNotification`（`DN-00001`）、`/deposit-notifications` | 受信した入金通知の記録。結果 `applied` 適用 / `duplicate` 重複 / `unmatched` 未消込 / `rejected` 拒否（1.1.0） |
+| 重複排除キー | De-duplication key | `dedupeKey` / `claimKey` | `eventId` または内容のハッシュ。同じキーの再送は再適用しない（1.1.0） |
+| 環境不一致 | Environment mismatch | `mode_mismatch` | 通知の `mode` と取引の `livemode` が異なる入金（未消込入金に保留、1.1.0） |
 | 入金消込 | Deposit reconciliation | `reconcileDeposit` | 入金と取引の突合 |
 | 入金額（累計） | Deposited amount (total) | `depositAmount` | |
 | 過不足入金 | Short / excess deposit | `depositDiff`: `short` / `excess` | |
@@ -86,9 +92,12 @@
 | 超過 | Excess | `excess` | 累計 > 請求額 |
 | 対応状況（過不足） | Follow-up status | `depositDiffStatus`: `open` / `refund_arranged` / `notified` / `resolved` | 未対応 / 差額返金手配中 / 追加入金案内済 / 完了 |
 | 追加入金案内 | Additional deposit request | メール `deposit_short` | |
-| 未消込入金 | Unmatched deposit | `UnmatchedDeposit`: `unmatched` / `matched` / `dismissed` | 振込ID不明の入金 |
+| 未消込入金 | Unmatched deposit | `UnmatchedDeposit`: `unmatched` / `matched` / `dismissed`、`source`: `bank` / `cvs` / `manual` | 振込ID不明・期限後・キャンセル後・環境不一致の入金の置き場 |
+| 保留理由 | Hold reason | `reason`: `late_deposit` 期限後入金 / `cancelled_deposit` キャンセル後入金 / `mode_mismatch` 環境不一致 | 未消込入金になった理由（1.1.0） |
 | 振込IDを付与して消込 | Match (attach transfer ID) | `POST .../match` | |
-| 却下 | Dismiss | `dismissed` | |
+| 期限後入金として消込 | Apply as late deposit | `POST .../late-match`（理由必須） | `late_deposit` 遷移を適用（1.1.0） |
+| 却下 | Dismiss | `dismissed`、`dismissKind`: `returned` 組戻し手配 / `other` | |
+| 組戻し | Return (of a deposit) | `dismissKind = returned` | 入金を送金元へ返す手配（システム外の資金移動、1.1.0） |
 | API 再通知 | API re-notify | `POST /api/payments/{id}/renotify` | `payment.completed` の再送 |
 | 入金（PSP → 加盟店） | Payout | `SettlementBatch` | 精算の支払い |
 
@@ -127,11 +136,13 @@
 | 契約プラン | Contract plan | `plan`: `standard` スタンダード / `premium` プレミアム / `custom` カスタム | |
 | 精算手数料（振込手数料） | Settlement fee (transfer fee) | `settlementFee` | |
 | 差引支払額 | Net payout | `netAmount` | |
-| 適格請求書（インボイス） | Qualified invoice | `INV-YYYYMM-<番号>` | 決済手数料の請求書 PDF |
+| 適格請求書（インボイス） | Qualified invoice | `GET .../invoice` | 決済手数料の請求書 PDF |
+| 請求書番号 | Invoice number | `SettlementBatch.invoiceNo`: `INV-YYYYMM-<加盟店番号>-<連番 2 桁>` | 精算バッチの確定時に採番・保存（1.1.0。旧形式は連番なし） |
 | 登録番号 | Registration number | `issuerRegistrationNo` / `invoiceNumber`（`T` + 13 桁） | 適格請求書発行事業者番号 |
 | 税区分 | Tax category | `taxCategory`: `standard10` / `reduced8` / `exempt` | |
 | 端数処理 | Tax rounding | `taxRounding`: `floor` / `round` / `ceil` | |
-| 領収書 | Receipt | `Receipt`（`RC-YYYYMM-00001`） | 購入者向け領収書 PDF |
+| 領収書 | Receipt | `Receipt`（`RC-YYYYMM-00001`）、`source`: `dashboard` / `customer` / `merchant` | 購入者向け領収書 PDF。加盟店管理画面からも発行可（1.1.0） |
+| 宛名 / 但し書き | Addressee / Description | `recipientName` / `description` | 領収書の記載（但し書きは 1.1.0） |
 | 再発行 | Re-issue | `reissueCount` | |
 | 代理店手数料 | Agent fee | — | `floor(差引支払額 × 手数料率)` |
 
@@ -146,7 +157,8 @@
 | 送信パラメータセット | Parameter set | `notifyParamSet`: `minimal` 最小 / `standard` 標準 / `full` フル | |
 | 決済識別子の形式 | Identifier format | `notifyIdFormat`: `payment_id` / `transaction_id` / `both` | |
 | 署名 | Signature | `X-Signature` / `Wirepay-Signature` | HMAC-SHA256 |
-| 署名シークレット | Signing secret | `ApiKey.kind = signing_secret`（`wp_*_ss_`） | Webhook 署名鍵 |
+| 署名シークレット | Signing secret | `ApiKey.kind = signing_secret`（`wp_*_ss_`） | Webhook 署名鍵。無い環境へは送信しない（fail closed）。テスト環境分は加盟店登録時に自動発行（1.1.0） |
+| 署名鍵なし | Signing secret missing | `signing_secret_missing`、通知 `webhook.signing_secret_missing` | 署名シークレットが無く送信できなかった Webhook（1.1.0） |
 | API キー | API key | `ApiKey.kind = api_key`（`wp_*_ak_`） | Bearer 認証 |
 | 発行 / ローテーション / 失効 | Issue / Rotate / Revoke | `api_key.issue` / `rotate` / `revoke` | |
 | 猶予期間 | Grace period | `ROTATION_GRACE_DAYS` = 7 | 旧キーの併用期間 |
@@ -164,9 +176,11 @@
 | 無効化 | Disable | `disabled` | |
 | 利用回数 / 最大利用回数 | Used count / Max uses | `usedCount` / `maxUses` | |
 | サンドボックス | Sandbox | `/merchant/sandbox` | テストキーで実 API を呼ぶコンソール |
-| レート制限 | Rate limit | `ApiRateLimit`、429 `rate_limited` | 60 回 / 分（加盟店 × 環境） |
+| レート制限 | Rate limit | `ApiRateLimit`、429 `rate_limited` | 60 回 / 分（加盟店 × 環境、公開 API と加盟店 API の合算。1.1.0） |
 | IP 制限 | IP restriction | `IpRestriction` | |
-| ブロック / 許可 / 許可リスト | Block / Allow / Allow list | `mode`: `deny` / `allow` | ブロックのみ遮断 |
+| ブロック / 許可 / 許可リスト | Block / Allow / Allow list | `mode`: `deny` / `allow` | ブロックは常に遮断。許可は許可リストモード ON のとき強制 |
+| 許可リストモード | Allow-list mode | `GlobalSetting.ipAllowlistAdmin` / `ipAllowlistMerchantApi`、`PUT /api/ip-restrictions/allowlist` | 有効な許可ルールに一致しない接続元を遮断するモード（対象別、既定 OFF、1.1.0） |
+| 自己ロックアウト防止 | Self-lockout prevention | 400 `ip_self_block`、`allowlist_no_rules` | 自分の IP を締め出す設定を拒否 |
 | 対象（IP 制限） | Target | `target`: `admin` 管理画面 / `merchant_api` 加盟店API | |
 | ロックアウト | Lockout | `merchant_locked`（423） | 5 回失敗で 15 分 |
 | 二段階認証 | Two-factor (TOTP) | `totpEnabled` | PSP 管理者のみ |
@@ -198,8 +212,9 @@
 | お知らせ | Announcement | `Announcement`: `notice` お知らせ / `maintenance` メンテナンス / `incident` 障害 | |
 | 発生 / 対応中 / 復旧 | Occurred / Investigating / Resolved | `occurred` / `investigating` / `resolved` | 障害の更新履歴 |
 | 下書き / 公開 / 終了 | Draft / Published / Ended | `draft` / `published` / `ended` | |
-| メールテンプレート | E-mail template | `EmailTemplate`（`transfer_guide`, `cvs_guide`, `payment_completed`, `refund_completed`, `deposit_short`, `statement`, `admin_invite`, `subscription_failed`, `subscription_suspended`, `notification`） | |
-| メール通知設定 | E-mail notification setting | `emailNotification`: `per_payment` 決済ごと / `daily` 1 日まとめて / `none` 無し | 加盟店設定（現状は保存のみ） |
+| メールテンプレート | E-mail template | `EmailTemplate`（`transfer_guide`, `cvs_guide`, `payment_completed`, `refund_completed`, `deposit_short`, `statement`, `admin_invite`, `subscription_failed`, `subscription_suspended`, `notification`, `merchant_payment_notice`, `merchant_daily_summary`） | 12 キー × 2 言語 |
+| メール通知設定 | E-mail notification setting | `emailNotification`: `per_payment` 決済ごと / `daily` 1 日まとめて / `none` 無し | 加盟店宛の決済通知メール。担当者メールへ送信（1.1.0 で実装） |
+| 加盟店宛決済通知 / 日次サマリー | Merchant payment notice / Daily summary | `merchant_payment_notice` / `merchant_daily_summary`、`/api/cron/merchant-daily-summary` | 完了ごと / 前日分まとめ（09:00 JST、1.1.0） |
 | 送信ログ | E-mail log | `EmailLog`: `sent` / `failed` / `demo` | |
 
 ## 8. 定期課金
@@ -226,6 +241,7 @@
 | 暗号鍵 | Encryption key | `ENCRYPTION_KEY` | AES-256-GCM |
 | fail-closed | Fail-closed | — | 鍵未設定で本番が停止する設計 |
 | 全体設定 | Global settings | `GlobalSetting` | |
+| モード表示（本番ストライプ） | Mode indication (live stripe) | `data-testid="current-mode"` / `live-stripe` | 画面タイトルのモードバッジと本番モード中の赤いストライプ（1.1.0） |
 | 管理画面マニュアル | Admin manual | `/manual/*` | |
 | API ドキュメント | API docs | `/docs/api/*` | |
 | 業務タイムゾーン | Business time zone | `Asia/Tokyo` | 日付境界 |
