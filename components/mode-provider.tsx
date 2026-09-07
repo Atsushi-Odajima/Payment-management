@@ -7,6 +7,7 @@
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { useT } from "./language-provider";
+import { useToast } from "./toast";
 import { MODE_COOKIE, type DataMode } from "@/lib/mode";
 import { cn } from "@/lib/utils";
 
@@ -40,11 +41,18 @@ export function useMode(): ModeContextValue {
 export function ModeToggle() {
   const { mode, setMode } = useMode();
   const t = useT();
+  const toast = useToast();
+  const switchTo = (next: DataMode) => {
+    if (mode === next) return;
+    setMode(next);
+    // Phase P3-1: make the jump into live data unmistakable.
+    if (next === "live") toast.show(t("mode.liveToast"), "info");
+  };
   return (
     <div role="group" aria-label={t("mode.label")} className="flex overflow-hidden rounded-lg border border-slate-300 bg-white text-xs font-medium">
       <button
         type="button"
-        onClick={() => mode !== "test" && setMode("test")}
+        onClick={() => switchTo("test")}
         aria-pressed={mode === "test"}
         title={t("mode.testHint")}
         className={cn("px-3 py-1.5 transition", mode === "test" ? "bg-amber-500 text-white" : "text-slate-600 hover:bg-slate-100")}
@@ -53,7 +61,7 @@ export function ModeToggle() {
       </button>
       <button
         type="button"
-        onClick={() => mode !== "live" && setMode("live")}
+        onClick={() => switchTo("live")}
         aria-pressed={mode === "live"}
         title={t("mode.liveHint")}
         className={cn("px-3 py-1.5 transition", mode === "live" ? "bg-emerald-600 text-white" : "text-slate-600 hover:bg-slate-100")}

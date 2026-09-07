@@ -34,6 +34,7 @@ export const GET = withApiHandler(async (req) => {
         { header: "completedAt", value: (r) => r.completedAt },
       ]),
       "refunds.csv",
+      filters.mode,
     );
   }
   const page = parsePage(q.page);

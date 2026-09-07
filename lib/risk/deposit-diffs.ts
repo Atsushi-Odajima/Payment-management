@@ -46,6 +46,7 @@ const SELECT = {
   capturedAt: true,
   updatedAt: true,
   method: true,
+  refunds: { where: { reasonCode: "duplicate" }, orderBy: { createdAt: "desc" as const }, take: 1, select: { id: true, status: true } },
 } as const;
 
 function whereFor(f: DepositDiffFilters) {
@@ -72,12 +73,24 @@ type Raw = {
   capturedAt: Date | null;
   updatedAt: Date;
   method: string | null;
+  refunds: Array<{ id: string; status: string }>;
 };
 
-function toRow(r: Raw): DepositDiffRow {
+/** Newest deposit_short e-mail per transaction (EmailLog has no relation to Payment). */
+async function latestTopUpEmails(paymentIds: string[]): Promise<Map<string, { id: string; createdAt: Date }>> {
+  if (paymentIds.length === 0) return new Map();
+  const logs = await prisma.emailLog.findMany({ where: { paymentId: { in: paymentIds }, templateKey: "deposit_short" }, orderBy: { createdAt: "desc" }, select: { id: true, paymentId: true, createdAt: true } });
+  const map = new Map<string, { id: string; createdAt: Date }>();
+  for (const l of logs) if (l.paymentId && !map.has(l.paymentId)) map.set(l.paymentId, { id: l.id, createdAt: l.createdAt });
+  return map;
+}
+
+function toRow(r: Raw, emailLog: { id: string; createdAt: Date } | null = null): DepositDiffRow {
   const deposited = r.depositAmount ?? 0;
   return {
     id: r.id,
+    refund: r.refunds[0] ?? null,
+    emailLog,
     orderNumber: r.orderNumber,
     merchant: r.merchant,
     transferId: r.transferId,
@@ -102,12 +115,14 @@ export async function loadDepositDiffs(opts: { filters: DepositDiffFilters; sort
     prisma.merchant.findMany({ orderBy: { merchantCode: "asc" }, select: { id: true, merchantCode: true, siteName: true } }),
     prisma.payment.count({ where: { livemode: opts.filters.mode === "live", depositDiff: { in: ["short", "excess"] }, depositDiffStatus: "open" } }),
   ]);
-  return { rows: rows.map(toRow), total, merchants, openCount };
+  const emails = await latestTopUpEmails(rows.map((r) => r.id));
+  return { rows: rows.map((r) => toRow(r, emails.get(r.id) ?? null)), total, merchants, openCount };
 }
 
 export async function loadDepositDiffsForExport(filters: DepositDiffFilters, sort: SortState, max: number): Promise<DepositDiffRow[]> {
   const rows = await prisma.payment.findMany({ where: whereFor(filters), orderBy: [{ [sort.key]: sort.dir }], take: max, select: SELECT });
-  return rows.map(toRow);
+  const emails = await latestTopUpEmails(rows.map((r) => r.id));
+  return rows.map((r) => toRow(r, emails.get(r.id) ?? null));
 }
 
 /** Operator follow-up on a short / excess deposit. */

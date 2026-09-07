@@ -196,11 +196,18 @@ async function login(loginId, password) {
   await page.waitForTimeout(800);
   await page.goto(BASE + "/deposit-diffs", { waitUntil: "networkidle" });
   check("deposit diffs: 2 open cases in live mode", (await page.textContent("body")).includes("2 open"));
+  // Phase P3-1: live mode is unmistakable (stripe, header badge, table caption, CSV name); P3-4: flow strip.
+  check("live mode: red stripe and header badge", (await page.locator("[data-testid=live-stripe]").count()) === 1 && (await page.locator("[data-testid=current-mode]").innerText()).includes("Live data"));
+  check("live mode: table caption names the mode", (await page.locator("[data-testid=table-mode]").innerText()).toLowerCase().includes("live data"));
+  check("deposit diffs: follow-up flow strip", (await page.locator("[data-testid=deposit-diff-flow]").innerText()).toLowerCase().includes("refund arranged"));
+  const csvRes = await page.request.get(BASE + "/api/deposit-diffs?mode=live&format=csv");
+  check("CSV file name carries the mode", (csvRes.headers()["content-disposition"] ?? "").includes("deposit-diffs-live.csv"));
   await page.locator("tbody tr").filter({ hasText: "Excess" }).first().getByRole("button", { name: "Request refund of excess" }).click();
   await page.locator("dialog[open]").getByRole("button", { name: "Request refund of excess" }).click();
   await page.getByText("Refund request for the excess filed").waitFor({ timeout: 8000 });
   await page.waitForTimeout(500);
   check("excess → refund arranged", (await page.textContent("body")).includes("Refund arranged"));
+  check("deposit diffs: link to the refund request", (await page.getByRole("link", { name: /Open in refunds/ }).count()) >= 1);
   await page.screenshot({ path: `${OUT}/deposit-diffs-en.png` });
   await page.getByRole("group", { name: "Data mode" }).getByRole("button", { name: "Test" }).click();
   await page.waitForTimeout(800);
@@ -313,6 +320,34 @@ async function login(loginId, password) {
   const dash = await page2.textContent("body");
   check("dashboard: Phase H cards", dash.includes("Subscriptions") && dash.includes("Payment Links") && dash.includes("Agent Fees") && dash.includes("This month"));
   await ctx2.close();
+}
+
+// ── Phase P3-2 / P3-3: overdue tab, related deposits, reconcile preview ─
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  await page.goto(BASE + "/applications?overdue=1", { waitUntil: "networkidle" });
+  const overdueBody = await page.innerText("body");
+  check("applications: overdue tab lists only the overdue transfer with its explanation", overdueBody.includes("ORD-DEMO-005") && !overdueBody.includes("ORD-DEMO-004") && overdueBody.includes("Different from the"));
+  await page.goto(BASE + "/", { waitUntil: "networkidle" });
+  check("dashboard: overdue badge links to the overdue tab", (await page.locator('a[href="/applications?overdue=1"]').count()) >= 1);
+  await page.goto(BASE + "/applications", { waitUntil: "networkidle" });
+  await page.getByText("ORD-DEMO-016").first().click();
+  await page.waitForURL(/\/applications\/[a-z0-9_]+$/);
+  const relBody = await page.locator("[data-testid=related-deposits]").innerText();
+  check("transaction detail: related notification and linked unmatched deposit", relBody.includes("DN-00004") && relBody.includes("Linked"));
+  await page.screenshot({ path: `${OUT}/related-deposits-en.png`, fullPage: true });
+  await page.goto(BASE + "/applications", { waitUntil: "networkidle" });
+  await page.getByText("ORD-DEMO-005").first().click();
+  await page.waitForURL(/\/applications\/[a-z0-9_]+$/);
+  await page.getByRole("button", { name: "Reconcile deposit" }).click();
+  await page.locator("dialog[open] #deposit-amount").fill("6000");
+  await page.waitForTimeout(200);
+  check("reconcile dialog: short preview before confirming", (await page.locator("dialog[open] [data-testid=deposit-preview]").innerText()).includes("short by"));
+  await page.locator("dialog[open] #deposit-amount").fill("6600");
+  await page.waitForTimeout(200);
+  check("reconcile dialog: exact preview", (await page.locator("dialog[open] [data-testid=deposit-preview]").innerText()).includes("completes"));
+  await page.locator("dialog[open]").getByRole("button", { name: "Cancel" }).click();
+  await ctx.close();
 }
 
 // ── Unmatched deposits + API re-notify (bank transfers only) ───────────

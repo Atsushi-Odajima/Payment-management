@@ -11,7 +11,7 @@ import { NavLink } from "./nav-link";
 import { WirePayIcon } from "./wire-pay-icon";
 import { LanguageToggle } from "./language-toggle";
 import { SearchBox } from "./search-box";
-import { ModeToggle } from "./mode-provider";
+import { ModeToggle, useMode } from "./mode-provider";
 import type { BannerItem } from "./announcement-banner";
 import { MethodBanner } from "./method-banner";
 import { NotificationBell } from "./notification-bell";
@@ -22,10 +22,13 @@ import { useApiJson, useT } from "./language-provider";
 import { useRole, useSession } from "./session-provider";
 import { MOBILE_TABS, visibleNavGroups } from "@/lib/nav";
 import type { MessageKey } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 export function AppShell({ children, banner = [], suspendedMethods = [] }: { children: React.ReactNode; banner?: BannerItem[]; suspendedMethods?: string[] }) {
   const t = useT();
   const { can } = useRole();
+  const { mode } = useMode();
+  const live = mode === "live";
   const groups = visibleNavGroups(can);
   const pathname = usePathname();
 
@@ -47,7 +50,13 @@ export function AppShell({ children, banner = [], suspendedMethods = [] }: { chi
       <ToastProvider>
         <div className="flex min-h-screen flex-col">
           <MethodBanner methods={suspendedMethods} />
-          <header className="relative z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
+          {live && (
+            <div className="flex items-center gap-2 bg-rose-600 px-4 py-1 text-xs font-semibold text-white md:px-6" role="status" data-testid="live-stripe">
+              <span className="rounded bg-white/20 px-1.5 py-0.5">{t("mode.liveLabel")}</span>
+              <span>{t("mode.liveStripe")}</span>
+            </div>
+          )}
+          <header className={cn("relative z-30 border-b border-slate-200 bg-white/80 backdrop-blur", live && "border-l-4 border-l-rose-600")}>
             <div className="flex items-center justify-between gap-3 px-4 py-2.5 md:px-6 md:py-3">
               <Link href="/" className="flex shrink-0 items-center gap-2 md:invisible md:w-0" aria-label="Wire Pay">
                 <WirePayIcon className="h-7 w-7 shrink-0 rounded-md shadow-sm" />

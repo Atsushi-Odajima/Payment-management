@@ -196,6 +196,11 @@ describe("transaction lists", () => {
     expect(apps.items.map((i) => i.id)).toEqual([SEED_IDS.payment5, SEED_IDS.payment14, SEED_IDS.payment4, SEED_IDS.payment3, SEED_IDS.payment6, SEED_IDS.payment16]);
     expect(apps.items[0].overdue).toBe(true);
     expect(apps.items[1].overdue).toBe(false);
+    // ?overdue=1 (Phase P3-2): only awaited transfers / slips past their deadline, status unchanged — not the expired payment16.
+    const overdue = await loadTransactions({ allowedStatuses: APPLICATION_STATUSES, filters: parseTransactionFilters({ overdue: "1" }, APPLICATION_STATUSES), page: 1, pageSize: 20, order: "applications", now: NOW });
+    expect(overdue.filters.overdue).toBe(true);
+    expect(overdue.items.map((i) => i.id)).toEqual([SEED_IDS.payment5]);
+    expect(overdue.items.every((i) => i.overdue && (i.status === "awaiting_transfer" || i.status === "awaiting_payment"))).toBe(true);
 
     const sales = await loadTransactions({
       allowedStatuses: SALES_STATUSES,

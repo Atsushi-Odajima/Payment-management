@@ -10,8 +10,9 @@ import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { useApiJson, useFormatDateTime, useT } from "./language-provider";
 import { useConfirm } from "./confirm-dialog";
 import { useRole } from "./session-provider";
-import { formatYen } from "@/lib/utils";
+import { cn, formatYen } from "@/lib/utils";
 import { canTransition, type PaymentAction, type PaymentStatus } from "@/lib/payments/transitions";
+import { reconcileDeposit } from "@/lib/payments/transfer";
 import type { TransactionDetail } from "@/lib/payments/detail";
 import { WEBHOOK_EVENT_TYPES, type WebhookEventType } from "@/lib/webhooks/events";
 import { popFlash, pushFlash } from "@/lib/flash";
@@ -125,7 +126,7 @@ export function PaymentActions({ payment }: { payment: TransactionDetail }) {
           deposited: formatYen(deposited),
         }),
         confirmLabel: t("paymentActions.deposit"),
-        fields: <DepositFields outstanding={outstanding} valueRef={depositRef} />,
+        fields: <DepositFields payment={payment} outstanding={outstanding} valueRef={depositRef} />,
       });
       if (!ok) return;
       body = { amount: depositRef.current.amount };
@@ -271,12 +272,20 @@ function ActionButton({
   );
 }
 
-function DepositFields({ outstanding, valueRef }: { outstanding: number; valueRef: MutableRefObject<{ amount: number }> }) {
+function DepositFields({ payment, outstanding, valueRef }: { payment: TransactionDetail; outstanding: number; valueRef: MutableRefObject<{ amount: number }> }) {
   const t = useT();
+  const formatDate = useFormatDateTime();
   const { update } = useConfirm();
   const [amount, setAmount] = useState(String(outstanding));
+  const [receivedAt, setReceivedAt] = useState<Date | null>(null);
   const n = Number(amount);
   const valid = Number.isInteger(n) && n > 0;
+  // Candidates (Phase P3-3): notifications / unmatched deposits that name this transaction but were not applied.
+  const candidates = [
+    ...payment.depositNotifications.filter((c) => c.result === "unmatched" || c.result === "rejected").map((c) => ({ key: `n:${c.id}`, amount: c.amount, receivedAt: c.receivedAt, label: c.notificationNo, sub: c.payerName ?? "" })),
+    ...payment.unmatchedCandidates.map((c) => ({ key: `u:${c.id}`, amount: c.amount, receivedAt: c.receivedAt, label: t("paymentActions.depositCandidateUnmatched"), sub: c.payerName })),
+  ];
+  const preview = valid ? reconcileDeposit(payment.amount, payment.depositAmount ?? 0, n, payment.cvsReceiptNo ? "awaiting_payment" : "awaiting_transfer") : null;
 
   useEffect(() => {
     valueRef.current = { amount: n };
@@ -284,7 +293,27 @@ function DepositFields({ outstanding, valueRef }: { outstanding: number; valueRe
   }, [n, valid, update, valueRef]);
 
   return (
-    <div>
+    <div className="space-y-3">
+      {candidates.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-600">{t("paymentActions.depositCandidates")}</p>
+          <ul className="mt-1 max-h-40 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+            {candidates.map((c) => (
+              <li key={c.key}>
+                <button type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-brand-50" onClick={() => { setAmount(String(c.amount)); setReceivedAt(c.receivedAt); }}>
+                  <span>
+                    <span className="font-medium text-slate-900">{c.label}</span>
+                    <span className="ml-2 text-slate-600">{formatDate(c.receivedAt)}</span>
+                    {c.sub && <span className="ml-2 text-slate-500">{c.sub}</span>}
+                  </span>
+                  <span className="tabular-nums font-semibold">{formatYen(c.amount)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div>
       <label htmlFor="deposit-amount" className="label">
         {t("paymentActions.depositAmount")}
       </label>
@@ -303,6 +332,21 @@ function DepositFields({ outstanding, valueRef }: { outstanding: number; valueRe
       <p id="deposit-amount-help" className="help">
         {t("paymentActions.depositHelp", { outstanding: formatYen(outstanding) })}
       </p>
+      </div>
+      {receivedAt && <p className="text-xs text-slate-500">{t("paymentActions.depositReceivedAt", { at: formatDate(receivedAt) })}</p>}
+      {preview && (
+        <p
+          className={cn("rounded-lg px-3 py-2 text-xs font-medium", preview.diff === "short" ? "bg-rose-50 text-rose-800" : preview.diff === "excess" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800")}
+          role="status"
+          data-testid="deposit-preview"
+        >
+          {preview.diff === "short"
+            ? t("paymentActions.previewShort", { short: formatYen(payment.amount - preview.total) })
+            : preview.diff === "excess"
+              ? t("paymentActions.previewExcess", { excess: formatYen(preview.total - payment.amount) })
+              : t("paymentActions.previewExact")}
+        </p>
+      )}
     </div>
   );
 }

@@ -18,7 +18,9 @@ export function toCsv<T>(rows: readonly T[], columns: readonly CsvColumn<T>[]): 
   return "﻿" + lines.join("\r\n") + "\r\n";
 }
 
-export function csvResponse(csv: string, filename: string): Response {
+/** Response with `filename`; when `mode` is given, `-test` / `-live` is inserted before `.csv` (Phase P3-1). */
+export function csvResponse(csv: string, filename: string, mode?: "test" | "live"): Response {
+  if (mode) filename = filename.replace(/(\.csv)?$/i, (m) => `-${mode}${m || ".csv"}`);
   return new Response(csv, {
     status: 200,
     headers: {
