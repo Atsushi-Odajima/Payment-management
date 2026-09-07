@@ -1,5 +1,6 @@
 // Regenerates the permission matrix tables from lib/role.ts (the single
-// source of truth) into CLAUDE.md and content/manual/{ja,en}/intro.md,
+// source of truth) into CLAUDE.md, content/manual/{ja,en}/intro.md and the
+// specification appendix docs/spec/{ja,en}/A-merchant-integration-spec.md,
 // between the <!-- permissions:start --> / <!-- permissions:end --> markers.
 //
 //   npx tsx scripts/gen-permissions.ts          # write
@@ -48,6 +49,9 @@ const targets: Array<[string, Lang]> = [
   ["CLAUDE.md", "ja"],
   ["content/manual/ja/intro.md", "ja"],
   ["content/manual/en/intro.md", "en"],
+  // Specification A, Appendix E (docs/spec, Phase P6)
+  ["docs/spec/ja/A-merchant-integration-spec.md", "ja"],
+  ["docs/spec/en/A-merchant-integration-spec.md", "en"],
 ];
 let stale = false;
 for (const [path, lang] of targets) {

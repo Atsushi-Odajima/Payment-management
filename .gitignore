@@ -43,3 +43,6 @@ yarn-error.log*
 .idea
 .vercel
 .env*
+
+# spec PDF page rasters (docs/spec/build-pdf.mjs --png)
+docs/spec/pdf/png/
