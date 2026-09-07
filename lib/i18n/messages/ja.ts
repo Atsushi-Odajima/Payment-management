@@ -575,7 +575,7 @@ export const ja = {
     group_full: "フル",
     signatureTitle: "署名の検証",
     signatureBody:
-      "X-Signature ヘッダは v1=<HMAC-SHA256(鍵, \"<X-Timestamp>.<ペイロード>\")> の 16 進表記です。鍵は加盟店の署名シークレット（発行済みの場合）、無い場合は加盟店パスワードです。ペイロードは POST ならボディ、GET ならクエリ文字列（? の後ろ）です。受信側は同じ計算で v1 を検証し、X-Timestamp が 5 分以上古い場合は拒否してください。互換のため Wirepay-Signature（t=<秒>,v1=<同じ値>）も送ります。",
+      "X-Signature ヘッダは v1=<HMAC-SHA256(鍵, \"<X-Timestamp>.<ペイロード>\")> の 16 進表記です。鍵は加盟店の署名シークレット（通知と同じ環境の最新の有効なもの）です。署名シークレットが無い環境への通知は送信されません。ペイロードは POST ならボディ、GET ならクエリ文字列（? の後ろ）です。受信側は同じ計算で v1 を検証し、X-Timestamp が 5 分以上古い場合は拒否してください。互換のため Wirepay-Signature（t=<秒>,v1=<同じ値>）も送ります。",
     retryBody: "2xx 以外の応答または 10 秒以内に応答が無い場合、1 分 → 5 分 → 30 分 → 2 時間 → 24 時間の間隔で最大 5 回まで再送します。同じ payment_id と event の通知は冪等に処理してください。",
     showCurl: "curl で再現する ▸",
     hideCurl: "curl を隠す ▾",
@@ -592,6 +592,7 @@ export const ja = {
     user_id: "加盟店側のユーザーID（決済作成時に指定）",
     product_id: "商品ID（決済作成時に指定）",
     domain: "決済が行われたサイトのドメイン",
+    event: "通知の種類（payment.completed / payment.failed / payment.expired / payment.cancelled / refund.completed / limit.exceeded / chargeback.opened / subscription.* ）。常に含まれます",
   },
   role: {
     label: "権限",
@@ -626,6 +627,7 @@ export const ja = {
     notify: "通知設定",
     settlement: "精算設定",
     webhooks: "Webhook送信ログ",
+    methods: "決済手段の停止",
   },
   contract: {
     current: "現在の契約",
@@ -1700,7 +1702,7 @@ export const ja = {
   },
   globalSettings: {
     title: "全体設定",
-    description: "システム全体に関わる設定です（admin のみ）。以降のフェーズで Slack 連携・インボイス情報・保持期間がここに増えます。",
+    description: "システム全体に関わる設定です（admin のみ）。閲覧者ロールの CSV 出力、Slack 連携、請求書の発行者情報と消費税の端数処理、個人情報の保持期間と CSV の出力モード、IP 制限の許可リストモードをここで管理します。",
     sectionExport: "CSV 出力",
     viewerCsvExport: "閲覧（viewer）ロールにも CSV 出力を許可する",
     viewerCsvExportHelp: "オフのとき、viewer と未ログインの CSV 出力は 403 になります。他のロールは常に出力できます。",

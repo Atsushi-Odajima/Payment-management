@@ -11,17 +11,18 @@ import { PageHeader } from "@/components/page-header";
 import { DetailRow } from "@/components/ui/detail-row";
 import { PaymentLinkStatusBadge } from "@/components/subscription-badges";
 import { ModeBadge, PaymentStatusBadge } from "@/components/payment-status-badge";
-import { useApiJson, useFormatDateTime, useT } from "@/components/language-provider";
+import { useApiJson, useFormatDateTime, useLang, useT } from "@/components/language-provider";
+import { methodLabel } from "@/components/views/transactions-view";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useToast } from "@/components/toast";
 import type { LinkPaymentRow, PaymentLinkRow } from "@/lib/payment-links/list";
 import { isPaymentStatus } from "@/lib/payments/transitions";
 import { isPaymentMethod } from "@/lib/payments/methods";
-import type { MessageKey } from "@/lib/i18n";
 import { formatYen } from "@/lib/utils";
 
 export function PaymentLinkDetailView({ link, payments }: { link: PaymentLinkRow; payments: LinkPaymentRow[] }) {
   const t = useT();
+  const { lang } = useLang();
   const router = useRouter();
   const apiJson = useApiJson();
   const toast = useToast();
@@ -125,7 +126,7 @@ export function PaymentLinkDetailView({ link, payments }: { link: PaymentLinkRow
                         {p.orderNumber}
                       </Link>
                       <span className="ml-2 text-xs text-slate-500">
-                        {p.customerName ?? "—"} · {isPaymentMethod(p.method) ? t(`paymentMethods.${p.method}` as MessageKey) : "—"} · {formatDate(p.createdAt)}
+                        {p.customerName ?? "—"} · {isPaymentMethod(p.method) ? methodLabel(p.method, lang) : "—"} · {formatDate(p.createdAt)}
                       </span>
                     </span>
                     <span className="flex items-center gap-2">

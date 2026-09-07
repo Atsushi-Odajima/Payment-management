@@ -1,8 +1,10 @@
 "use client";
 
-// Settings → global settings (admin only). Phase I adds the viewer CSV switch,
-// Phase J the Slack webhook, Phase K the qualified-invoice issuer and the
-// consumption-tax rounding; later phases add retention settings here.
+// Settings → global settings (admin only): the viewer CSV switch (Phase I),
+// the Slack webhook (Phase J), the qualified-invoice issuer and the
+// consumption-tax rounding (Phase K), personal-data retention and the CSV
+// mode (Phase M). The IP allow-list mode flags (Phase P4-1) are switched from
+// the IP restrictions screen and only stored here.
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";

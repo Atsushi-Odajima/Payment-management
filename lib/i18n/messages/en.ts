@@ -578,7 +578,7 @@ export const en: MessageShape<typeof ja> = {
     group_full: "Full",
     signatureTitle: "Verifying the signature",
     signatureBody:
-      "The X-Signature header is v1=<hex HMAC-SHA256(key, \"<X-Timestamp>.<payload>\")>. The key is the merchant's signing secret when one has been issued, otherwise the merchant password. The payload is the request body for POST and the query string (after ?) for GET. Recompute v1 on your side, compare it in constant time and reject requests whose X-Timestamp is older than 5 minutes. Wirepay-Signature (t=<seconds>,v1=<same value>) is sent as well for compatibility.",
+      "The X-Signature header is v1=<hex HMAC-SHA256(key, \"<X-Timestamp>.<payload>\")>. The key is the merchant's signing secret (the newest usable one of the same environment); notifications for an environment without a signing secret are not sent. The payload is the request body for POST and the query string (after ?) for GET. Recompute v1 on your side, compare it in constant time and reject requests whose X-Timestamp is older than 5 minutes. Wirepay-Signature (t=<seconds>,v1=<same value>) is sent as well for compatibility.",
     retryBody: "A non-2xx response or no response within 10 seconds triggers up to 5 retries with exponential backoff (1 min → 5 min → 30 min → 2 h → 24 h). Treat notifications with the same payment_id and event idempotently.",
     showCurl: "Reproduce with curl ▸",
     hideCurl: "Hide curl ▾",
@@ -595,6 +595,7 @@ export const en: MessageShape<typeof ja> = {
     user_id: "Merchant-side user ID (passed when the payment was created)",
     product_id: "Product ID (passed when the payment was created)",
     domain: "Domain of the site where the payment happened",
+    event: "Kind of notification (payment.completed / payment.failed / payment.expired / payment.cancelled / refund.completed / limit.exceeded / chargeback.opened / subscription.*). Always present",
   },
   role: {
     label: "Role",
@@ -629,6 +630,7 @@ export const en: MessageShape<typeof ja> = {
     notify: "Notifications",
     settlement: "Settlement",
     webhooks: "Webhook log",
+    methods: "Payment method switches",
   },
   contract: {
     current: "Current contract",
@@ -1703,7 +1705,7 @@ export const en: MessageShape<typeof ja> = {
   },
   globalSettings: {
     title: "Global settings",
-    description: "System-wide settings (admin only). Later phases add Slack, invoice issuer and retention settings here.",
+    description: "System-wide settings (admin only): CSV export for the viewer role, the Slack integration, the invoice issuer and tax rounding, personal-data retention and CSV mode, and the IP allow-list mode.",
     sectionExport: "CSV export",
     viewerCsvExport: "Allow the viewer role to export CSV",
     viewerCsvExportHelp: "When off, CSV exports by viewers and anonymous visitors answer 403. Other roles can always export.",

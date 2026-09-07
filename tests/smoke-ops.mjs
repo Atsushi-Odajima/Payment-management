@@ -802,6 +802,28 @@ async function login(loginId, password) {
   await ctx.close();
 }
 
+// ── Phase P5: no translation key leaks on the main screens ─────────────
+{
+  const { ctx, page } = await login("kuromaru", process.env.PASSWORD ?? "atusi0130");
+  // Dictionary roots that could leak as "root.key" text (t() returns the key when it is missing).
+  const KEY_ROOTS = ["nav", "common", "dashboard", "status", "paymentDetail", "paymentActions", "transactions", "applications", "payments", "merchants", "merchantForm", "merchantTabs", "merchantEnums", "notifyParams", "agents", "refunds", "refundEnums", "settlements", "settlementEnums", "webhookLogs", "webhookEnums", "chargebacks", "blacklist", "depositDiffs", "depositDiffEnums", "unmatchedDeposits", "unmatchedDepositEnums", "depositNotifications", "depositNotificationEnums", "reports", "emailTemplates", "emailLogs", "emailEnums", "announcements", "announcementEnums", "subscriptions", "subscriptionEnums", "paymentLinks", "agentFees", "notifications", "notificationEnums", "methodControls", "globalSettings", "ipRestrictions", "ipEnums", "auditLogs", "auditEnums", "admins", "adminForm", "customers", "manual", "merchantPortal", "permissions", "search", "mode", "errors", "pages", "cvsEnums", "apiKeys", "contract", "limits", "receipts"];
+  const leak = new RegExp(`\\b(?:${KEY_ROOTS.join("|")})\\.[a-zA-Z_]+(?:\\.[a-zA-Z_]+)*\\b`);
+  const SCREENS = ["/", "/applications", "/payments", "/merchants", "/merchants/mer_demo_001?tab=methods", "/merchants/mer_demo_001?tab=notify", "/agents", "/refunds", "/deposit-diffs", "/unmatched-deposits", "/deposit-notifications", "/settlements", "/agent-fees", "/chargebacks", "/blacklist", "/reports", "/webhook-logs", "/email-logs", "/email-templates", "/notifications", "/notifications/settings", "/announcements", "/subscriptions", "/payment-links", "/customers", "/admins", "/payment-method-controls", "/global-settings", "/ip-restrictions", "/audit-logs", "/providers", "/manual", "/search?q=ORD"];
+  const leaks = [];
+  for (const path of SCREENS) {
+    await page.goto(BASE + path, { waitUntil: "networkidle" });
+    const text = await page.innerText("body");
+    const m = leak.exec(text);
+    if (m) leaks.push(`${path}: ${m[0]}`);
+  }
+  check("no translation keys leaked on the main screens", leaks.length === 0, leaks.join(" | ").slice(0, 300));
+  // Phase P5: deposit differences also have test-mode samples now.
+  await page.goto(BASE + "/deposit-diffs", { waitUntil: "networkidle" });
+  const ddTest = await page.innerText("body");
+  check("deposit diffs: test-mode short and excess samples", ddTest.includes("ORD-DEMO-017") && ddTest.includes("ORD-DEMO-018"));
+  await ctx.close();
+}
+
 check("no page errors", pageErrors.length === 0, pageErrors.join(" | ").slice(0, 200));
 await browser.close();
 const failed = results.filter((r) => !r.ok);
