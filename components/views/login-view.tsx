@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { PageHeader } from "@/components/page-header";
+import { LanguageToggle } from "@/components/language-toggle";
 import { useApiJson, useT } from "@/components/language-provider";
 import { WirePayIcon } from "@/components/wire-pay-icon";
 
@@ -72,10 +72,13 @@ export function LoginView({ demo }: { demo?: LoginDemo }) {
   }
 
   return (
-    <div className="mx-auto max-w-md">
-      <PageHeader title={t("auth.title")} description={t("auth.description")} />
+    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-10">
+      <div className="mb-4 flex justify-end">
+        <LanguageToggle />
+      </div>
+      <h1 className="sr-only">{t("auth.title")}</h1>
       {step === "password" ? (
-        <form onSubmit={onSubmit} className="card space-y-5 p-6" aria-busy={busy}>
+        <form onSubmit={onSubmit} className="card space-y-5 p-6 md:p-8" aria-busy={busy}>
           <Brand />
           <div>
             <label htmlFor="loginId" className="label">
@@ -122,7 +125,7 @@ export function LoginView({ demo }: { demo?: LoginDemo }) {
           </button>
         </form>
       ) : (
-        <form onSubmit={onSubmitCode} className="card space-y-5 p-6" aria-busy={busy}>
+        <form onSubmit={onSubmitCode} className="card space-y-5 p-6 md:p-8" aria-busy={busy}>
           <Brand />
           <div>
             <p className="text-sm font-semibold text-slate-900">{t("auth.totpTitle")}</p>
@@ -151,15 +154,18 @@ export function LoginView({ demo }: { demo?: LoginDemo }) {
   );
 }
 
+// The login page has no dashboard chrome, so the brand block doubles as the
+// page heading: a large logo and wordmark with the tagline and the sign-in hint.
 function Brand() {
   const t = useT();
   return (
-    <div className="flex items-center gap-3">
-      <WirePayIcon className="h-10 w-10 rounded-lg shadow" />
+    <div className="flex flex-col items-center gap-3 pb-2 text-center">
+      <WirePayIcon className="h-20 w-20 rounded-2xl shadow-lg" />
       <div>
-        <p className="text-sm font-semibold text-slate-900">Wire Pay</p>
-        <p className="text-xs text-slate-500">{t("brand.tagline")}</p>
+        <p className="text-3xl font-bold tracking-tight text-slate-900">Wire Pay</p>
+        <p className="mt-1 text-sm text-slate-500">{t("brand.tagline")}</p>
       </div>
+      <p className="text-xs text-slate-500">{t("auth.description")}</p>
     </div>
   );
 }
