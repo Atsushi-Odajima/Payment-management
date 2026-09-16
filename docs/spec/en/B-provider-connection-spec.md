@@ -1310,7 +1310,7 @@ Other models (`AdminUser`, `AuditLog`, `Blacklist`, `RiskSetting`, `Notification
 | `WEBHOOK_DELIVERY` | optional | `queue` queues merchant webhooks for the cron instead of sending immediately |
 | `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG` | optional | Mail provider (`log` / `console`) and customer mail language |
 | `DEMO_READONLY` | optional | `1` makes DELETE and provider PATCH answer 403 |
-| `DEMO_LOGIN_HINT` / `DEMO_GENERAL_PASSWORD` | optional | Demo account display |
+| `DEMO_LOGIN_HINT` / `DEMO_ADMIN_PASSWORD` / `DEMO_GENERAL_PASSWORD` | optional / required on the public demo / optional | Lists the operations demo account (`general`) and the merchant demo account (`MER-00001`) on the login page / password of the seeded admin `kuromaru` (unset in production → a random password on every seed, so nobody can log in) / password of the operations demo account. Seeded accounts that are not listed get random passwords in production (1.1.1) |
 
 ### B.2 Provider connection (`PaymentProvider`)
 

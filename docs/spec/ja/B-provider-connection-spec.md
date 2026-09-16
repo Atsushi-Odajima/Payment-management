@@ -1310,7 +1310,7 @@ erDiagram
 | `WEBHOOK_DELIVERY` | 任意 | `queue` で加盟店 Webhook を即時送信せずキューに積む（cron が送信） |
 | `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG` | 任意 | メールの送信先プロバイダ（`log` / `console`）と購入者メールの言語 |
 | `DEMO_READONLY` | 任意 | `1` で DELETE とプロバイダ PATCH を 403 |
-| `DEMO_LOGIN_HINT` / `DEMO_GENERAL_PASSWORD` | 任意 | デモアカウント表示 |
+| `DEMO_LOGIN_HINT` / `DEMO_ADMIN_PASSWORD` / `DEMO_GENERAL_PASSWORD` | 任意 / 公開デモは必須 / 任意 | ログイン画面に運営デモアカウント（`general`）と加盟店デモアカウント（`MER-00001`）の 2 件を表示 / seed が作る管理者 `kuromaru` のパスワード（本番で未設定なら seed ごとにランダム = ログイン不可）/ 運営デモアカウントのパスワード。表示しない seed アカウントは本番ではランダムなパスワードになる（1.1.1） |
 
 ### B.2 プロバイダ接続（`PaymentProvider`）
 

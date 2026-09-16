@@ -91,13 +91,23 @@ describe("subscriptions", () => {
   it("charges through the transaction pipeline and advances the next charge date", async () => {
     const before = await prisma.subscription.findUniqueOrThrow({ where: { id: SEED_IDS.subscription1 } });
     expect((await act(SEED_IDS.subscription1, "charge", ACCOUNTING, { outcome: "success" })).status).toBe(403);
+    const t0 = Date.now();
     const res = await act(SEED_IDS.subscription1, "charge", MASTER, { outcome: "success" });
+    const t1 = Date.now();
     expect(res.status).toBe(200);
     expect(res.body.data.result).toMatchObject({ ok: true, status: "active" });
     const after = await prisma.subscription.findUniqueOrThrow({ where: { id: SEED_IDS.subscription1 } });
     expect(after.status).toBe("active");
     expect(after.failCount).toBe(0);
-    expect(after.nextChargeAt!.getTime()).toBe(addInterval(before.nextChargeAt!, "monthly").getTime());
+    // The next charge date advances from the scheduled date while that is less
+    // than 30 days behind the real clock, otherwise from now (the seed is
+    // anchored at NOW = 2026-09-01, the route uses the real clock).
+    const fromSchedule = before.nextChargeAt!.getTime() > t0 - 30 * 86_400_000;
+    const lower = addInterval(fromSchedule ? before.nextChargeAt! : new Date(t0), "monthly").getTime();
+    const upper = addInterval(fromSchedule ? before.nextChargeAt! : new Date(t1), "monthly").getTime();
+    expect(after.nextChargeAt!.getTime()).toBeGreaterThanOrEqual(lower);
+    expect(after.nextChargeAt!.getTime()).toBeLessThanOrEqual(upper);
+    expect(new Date(res.body.data.result.nextChargeAt).getTime()).toBe(after.nextChargeAt!.getTime());
     const payment = await prisma.payment.findFirst({ where: { subscriptionId: SEED_IDS.subscription1 }, orderBy: { createdAt: "desc" } });
     expect(payment).toMatchObject({ status: "captured", amount: 2980, merchantId: SEED_IDS.merchant1, livemode: false });
     expect(await prisma.webhookDelivery.count({ where: { event: "subscription.charged", merchantId: SEED_IDS.merchant1 } })).toBe(1);

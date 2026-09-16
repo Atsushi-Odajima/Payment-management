@@ -155,7 +155,8 @@ npm install
 cp .env.example .env
 # ENCRYPTION_KEY を 32 バイトの base64 に置き換える:
 #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-# ログイン: kuromaru / atusi0130（admin）, general / general1234（cs）, accounting / accounting1234, developer / developer1234, viewer / viewer1234 — prisma/seed-accounts.ts
+# ログイン（ローカル）: kuromaru / atusi0130（admin）, general / general1234（cs）, accounting / accounting1234, developer / developer1234, viewer / viewer1234 — prisma/seed-accounts.ts
+# 公開デモ（NODE_ENV=production）ではログイン画面に general と加盟店 MER-00001 の 2 件だけを表示し、admin のパスワードは DEMO_ADMIN_PASSWORD、他のアカウントはランダム（ログイン不可）
 
 npx prisma migrate deploy   # スキーマ適用
 npm run db:seed             # デモデータ（プロバイダ・決済・加盟店・代理店・申請・IP ルール）。テーブル単位の upsert で何度実行しても増えない
@@ -374,7 +375,8 @@ npm install
 cp .env.example .env
 # set ENCRYPTION_KEY to base64 of 32 random bytes:
 #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-# log in as kuromaru / atusi0130 (master) or general / general1234 — see prisma/seed-accounts.ts
+# log in (locally) as kuromaru / atusi0130 (admin) or general / general1234 — see prisma/seed-accounts.ts
+# on the public demo (NODE_ENV=production) only general and the merchant MER-00001 are listed; the admin password is DEMO_ADMIN_PASSWORD and the other seeded accounts get random passwords
 
 npx prisma migrate deploy
 npm run db:seed

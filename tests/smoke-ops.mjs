@@ -33,6 +33,22 @@ async function login(loginId, password) {
   return { ctx, page };
 }
 
+// ── Login page: demo accounts (only the two public ones are listed) ────
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 1000 }, locale: "en-US" });
+  const page = await ctx.newPage();
+  page.on("pageerror", (e) => pageErrors.push(e.message));
+  await page.goto(BASE + "/login", { waitUntil: "networkidle" });
+  const hint = await page.locator("[data-testid=demo-accounts]").innerText();
+  check("login page: operations demo account listed", hint.includes("Operations demo account") && hint.includes("general /"));
+  check("login page: merchant demo account listed with a link to the merchant login", hint.includes("Merchant demo account") && hint.includes("MER-00001 /") && (await page.getByRole("link", { name: "Merchant login" }).count()) === 1);
+  check("login page: admin and other roles are not listed", !hint.includes("kuromaru") && !hint.includes("accounting") && !hint.includes("developer") && !hint.includes("viewer"));
+  await page.goto(BASE + "/merchant/login", { waitUntil: "networkidle" });
+  const body = await page.textContent("body");
+  check("merchant login: only MER-00001 is listed", body.includes("MER-00001") && !body.includes("MER-00002") && !body.includes("MER-00003"));
+  await ctx.close();
+}
+
 // ── Refunds (Phase C) ──────────────────────────────────────────────────
 {
   const { ctx, page } = await login("general", process.env.GENERAL_PASSWORD ?? "general1234");
