@@ -33,9 +33,10 @@ export function AppShell({ children, banner = [], suspendedMethods = [] }: { chi
   const pathname = usePathname();
 
   // Hosted checkout pages (/pay/<token>), the merchant portal (/merchant, own
-  // shell in app/merchant/layout.tsx) and the public API docs (/docs) are not
-  // operator screens: no admin chrome.
-  if (pathname?.startsWith("/pay/") || pathname === "/merchant" || pathname?.startsWith("/merchant/") || pathname?.startsWith("/docs")) {
+  // shell in app/merchant/layout.tsx), the public API docs (/docs) and the
+  // operator login page (/login: nothing but the form before signing in) are
+  // not operator screens: no admin chrome.
+  if (pathname === "/login" || pathname?.startsWith("/pay/") || pathname === "/merchant" || pathname?.startsWith("/merchant/") || pathname?.startsWith("/docs")) {
     return (
       <ConfirmProvider>
         <ToastProvider>
