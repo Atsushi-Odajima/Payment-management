@@ -59,8 +59,12 @@ describe("contract & fee schedules", () => {
     expect(res.status).toBe(200);
     const s = res.body.data.schedules;
     expect(s).toHaveLength(2);
-    expect(s[0]).toMatchObject({ plan: "premium", upcoming: true, current: false });
-    expect(s[1]).toMatchObject({ plan: "standard", upcoming: false, current: true });
+    // The seed is anchored at NOW (2026-09-01) while the route uses the real
+    // clock: the premium schedule (NOW + 14 days) is "upcoming" until then and
+    // "current" afterwards, so derive the expected flags from its date.
+    const premiumUpcoming = new Date(s[0].effectiveFrom).getTime() > Date.now();
+    expect(s[0]).toMatchObject({ plan: "premium", upcoming: premiumUpcoming, current: !premiumUpcoming });
+    expect(s[1]).toMatchObject({ plan: "standard", upcoming: false, current: premiumUpcoming });
   });
 
   it("adds a schedule, keeps history and audits the change", async () => {

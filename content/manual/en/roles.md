@@ -32,12 +32,12 @@ admin / accounting / cs / developer can always export CSV. viewer (and anonymous
 
 ## Demo accounts
 
-| Role | Login ID |
-|---|---|
-| admin | `kuromaru` |
-| cs | `general` |
-| accounting | `accounting` |
-| developer | `developer` |
-| viewer | `viewer` |
+| Role | Login ID | On the public demo |
+|---|---|---|
+| admin | `kuromaru` | Not listed. The password is the environment variable `DEMO_ADMIN_PASSWORD` (operator only) |
+| cs | `general` | Listed on the login page as the **operations demo account** |
+| accounting | `accounting` | Not listed. In production the seed gives it a random password (cannot log in) |
+| developer | `developer` | Same |
+| viewer | `viewer` | Same |
 
-Passwords are shown in the login-page hint when `DEMO_LOGIN_HINT` is set.
+The login-page hint (when `DEMO_LOGIN_HINT` is set) lists exactly two accounts: the **operations demo account** (`general`) and the **merchant demo account** (`MER-00001`, see [Merchant portal](/manual/merchant-portal)). No other account can be used on the public demo. Local development keeps fixed passwords for every account (`prisma/seed-accounts.ts`).

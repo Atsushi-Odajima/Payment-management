@@ -1,5 +1,5 @@
 {
-  "builtAt": "2026-09-07T10:41:07.076Z",
+  "builtAt": "2026-09-16T07:47:01.909Z",
   "results": [
     {
       "file": "ja-A-merchant-integration-spec.pdf",
@@ -79,8 +79,7 @@
             "landscape": false
           }
         ]
-      },
-      "pages": null
+      }
     },
     {
       "file": "ja-B-provider-connection-spec.pdf",
@@ -172,8 +171,7 @@
             "landscape": true
           }
         ]
-      },
-      "pages": null
+      }
     },
     {
       "file": "ja-glossary.pdf",
@@ -186,8 +184,7 @@
         "landscapeTables": 0,
         "landscapeDiagrams": 0,
         "diagrams": []
-      },
-      "pages": null
+      }
     },
     {
       "file": "en-A-merchant-integration-spec.pdf",
@@ -267,8 +264,7 @@
             "landscape": false
           }
         ]
-      },
-      "pages": null
+      }
     },
     {
       "file": "en-B-provider-connection-spec.pdf",
@@ -360,8 +356,7 @@
             "landscape": true
           }
         ]
-      },
-      "pages": null
+      }
     },
     {
       "file": "en-glossary.pdf",
@@ -374,8 +369,7 @@
         "landscapeTables": 0,
         "landscapeDiagrams": 0,
         "diagrams": []
-      },
-      "pages": null
+      }
     }
   ]
 }

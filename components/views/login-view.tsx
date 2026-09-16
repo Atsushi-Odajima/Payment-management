@@ -4,19 +4,20 @@
 // account has two-factor enabled. Demo credentials are listed when the
 // server passes them (DEMO_LOGIN_HINT is set).
 
-import type { MessageKey } from "@/lib/i18n";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { useApiJson, useT } from "@/components/language-provider";
 import { WirePayIcon } from "@/components/wire-pay-icon";
 
-export interface DemoAccount {
-  loginId: string;
-  password: string;
+/** The two accounts listed on the public demo's login page (the admin is never shown). */
+export interface LoginDemo {
+  operator: { loginId: string; password: string };
+  merchant: { merchantCode: string; siteName: string; password: string } | null;
 }
 
-export function LoginView({ demo }: { demo?: { accounts: Array<DemoAccount & { role: string }> } }) {
+export function LoginView({ demo }: { demo?: LoginDemo }) {
   const t = useT();
   const router = useRouter();
   const apiJson = useApiJson();
@@ -89,13 +90,26 @@ export function LoginView({ demo }: { demo?: { accounts: Array<DemoAccount & { r
             <input id="password" type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
           </div>
           {demo && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600" data-testid="demo-accounts">
               <p className="font-medium text-slate-700">{t("auth.demoAccounts")}</p>
-              {demo.accounts.map((a) => (
-                <p key={a.loginId} className="mt-1 font-mono">
-                  {t(`role.${a.role}` as MessageKey)}: {a.loginId} / {a.password}
+              <p className="mt-1">
+                <span className="text-slate-700">{t("auth.demoOperator")}</span>
+                <span className="ml-1 font-mono">
+                  {demo.operator.loginId} / {demo.operator.password}
+                </span>
+              </p>
+              {demo.merchant && (
+                <p className="mt-1">
+                  <span className="text-slate-700">{t("auth.demoMerchant")}</span>
+                  <span className="ml-1 font-mono">
+                    {demo.merchant.merchantCode} / {demo.merchant.password}
+                  </span>
+                  <span className="ml-1 text-slate-500">({demo.merchant.siteName})</span>
+                  <Link href="/merchant/login" className="ml-2 text-brand-700 hover:underline">
+                    {t("auth.demoMerchantLink")}
+                  </Link>
                 </p>
-              ))}
+              )}
             </div>
           )}
           {error && (
