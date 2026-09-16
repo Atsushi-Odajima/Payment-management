@@ -7,7 +7,7 @@ The screens (`/merchant`) where a merchant reviews its own transactions and sett
 - URL: `/merchant/login`. Merchant ID (`MER-00001`) plus the password issued at registration (the one the master role can reveal / regenerate on the merchant detail)
 - **Five consecutive failures lock the account for 15 minutes** (423). Lockouts and successful logins are audited as `merchant.lockout` / `merchant.login` (actor "Merchant")
 - Sessions last 12 hours. The login endpoint shares the operator login's rate limit (10 per minute per IP)
-- On the demo, `DEMO_LOGIN_HINT` shows the seeded merchants and passwords on the login screen
+- On the demo, `DEMO_LOGIN_HINT` shows the **merchant demo account `MER-00001`** and its password on the login screen (and on the PSP login screen). The other seeded merchants get random passwords in production; an admin can reveal them on the merchant detail
 
 ## Menu
 

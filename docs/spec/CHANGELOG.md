@@ -4,6 +4,17 @@
 
 Changes to the specifications (docs/spec) and to public interfaces. **Breaking changes** affect API consumers (merchants, bank / konbini integrations) and carry a reason.
 
+## 1.1.1（2026-09-16）— デモアカウントの表示と利用範囲
+
+対象: 公開デモの運用のみ（公開 API・Webhook・仕様の本文に影響なし）。
+
+### 動作変更 / Behaviour changes
+
+| # | 変更 | 理由 |
+|---|---|---|
+| C-7 | ログイン画面（`DEMO_LOGIN_HINT` 設定時）に表示するデモアカウントを **運営デモアカウント（`general`、cs）と加盟店デモアカウント（`MER-00001`）の 2 件** に限定し、管理者 `kuromaru` と accounting / developer / viewer、MER-00002 以降の加盟店を表示しない。加盟店ログイン画面も `MER-00001` のみ表示 | 管理者アカウントの ID / パスワードが公開ページに載っていた |
+| C-8 | 本番（`NODE_ENV=production`）の seed では、表示しないアカウントのパスワードをランダムにする（`hiddenDemoPassword`）。管理者 `kuromaru` は環境変数 `DEMO_ADMIN_PASSWORD` で運営者だけが決める（未設定なら seed ごとにランダム = 誰もログインできず、seed が警告を出す）。開発・テスト・`npm run db:reset` は従来の固定値 | 表示しているアカウント以外を他人が使えないようにするため。リポジトリに書かれた固定パスワードを本番で有効にしない |
+
 ## 1.1.0（2026-09-07）— 修正フェーズ1〜5
 
 対象コミット: `cf1c153`（`main`。修正フェーズ1〜5 の実装を含む。フェーズ6 は仕様書・マニュアルのみの変更）。

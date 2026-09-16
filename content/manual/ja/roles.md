@@ -32,12 +32,12 @@ admin / accounting / cs / developer は常に CSV を出力できます。viewer
 
 ## デモアカウント
 
-| ロール | ログインID |
-|---|---|
-| admin | `kuromaru` |
-| cs | `general` |
-| accounting | `accounting` |
-| developer | `developer` |
-| viewer | `viewer` |
+| ロール | ログインID | 公開デモでの扱い |
+|---|---|---|
+| admin | `kuromaru` | 表示しない。パスワードは環境変数 `DEMO_ADMIN_PASSWORD`（運営者のみ） |
+| cs | `general` | **運営デモアカウント**としてログイン画面に表示 |
+| accounting | `accounting` | 表示しない。本番では seed ごとにランダムなパスワード（ログイン不可） |
+| developer | `developer` | 同上 |
+| viewer | `viewer` | 同上 |
 
-パスワードはログイン画面のヒント（`DEMO_LOGIN_HINT` 設定時）に表示されます。
+ログイン画面のヒント（`DEMO_LOGIN_HINT` 設定時）には **運営デモアカウント**（`general`）と **加盟店デモアカウント**（`MER-00001`、[加盟店管理画面](/manual/merchant-portal)）の 2 件だけを表示し、他のアカウントは公開デモではログインできません。ローカル開発では全アカウントの固定パスワードが使えます（`prisma/seed-accounts.ts`）。

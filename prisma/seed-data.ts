@@ -22,7 +22,7 @@ import { displayPrefix } from "../lib/merchants/api-keys";
 import { hashApiKey } from "../lib/merchants/api-keys-server";
 import { encryptSigningSecret } from "../lib/merchants/secrets";
 import { DEFAULT_EMAIL_TEMPLATES } from "../lib/email/templates";
-import { DEMO_ADMIN_ACCOUNTS } from "./seed-accounts";
+import { DEMO_ADMIN_ACCOUNTS, DEMO_ADMIN_PASSWORD_CONFIGURED, hiddenDemoPassword } from "./seed-accounts";
 
 export const SEED_IDS = {
   stripeProvider: "prov_stripe_demo",
@@ -138,12 +138,22 @@ export const SEED_API_KEYS = {
   [SEED_IDS.apiKey9]: "wp_live_ss_TsukijiDemoSigningLive000000009", // merchant3, live
 } as const;
 
-/** Demo merchant passwords (fixed so the master-role reveal is reproducible). */
+/**
+ * Demo merchant passwords. MER-00001 is the merchant demo account listed on
+ * the login pages (加盟店デモアカウント) and keeps a fixed password; the other
+ * seeded merchants get a random password on the public demo (production) so
+ * only the listed account can be used by visitors — an admin can still reveal
+ * them on the merchant detail. Outside production all are fixed so the
+ * admin-role reveal is reproducible in tests.
+ */
 export const SEED_MERCHANT_PASSWORDS = {
   [SEED_IDS.merchant1]: "Kotori2026Demo",
-  [SEED_IDS.merchant2]: "Sakura2026Demo",
-  [SEED_IDS.merchant3]: "Tsukiji2026Demo",
+  [SEED_IDS.merchant2]: hiddenDemoPassword("Sakura2026Demo"),
+  [SEED_IDS.merchant3]: hiddenDemoPassword("Tsukiji2026Demo"),
 } as const;
+
+/** The merchant demo account shown on the login pages. */
+export const DEMO_PUBLIC_MERCHANT = { id: SEED_IDS.merchant1, password: SEED_MERCHANT_PASSWORDS[SEED_IDS.merchant1] } as const;
 
 /** Fixed bank-transfer ids of the seeded transfers (used by tests and the manual). */
 export const SEED_TRANSFER_IDS = {
@@ -659,6 +669,9 @@ export async function seed(prisma: PrismaClient, opts: SeedOptions = {}): Promis
   await prisma.adminUser.updateMany({ where: { role: "master" }, data: { role: "admin" } });
   await prisma.adminUser.updateMany({ where: { role: "general" }, data: { role: "cs" } });
   const admins = Object.values(DEMO_ADMIN_ACCOUNTS);
+  if (process.env.NODE_ENV === "production" && !DEMO_ADMIN_PASSWORD_CONFIGURED) {
+    console.warn("[seed] DEMO_ADMIN_PASSWORD is not set: the admin account gets a random password and nobody can log in as admin. Set DEMO_ADMIN_PASSWORD and re-run the seed (or reset the demo).");
+  }
   for (const a of admins) {
     await prisma.adminUser.upsert({
       where: { id: a.id },
