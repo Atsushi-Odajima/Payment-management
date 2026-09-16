@@ -17,8 +17,9 @@ Wire Pay は Next.js 14 + Prisma のアプリです。公開環境は現在 **Ve
 |------|------|------|
 | `DATABASE_URL` | ✅ | `file:./dev.db`（SQLite） / `postgresql://…`（Neon 等） |
 | `ENCRYPTION_KEY` | ✅ | AES-256-GCM 鍵。**base64 32 バイト**。本番は未設定・不正だと起動時に例外（fail-closed） |
-| `DEMO_LOGIN_HINT` | 任意 | 何か値を設定するとログイン画面にデモアカウント（`kuromaru` / `general` ほか）と、加盟店ログイン画面（`/merchant/login`）に seed の加盟店ID / パスワードを表示する（公開デモ用）。管理者は `AdminUser` テーブル（seed が作成）で、`ADMIN_PASSWORD` は使わない |
-| `DEMO_GENERAL_PASSWORD` | 任意 | seed が作る一般権限アカウント `general` のパスワード（既定 `general1234`） |
+| `DEMO_LOGIN_HINT` | 任意 | 何か値を設定するとログイン画面に **運営デモアカウント**（`general`、cs）と **加盟店デモアカウント**（`MER-00001`）の 2 件だけを表示する（公開デモ用。管理者 `kuromaru` と他のロール・他の加盟店は表示しない）。管理者は `AdminUser` テーブル（seed が作成）で、`ADMIN_PASSWORD` は使わない |
+| `DEMO_ADMIN_PASSWORD` | 公開デモは ✅ | seed が作る管理者 `kuromaru` のパスワード。**本番（`NODE_ENV=production`）で未設定だと seed のたびに推測不能なランダム値になり、誰も admin でログインできない**（表示していないアカウントを他人が使えないようにするため。accounting / developer / viewer と MER-00002 以降の加盟店も本番ではランダム）。開発・テストでは既定 `atusi0130` |
+| `DEMO_GENERAL_PASSWORD` | 任意 | 運営デモアカウント `general` のパスワード（既定 `general1234`。ログイン画面に表示される） |
 | `SESSION_SECRET` | 任意 | セッション Cookie の HMAC 鍵。未設定時は `ENCRYPTION_KEY` を流用 |
 | `DEMO_READONLY` | 任意 | `1` で DELETE とプロバイダの PATCH を 403 に（デモ荒らし対策） |
 | `CRON_SECRET` | 本番は ✅ | 設定すると `/api/demo/reset` と `/api/cron/*`（下表）が `Authorization: Bearer <CRON_SECRET>` で有効になる。Vercel Cron はこのヘッダーを自動で付ける。未設定だと cron 系はすべて 404 になり、**振込期限切れ・Webhook 再送・定期課金の課金が動かない** |
@@ -56,9 +57,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 デモではなく実データで運用する場合の最短手順です。
 
 1. **DB を用意**: Neon（Postgres）でプロジェクトを作り、Pooled connection の URL を `DATABASE_URL` に設定する
-2. **環境変数**: `ENCRYPTION_KEY`（base64 32 バイト、**一度決めたら変えない**）、`SESSION_SECRET`（別鍵を推奨）、`CRON_SECRET`、`DEPOSIT_NOTIFY_SECRET`、`APP_URL`（公開 URL）、必要なら `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`。`DEMO_LOGIN_HINT` と `DEMO_READONLY` は **設定しない**
+2. **環境変数**: `ENCRYPTION_KEY`（base64 32 バイト、**一度決めたら変えない**）、`SESSION_SECRET`（別鍵を推奨）、`CRON_SECRET`、`DEPOSIT_NOTIFY_SECRET`、`APP_URL`（公開 URL）、`DEMO_ADMIN_PASSWORD`（seed を使う間の管理者パスワード）、必要なら `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`。`DEMO_LOGIN_HINT` と `DEMO_READONLY` は **設定しない**
 3. **スキーマ適用**: `vercel.json` の buildCommand は `prisma db push --accept-data-loss` を実行する。実データを持つ DB では **このフラグを外す** か、Docker 経路と同じく `prisma migrate deploy`（`prisma/migrations` の履歴）に切り替える。スキーマ変更は常に「追加のみ」（nullable か `@default` 付き）で行い、列の削除・型変更をしない
-4. **初期データ**: ビルド末尾の `tsx prisma/seed.ts` はテーブル単位の upsert で、**デモ加盟店・取引・管理者（`kuromaru` / `general`）を投入する**。実運用では seed をビルドから外し（`vercel.json` の `&& tsx prisma/seed.ts` を削除）、管理者は `scripts/` から手動で作るか、初回のみ seed → 不要な行を削除 → デモ管理者のパスワードを変更する
+4. **初期データ**: ビルド末尾の `tsx prisma/seed.ts` はテーブル単位の upsert で、**デモ加盟店・取引・管理者（`kuromaru` / `general` ほか）を投入する**。本番では `kuromaru` のパスワードは `DEMO_ADMIN_PASSWORD`、他のロールと MER-00002 以降の加盟店はランダム（ログイン不可。加盟店のパスワードは管理画面の「パスワード表示」で確認できる）。実運用では seed をビルドから外し（`vercel.json` の `&& tsx prisma/seed.ts` を削除）、管理者は `scripts/` から手動で作るか、初回のみ seed → 不要な行を削除 → デモ管理者のパスワードを変更する
 5. **Cron**: 上表の `/api/cron/*`（expire-transfers / webhook-retry / subscriptions / payment-method-controls / notifications / anonymize）を登録し、`/api/demo/reset` は **登録しない**（Vercel は `vercel.json` の `crons` から該当行を削除）
 6. **加盟店の設定**: 各加盟店の通知先 URL（https）と署名シークレット（APIキータブ）を発行し、加盟店側で `X-Signature` の検証を実装してもらう（マニュアル「通知パラメータ仕様」）
 7. **動作確認**: `GET /api/merchant-api/ping` をテストキーで呼ぶ → 200、`/api/cron/subscriptions` を `Authorization: Bearer <CRON_SECRET>` で呼ぶ → 200、未設定のヘッダーでは 401 を確認する
@@ -113,7 +114,7 @@ Workers ランタイムは Node.js のファイルシステムを持たないた
 ## 動作確認（デプロイ後）
 
 1. `/` を開く → ダッシュボード。右上の **EN / 日本語** で言語が切り替わり、リロード後も維持される
-2. トップページでログイン（seed のマスター `kuromaru` / `atusi0130`）。右上の氏名からアカウント設定（パスワード変更・二段階認証）
+2. トップページでログイン（seed の管理者 `kuromaru` / `DEMO_ADMIN_PASSWORD` に設定した値。ローカルは `atusi0130`）。右上の氏名からアカウント設定（パスワード変更・二段階認証）
 3. **プロバイダ → 新規接続 → PayPay** などを選び、ダミーの認証情報で保存 → 接続テスト
 4. **決済を作成** → 詳細画面で **完了 / 一部返金 / キャンセル**（マスター権限）、銀行振込は **入金消込**。ステータス変更履歴に記録されることを確認。未完了の取引は **決済申請一覧** に、完了後は **決済一覧** に表示される
 5. Stripe プロバイダの決済で **Webhook をシミュレート** → 署名検証・重複排除を通って状態が変わる
