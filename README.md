@@ -9,8 +9,8 @@
 
 小規模ECストア向けに、複数の決済手段（クレジット / QR / コンビニ / 銀行振込 / その他Web決済）の **接続・認証情報の保管・決済ライフサイクル（与信 → 売上確定 → 返金）** を一画面で管理するダッシュボードです。
 
-**🔗 ライブデモ: <https://payment-management-green.vercel.app>**
-デモモードで動作し、外部の決済APIは呼び出しません。接続テストは入力の妥当性のみ検証し、決済は自由に作成・確定・取消・返金できます（データは毎日リセット）。ログイン画面にデモ用パスワードを表示しています。
+**🔗 デモURL: <https://payment-management-green.vercel.app>**
+デモモードで動作し、外部の決済APIは呼び出しません。接続テストは入力の妥当性のみ検証し、決済は自由に作成・確定・取消・返金できます（リセットは配備先のCron設定に依存します）。ログイン画面にデモ用パスワードを表示しています。
 
 <p align="center">
   <img src="docs/screenshots/dashboard-ja.png" alt="ダッシュボード（日本語）" width="49%">
@@ -37,9 +37,21 @@
   <img src="docs/screenshots/manual-en.png" alt="Admin manual (English)" width="49%">
 </p>
 
+
+## 実装範囲
+
+これは決済業務の**デモ実装**です。プロバイダ名がフォームに表示されても、そのサービスへの実決済接続が実装・認定済みという意味ではありません。
+[接続テスト](lib/providers/connection.ts) は入力の必須項目とURL形式を検査し、外部決済APIを呼びません。画面の「本番」モードも商用PSPへの接続を意味しません。
+
+一方、加盟店向けWebhook、通知ジョブ等は設定に応じて外部通信します。自分のテスト先と架空データを使って試してください。
+公開デモの稼働・ログイン・Cronの実行状態は配備先の設定に依存します。
+
+**Implementation scope (English):** Provider configuration and payment operations are demonstrated here; the connection test validates input only. A live-mode label does not enable real PSP processing. Configured webhooks and notifications may make external requests.
+
+
 ## 主な機能
 
-- **決済プロバイダ接続フロー** — カテゴリ → サービス → 認証情報の3ステップ。対応: Stripe / Square / GMO PG / PayPay / au PAY / 楽天ペイ / d払い / ビットキャッシュ / スマートピット / Webコンビニ / ペイジー / バーチャル口座 / カスタムWebhook（[`lib/providers/registry.ts`](./lib/providers/registry.ts) にデータとして定義。フォーム・必須チェック・暗号化対象・マスク表示が全て定義から派生）
+- **決済プロバイダ接続フロー** — カテゴリ → サービス → 認証情報の3ステップ。接続設定フォームの定義: Stripe / Square / GMO PG / PayPay / au PAY / 楽天ペイ / d払い / ビットキャッシュ / スマートピット / Webコンビニ / ペイジー / バーチャル口座 / カスタムWebhook（[`lib/providers/registry.ts`](./lib/providers/registry.ts) にデータとして定義。フォーム・必須チェック・暗号化対象・マスク表示が全て定義から派生）
 - **認証情報の暗号化保存** — シークレットはフィールド単位で AES-256-GCM 暗号化。管理画面では末尾4文字のみ表示。鍵は本番で未設定なら起動しない（fail-closed）。鍵を変更しても 500 にならず「再入力が必要」と案内
 - **取引のライフサイクル** — 加盟店サイトで決済方法が選ばれた時点の取引（決済申請）を 申請中 / 振込待ち / 与信済 → 完了 → 返金済 で管理。**決済申請一覧**（未完了）と **決済一覧**（完了・返金済）は同じテーブルのフィルタ違い。**一部返金**対応、状態遷移は1つの遷移表に集約し、更新は status 条件付きの `updateMany` で**アトミック**（二重返金・二重消込が構造的に通らない）
 - **冪等キー** — 決済作成 API は `Idempotency-Key` ヘッダを受け、同じキーの再送には同じ結果を返す
@@ -57,7 +69,7 @@
 - **ダッシュボード** — サイドバーと同じグループ構成のカードに主要 KPI（本日の決済件数・金額、未完了取引と振込期限超過、有効 IP ルール、本日の操作ログ件数など）を表示
 - **代理店管理** — `AGT-00001` 自動採番、手数料率（% 小数2桁）、有効/無効、詳細画面に担当加盟店の一覧
 - **決済申請一覧（未完了取引の追跡・消込）** — 決済種別 / ステータス / 加盟店 / 期間で絞り込み、振込待ちは振込期限が近い順・期限超過は赤で強調。銀行振込は加盟店ごとに 7 桁 / 8 桁の **振込ID** と振込期限を発行し、**入金消込**（一致 → 完了、不足 → 振込待ちのまま不足フラグ、超過 → 完了 + 超過フラグ）を詳細画面（マスター権限）と、銀行からの入金通知を模した `POST /api/demo/deposit-notify` の両方から実行できる。完了・失敗・キャンセル・期限切れの手動遷移と、ステータス変更履歴（いつ・誰が・何から何へ）
-- **IP制限管理（実際に遮断）** — 管理画面 / 加盟店API 向けの IP / CIDR ルール。**ブロック** ルールに一致する接続元は `app/layout.tsx`（画面）と `withApiHandler`（API）で実際に 403 になり、自分の IP をブロックするルールは保存できない（ロックアウト防止）。許可ルールは判定表示用。現在の接続元 IP と判定を表示
+- **IP制限管理（実際に遮断）** — 管理画面 / 加盟店API 向けの IP / CIDR ルール。**ブロック** ルールに一致する接続元は `app/layout.tsx`（画面）と `withApiHandler`（API）で実際に 403 になり、自分の IP をブロックするルールは保存できない（ロックアウト防止）。許可ルールは既定では判定表示用で、対象別の許可リスト強制モードを有効にすると、許可に一致しないアクセスを遮断します（管理画面は接続元IP不明時に適用できないため、信頼するプロキシ設定も必要）。現在の接続元 IP と判定を表示
 - **返金管理** — 返金申請（理由コード・全額 / 一部・残額と審査待ち額の検証）→ マスターの承認 / 否認。返金可能期限の超過はマスターが理由付きで強制。返金一覧 / 詳細、KPI「審査待ち」
 - **精算管理** — 加盟店ごとの締めサイクル・支払サイト・振込先口座、期間内の完了取引（完了時点の契約料率で手数料計算）・返金・チャージバックから精算バッチを生成し、確定 → 振込予定 → 振込済 / 保留の状態遷移、明細 CSV、加盟店 API での参照
 - **Webhook 送信** — 加盟店の通知設定どおりのペイロードを実送信（`X-Signature` / `X-Timestamp`、署名シークレット、10 秒タイムアウト）、1 分 → 24 時間の指数バックオフで最大 5 回の自動再送（cron）と断念、手動再送、送信ログ一覧 / 詳細 / 加盟店タブ、デモ受信エンドポイント
@@ -119,7 +131,7 @@ stateDiagram-v2
 
 **1. 認証情報を client に渡さない境界を Server Component で引く**
 `app/**/page.tsx` は Prisma で表示に必要な列だけを `select` し、`components/views/*`（client）に渡す。プロバイダ編集画面は [`readCredentialsForDisplay`](./lib/providers/credentials.ts) でマスク後の値だけを渡し、復号はマスク計算のためだけに行って平文は捨てる。PATCH で secret を空欄のまま保存すると既存の暗号文を維持する — 実運用の管理画面で必要な挙動。
-*トレードオフ*: 各画面が Server + View の2ファイルになる。*本番なら*: 監査ログにアクセス主体を残す（現状は `actor` のみ）。
+*トレードオフ*: 各画面が Server + View の2ファイルになる。*本番なら*: アクセス主体とマスク解除等の監査記録を運用上確認する（管理操作の監査は `lib/audit.ts`）。
 
 **2. 状態遷移を1ファイルに集約し、条件付き updateMany でアトミックにする**
 以前は capture / cancel / refund の各 route が `findUnique → if → update` と書いており、二重返金が通り得た。今は `TRANSITIONS` から UI の活性/非活性・API の許可判定・Webhook の適用を全て導出し、`updateMany({ where: { id, status: { in: from } } })` の件数で競合を検知する。
@@ -242,7 +254,7 @@ tests/integration/           Route Handler の統合テスト
 
 [`DEPLOY.md`](./DEPLOY.md) を参照。公開デモは Vercel (hnd1) + Neon、Docker（standalone 出力・非 root）で Railway / Render / Fly.io にも置けます。
 
-### 本番（実データ）で動かす最短手順
+### 配備構成を検討する場合の設定手順
 
 1. Neon などの Postgres を用意し `DATABASE_URL` を設定
 2. 環境変数: `ENCRYPTION_KEY`（base64 32 バイト・変更不可）、`SESSION_SECRET`、`CRON_SECRET`、`DEPOSIT_NOTIFY_SECRET`、`APP_URL`、任意で `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`。`DEMO_LOGIN_HINT` / `DEMO_READONLY` は設定しない
@@ -334,7 +346,7 @@ Runs in demo mode: no external payment APIs are called. Connection tests only va
 - **Dashboard** — cards grouped like the sidebar, each with its headline figure (today's payments, open transactions and overdue transfers, active IP rules, today's audit entries…).
 - **Agent management** — auto-numbered `AGT-00001`, fee rate (%, two decimals), active / inactive, and the merchants each agent refers on the detail page.
 - **Payment applications (open transactions)** — filter by method / status / merchant / period; awaiting transfers are listed by deadline with overdue rows in red. Bank transfers get a per-merchant 7- or 8-digit **transfer ID** and a deadline; **deposit reconciliation** (exact → completed, short → still awaiting with a short flag, excess → completed with an excess flag) runs from the detail screen (master role) and from `POST /api/demo/deposit-notify`, which mimics the bank's deposit notification. Manual complete / fail / cancel / expire, and a status history (when / who / from → to).
-- **IP restrictions (enforced)** — IP / CIDR rules for the admin UI and the merchant API. Callers matching a **Block** rule are refused by `app/layout.tsx` (pages) and `withApiHandler` (API) with a 403; a rule that would block your own IP cannot be saved (lock-out protection). Allow rules are informational; the current IP and its verdict are shown.
+- **IP restrictions (enforced)** — IP / CIDR rules for the admin UI and the merchant API. Callers matching a **Block** rule are refused by `app/layout.tsx` (pages) and `withApiHandler` (API) with a 403; a rule that would block your own IP cannot be saved (lock-out protection). Allow rules are informational by default; per-target allow-list enforcement can reject callers outside the enabled allow rules. The admin check cannot enforce this when no caller IP is available, so trusted proxy configuration also matters.
 - **Refund management** — refund requests (reason code, full / partial, validated against the remaining balance and pending requests) approved or rejected by a master; the refund window can be overridden by a master with a reason. Refund list / detail and a "pending review" KPI.
 - **Settlements** — per-merchant cycle, payout term and bank account; batches built from the period's completed transactions (fees at the contract rate in force at completion), refunds and chargebacks; confirmed → scheduled → paid / held transitions, line CSV, and a merchant API view.
 - **Outbound webhooks** — real delivery of the merchant's configured payload (`X-Signature` / `X-Timestamp`, signing secrets, 10-second timeout), exponential retries from 1 minute to 24 hours (five attempts, then abandoned) driven by a cron, manual resend, delivery log list / detail / merchant tab, and a demo receiver.
@@ -357,7 +369,7 @@ See the Mermaid diagrams in the Japanese section above (they render on GitHub): 
 
 ## Design decisions
 
-1. **Credentials never cross to the client.** Server Components `select` only display columns; the provider edit page passes masked values computed by `readCredentialsForDisplay`, decrypting solely to compute the mask. Saving a secret field blank keeps the existing ciphertext. *Trade-off:* every screen is a Server page + a client View. *For production:* record the acting user in the audit log (today only `actor` = dashboard/webhook).
+1. **Credentials never cross to the client.** Server Components `select` only display columns; the provider edit page passes masked values computed by `readCredentialsForDisplay`, decrypting solely to compute the mask. Saving a secret field blank keeps the existing ciphertext. *Trade-off:* every screen is a Server page + a client View. *For production:* review actor attribution and privileged access records in `lib/audit.ts` as part of operational auditing.
 2. **One transition table, atomic updates.** The old per-route `find → if → update` allowed double refunds under concurrency. Now `TRANSITIONS` drives everything and `updateMany({ where: { id, status: { in: from } } })` detects conflicts by row count. *Trade-off:* no optimistic-lock version column (overkill at this size).
 3. **Fail-closed encryption key.** `ENCRYPTION_KEY` must be canonical base64 of 32 bytes; production throws if it is missing or malformed, development falls back to a fixed key with a warning. Decryption failures are one `DecryptionError` type that the UI turns into a re-enter prompt. *For production:* KMS-managed keys with a key-version prefix on ciphertexts for rotation.
 4. **Type-enforced i18n without a library.** `en.ts` is typed as `MessageShape<typeof ja>`, so a missing or extra key fails the build and `t("nav.dashbord")` is a compile error. Data-embedded copy is `{ ja, en }` pairs. Tests assert identical `{param}` sets and no Japanese in the English catalog. *Trade-off:* no plurals / ICU (add when needed).
@@ -389,7 +401,7 @@ npm run verify     # lint → typecheck → check:i18n → test → build (same 
 
 See [`DEPLOY.md`](./DEPLOY.md): Vercel (Tokyo) + Neon for the public demo, or the Docker image (standalone output, non-root) on Railway / Render / Fly.io.
 
-### Shortest path to a production (real-data) deployment
+### Configuration for a deployment
 
 1. Provision Postgres (Neon or similar) and set `DATABASE_URL`.
 2. Environment: `ENCRYPTION_KEY` (base64 32 bytes, never rotate casually), `SESSION_SECRET`, `CRON_SECRET`, `DEPOSIT_NOTIFY_SECRET`, `APP_URL`, optionally `EMAIL_PROVIDER` / `EMAIL_DEFAULT_LANG`. Do not set `DEMO_LOGIN_HINT` / `DEMO_READONLY`.
